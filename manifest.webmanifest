@@ -1,0 +1,17 @@
+{
+  "name": "Fresco Command Center",
+  "short_name": "Fresco",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#101214",
+  "theme_color": "#C8102E",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?asset=icon",
+      "sizes": "256x256",
+      "type": "image/x-icon"
+    }
+  ]
+}

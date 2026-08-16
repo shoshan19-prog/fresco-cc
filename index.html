@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fresco</title>
+<link rel="icon" href="https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?asset=icon">
+<meta name="theme-color" content="#C8102E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fresco">
+<link rel="manifest" href="manifest.webmanifest">
+<!--
+  Fresco Command Center - mobile.
+  Static page, no credential of any kind inside: it holds only the public API URL.
+  Access is gated by the code typed at login, verified server-side against a
+  SHA-256 hash stored in an RLS-locked table. Safe to host publicly.
+-->
+<style>
+:root{--red:#C8102E;--bg:#101214;--card:#1a1d21;--txt:#eceff1;--dim:#9aa4ad;--ok:#4caf82;--warn:#e0a63c}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+header{background:var(--red);padding:14px 16px;font-size:18px;font-weight:700;position:sticky;top:0;z-index:5}
+nav{display:flex;border-bottom:1px solid #2a2e33;position:sticky;top:50px;background:var(--bg);z-index:4}
+nav button{flex:1;background:none;border:0;color:var(--dim);padding:12px 4px;font-size:15px;border-bottom:2px solid transparent}
+nav button.on{color:var(--txt);font-weight:600;border-bottom-color:var(--red)}
+main{padding:12px}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px}
+.card h3{font-size:13px;color:var(--dim);margin-bottom:8px}
+.item{border-bottom:1px solid #2a2e33;padding:10px 0;font-size:15px;line-height:1.5}
+.item:last-child{border:0}
+.small{font-size:12px;color:var(--dim)}
+.tag{font-size:11px;padding:2px 8px;border-radius:10px;background:#2a2e33;color:var(--dim);margin-inline-start:6px;white-space:nowrap}
+.tag.ok{color:var(--ok)}.tag.warn{color:var(--warn)}.tag.red{color:#ff7b72}
+textarea,input{width:100%;background:#0c0e10;color:var(--txt);border:1px solid #2a2e33;border-radius:10px;padding:12px;font-size:16px;font-family:inherit}
+textarea{min-height:84px}
+button.act{background:var(--red);color:#fff;border:0;border-radius:10px;padding:13px 20px;font-size:16px;width:100%;margin-top:10px}
+button.act:disabled{opacity:.6}
+pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:14px;line-height:1.55}
+#login{max-width:340px;margin:60px auto;text-align:center}
+</style>
+</head>
+<body>
+<header>Fresco Command Center</header>
+<div id="login"><div class="card"><h3 id="lt">קוד גישה</h3>
+<input id="code" type="password" placeholder="הזן קוד">
+<button class="act" id="lb">כניסה</button>
+<p class="small" id="le"></p></div></div>
+<div id="app" style="display:none">
+<nav><button data-t="ask" class="on">שאל</button><button data-t="today">היום</button><button data-t="reality">מצב</button></nav>
+<main id="m"></main></div>
+<script>
+var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
+var S=null,B=function(q){return document.querySelector(q)};
+function code(){return sessionStorage.getItem('fc')||''}
+function api(b,auth){
+  var h={'Content-Type':'application/json'};
+  if(auth!==false)h['x-fresco-code']=code();
+  return fetch(API,{method:'POST',headers:h,body:JSON.stringify(b)}).then(function(r){
+    if(r.status===401){sessionStorage.removeItem('fc');location.reload();}
+    if(!r.ok)return r.text().then(function(t){throw new Error(t)});
+    return r.json();});
+}
+var SETUP=false;
+api({action:'status'},false).then(function(s){
+  SETUP=!!s.setup;
+  if(SETUP){B('#lt').textContent='הגדרת קוד ראשונית';
+    B('#code').placeholder='בחר קוד (12+)';B('#lb').textContent='קבע והיכנס';}
+}).catch(function(){});
+if(code())load();
+B('#lb').onclick=go;
+B('#code').addEventListener('keydown',function(e){if(e.key==='Enter')go()});
+function go(){
+  var c=B('#code').value.trim();
+  if(SETUP&&c.length<12){B('#le').textContent='מינימום 12 תווים';return;}
+  var pre=SETUP?api({action:'set_code',code:c},false):Promise.resolve();
+  pre.then(function(){SETUP=false;sessionStorage.setItem('fc',c);return load();})
+     .catch(function(e){B('#le').textContent='שגיאה: '+e.message;});
+}
+function load(){return api({action:'state'}).then(function(s){
+  S=s;B('#login').style.display='none';B('#app').style.display='block';render('ask');});}
+var tabs=document.querySelectorAll('nav button');
+for(var i=0;i<tabs.length;i++)(function(b){b.onclick=function(){
+  for(var j=0;j<tabs.length;j++)tabs[j].className='';
+  b.className='on';render(b.getAttribute('data-t'));};})(tabs[i]);
+function esc(s){return (s==null?'':String(s)).replace(/[<>&]/g,function(c){
+  return c==='<'?'&lt;':c==='>'?'&gt;':'&amp;';});}
+function dt(s){return s?new Date(s).toLocaleString('he-IL'):'—'}
+function render(t){
+  var m=B('#m');
+  if(t==='ask'){
+    m.innerHTML='<div class="card"><h3>שאל את פרסקו</h3>'
+      +'<textarea id="q" placeholder="לדוגמה: האם ליז שלחה מייל על מניפות"></textarea>'
+      +'<button class="act" id="sb">שלח</button></div>'
+      +'<div class="card"><h3>היסטוריה</h3>'
+      +S.requests.map(function(r){return '<div class="item"><b>'+esc(r.body)+'</b>'
+        +'<span class="tag '+(r.status==='answered'?'ok':r.status==='rejected'?'red':'warn')+'">'+esc(r.status)+'</span>'
+        +(r.response?'<pre>'+esc(r.response)+'</pre>':'')
+        +'<div class="small">'+dt(r.created_at)+'</div></div>';}).join('')+'</div>';
+    B('#sb').onclick=function(){
+      var v=B('#q').value.trim();if(!v)return;
+      var btn=B('#sb');btn.disabled=true;btn.textContent='מחפש…';
+      api({action:'ask',kind:'question',body:v}).then(function(){return api({action:'state'});})
+        .then(function(s){S=s;render('ask');})
+        .catch(function(e){btn.disabled=false;btn.textContent='שלח';alert(e.message);});
+    };
+  }
+  if(t==='today'){
+    var day=S.changes.filter(function(c){return Date.now()-new Date(c.created_at)<864e5;});
+    var attn=S.manifest.filter(function(c){return /BLOCK|REVALIDATION|PARTIAL|PENDING/i.test(c.value+JSON.stringify(c.detail||{}));});
+    m.innerHTML='<div class="card"><h3>מה השתנה מאז אתמול</h3>'
+      +(day.length?day.map(function(c){return '<div class="item">'+esc(c.kind)+'<span class="tag">'+dt(c.created_at)+'</span></div>';}).join('')
+        :'<p class="small">אין שינויים ב-24 שעות</p>')+'</div>'
+      +'<div class="card"><h3>דורש תשומת לב</h3>'
+      +(attn.length?attn.map(function(c){return '<div class="item"><b>'+esc(c.component)+'</b>'
+        +'<span class="tag '+(/BLOCK/.test(c.value)?'red':'warn')+'">'+esc(c.value)+'</span></div>';}).join('')
+        :'<p class="small">הכול תקין</p>')+'</div>'
+      +'<div class="card"><h3>מחכה לאישור</h3>'
+      +(S.approvals.length?S.approvals.map(function(r){return '<div class="item">'+esc(r.project_name||'')+' — '+esc(r.claim||'')+'</div>';}).join('')
+        :'<p class="small">אין פריטים</p>')+'</div>';
+  }
+  if(t==='reality'){
+    m.innerHTML='<div class="card"><h3>Reality Manifest</h3>'
+      +S.manifest.map(function(c){return '<div class="item"><b>'+esc(c.component)+'</b>'
+        +'<span class="tag '+(/LIVE|v0/.test(c.value)?'ok':/BLOCK/.test(c.value)?'red':'warn')+'">'+esc(c.value)+'</span>'
+        +'<div class="small">'+dt(c.updated_at)+'</div></div>';}).join('')+'</div>';
+  }
+}
+</script>
+</body>
+</html>
