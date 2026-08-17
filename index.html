@@ -4,53 +4,106 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Fresco</title>
-<link rel="icon" href="https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?asset=icon">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23C8102E'/%3E%3Ctext x='16' y='23' font-size='19' font-family='sans-serif' font-weight='700' fill='%23fff' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E">
 <meta name="theme-color" content="#C8102E">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Fresco">
-<link rel="manifest" href="manifest.webmanifest">
 <!--
-  Fresco Command Center - mobile.
+  Fresco CEO Control Tower — decision 145.
   Static page, no credential of any kind inside: it holds only the public API URL.
-  Access is gated by the code typed at login, verified server-side against a
-  SHA-256 hash stored in an RLS-locked table. Safe to host publicly.
+  Access is gated by the code David types, verified server-side against a SHA-256
+  hash in an RLS-locked table. Safe to host on any static host.
+
+  Definition of done: one URL, 30 seconds — where the company stands, what needs
+  his decision, what the next action is. So the order on screen is exactly that:
+  next action first, then the decision queue, then the eight departments.
 -->
 <style>
-:root{--red:#C8102E;--bg:#101214;--card:#1a1d21;--txt:#eceff1;--dim:#9aa4ad;--ok:#4caf82;--warn:#e0a63c}
+:root{--red:#C8102E;--bg:#101214;--card:#1a1d21;--card2:#22262b;--txt:#eceff1;--dim:#9aa4ad;
+  --line:#2a2e33;--ok:#4caf82;--warn:#e0a63c;--bad:#ff7b72;--miss:#7f8a93;--blue:#6fb3e0}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
-body{background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;padding-bottom:env(safe-area-inset-bottom)}
-header{background:var(--red);padding:14px 16px;font-size:18px;font-weight:700;position:sticky;top:0;z-index:5}
-nav{display:flex;border-bottom:1px solid #2a2e33;position:sticky;top:50px;background:var(--bg);z-index:4}
-nav button{flex:1;background:none;border:0;color:var(--dim);padding:12px 4px;font-size:15px;border-bottom:2px solid transparent}
+body{background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  padding-bottom:calc(20px + env(safe-area-inset-bottom));line-height:1.55}
+header{background:var(--red);padding:13px 16px;font-size:17px;font-weight:700;position:sticky;top:0;z-index:5}
+nav{display:flex;border-bottom:1px solid var(--line);position:sticky;top:48px;background:var(--bg);z-index:4}
+nav button{flex:1;background:none;border:0;color:var(--dim);padding:11px 4px;font-size:15px;
+  border-bottom:2px solid transparent;font-family:inherit}
 nav button.on{color:var(--txt);font-weight:600;border-bottom-color:var(--red)}
 main{padding:12px}
 .card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px}
-.card h3{font-size:13px;color:var(--dim);margin-bottom:8px}
-.item{border-bottom:1px solid #2a2e33;padding:10px 0;font-size:15px;line-height:1.5}
-.item:last-child{border:0}
+.card h3{font-size:12px;color:var(--dim);margin-bottom:9px;letter-spacing:.06em;font-weight:600}
+.item{border-bottom:1px solid var(--line);padding:10px 0;font-size:15px}
+.item:last-child{border:0}.item:first-of-type{padding-top:0}
 .small{font-size:12px;color:var(--dim)}
-.tag{font-size:11px;padding:2px 8px;border-radius:10px;background:#2a2e33;color:var(--dim);margin-inline-start:6px;white-space:nowrap}
-.tag.ok{color:var(--ok)}.tag.warn{color:var(--warn)}.tag.red{color:#ff7b72}
-textarea,input{width:100%;background:#0c0e10;color:var(--txt);border:1px solid #2a2e33;border-radius:10px;padding:12px;font-size:16px;font-family:inherit}
-textarea{min-height:84px}
-button.act{background:var(--red);color:#fff;border:0;border-radius:10px;padding:13px 20px;font-size:16px;width:100%;margin-top:10px}
+.tag{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--dim);
+  margin-inline-start:6px;white-space:nowrap;display:inline-block;font-weight:600}
+.tag.ok{color:var(--ok)}.tag.warn{color:var(--warn)}.tag.bad{color:var(--bad)}.tag.miss{color:var(--miss)}
+textarea,input{width:100%;background:#0c0e10;color:var(--txt);border:1px solid var(--line);
+  border-radius:10px;padding:12px;font-size:16px;font-family:inherit}
+textarea{min-height:80px}
+button.act{background:var(--red);color:#fff;border:0;border-radius:10px;padding:13px 20px;
+  font-size:16px;width:100%;margin-top:10px;font-family:inherit}
 button.act:disabled{opacity:.6}
 pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:14px;line-height:1.55}
 #login{max-width:340px;margin:60px auto;text-align:center}
+
+/* Next action — the one thing he must see first. */
+.next{background:linear-gradient(180deg,#2a1116,#1a1d21);border:1px solid var(--red);
+  border-radius:12px;padding:15px;margin-bottom:10px}
+.next .lbl{font-size:11px;color:var(--red);font-weight:700;letter-spacing:.09em;margin-bottom:6px}
+.next .what{font-size:18px;font-weight:700;line-height:1.35}
+.next .why{font-size:13px;color:var(--dim);margin-top:6px}
+
+/* Approval inbox */
+.appr{background:var(--card2);border-radius:10px;padding:12px;margin-bottom:8px}
+.appr .claim{font-size:15px;font-weight:600;line-height:1.45}
+.appr .proj{font-size:12px;color:var(--dim);margin-top:3px}
+.appr .why{font-size:13px;color:var(--dim);margin-top:6px}
+.btns{display:flex;gap:7px;margin-top:11px}
+.btns button{flex:1;border:0;border-radius:8px;padding:11px 6px;font-size:14px;font-weight:600;
+  font-family:inherit;color:#fff}
+.b-ok{background:#2f7a56}.b-ed{background:#4a5058}.b-no{background:#8a3a34}
+.btns button:disabled{opacity:.5}
+
+/* Department cards */
+.dept{background:var(--card);border-radius:12px;padding:13px;margin-bottom:9px;
+  border-inline-start:3px solid var(--miss)}
+.dept.s-LIVE{border-inline-start-color:var(--ok)}
+.dept.s-HIDDEN{border-inline-start-color:var(--warn)}
+.dept.s-BLOCKED{border-inline-start-color:var(--bad)}
+.dept.s-MISSING{border-inline-start-color:var(--miss)}
+.dept .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dept .nm{font-size:16px;font-weight:700}
+.mets{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.met{background:var(--card2);border-radius:8px;padding:7px 10px;flex:1 1 auto;min-width:88px}
+.met .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.met .v.na{font-size:13px;color:var(--miss);font-weight:600}
+.met .k{font-size:11px;color:var(--dim);margin-top:1px}
+.dept .stuck{font-size:13px;color:var(--bad);margin-top:9px}
+.dept .nxt{font-size:13px;color:var(--dim);margin-top:5px}
+.dept .ceo{font-size:12px;color:var(--warn);margin-top:5px;font-weight:600}
+.dept .cmds{font-size:11px;color:var(--miss);margin-top:7px;word-break:break-all;direction:ltr;text-align:right}
 </style>
 </head>
 <body>
-<header>Fresco Command Center</header>
+<header>Fresco · מגדל הבקרה</header>
+
 <div id="login"><div class="card"><h3 id="lt">קוד גישה</h3>
 <input id="code" type="password" placeholder="הזן קוד">
 <button class="act" id="lb">כניסה</button>
 <p class="small" id="le"></p></div></div>
+
 <div id="app" style="display:none">
-<nav><button data-t="ask" class="on">שאל</button><button data-t="today">היום</button><button data-t="reality">מצב</button></nav>
+<nav>
+  <button data-t="tower" class="on">מגדל</button>
+  <button data-t="ask">שאל</button>
+  <button data-t="reality">מצב</button>
+</nav>
 <main id="m"></main></div>
+
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
-var S=null,B=function(q){return document.querySelector(q)};
+var S=null,T=null,B=function(q){return document.querySelector(q)};
 function code(){return sessionStorage.getItem('fc')||''}
 function api(b,auth){
   var h={'Content-Type':'application/json'};
@@ -76,54 +129,162 @@ function go(){
   pre.then(function(){SETUP=false;sessionStorage.setItem('fc',c);return load();})
      .catch(function(e){B('#le').textContent='שגיאה: '+e.message;});
 }
-function load(){return api({action:'state'}).then(function(s){
-  S=s;B('#login').style.display='none';B('#app').style.display='block';render('ask');});}
+function load(){
+  B('#login').innerHTML='<p class="small" style="text-align:center;margin-top:60px">טוען…</p>';
+  return Promise.all([api({action:'tower'}),api({action:'state'})]).then(function(a){
+    T=a[0];S=a[1];
+    B('#login').style.display='none';B('#app').style.display='block';render('tower');});
+}
 var tabs=document.querySelectorAll('nav button');
 for(var i=0;i<tabs.length;i++)(function(b){b.onclick=function(){
   for(var j=0;j<tabs.length;j++)tabs[j].className='';
   b.className='on';render(b.getAttribute('data-t'));};})(tabs[i]);
-function esc(s){return (s==null?'':String(s)).replace(/[<>&]/g,function(c){
-  return c==='<'?'&lt;':c==='>'?'&gt;':'&amp;';});}
+function esc(s){return (s==null?'':String(s)).replace(/[<>&"]/g,function(c){
+  return c==='<'?'&lt;':c==='>'?'&gt;':c==='&'?'&amp;':'&quot;';});}
 function dt(s){return s?new Date(s).toLocaleString('he-IL'):'—'}
+function day(s){return s?new Date(s).toLocaleDateString('he-IL'):'—'}
+function stateTag(s){
+  var c=s==='LIVE'?'ok':s==='HIDDEN'?'warn':s==='BLOCKED'?'bad':'miss';
+  return '<span class="tag '+c+'">'+esc(s)+'</span>';
+}
+
 function render(t){
   var m=B('#m');
-  if(t==='ask'){
-    m.innerHTML='<div class="card"><h3>שאל את פרסקו</h3>'
-      +'<textarea id="q" placeholder="לדוגמה: האם ליז שלחה מייל על מניפות"></textarea>'
-      +'<button class="act" id="sb">שלח</button></div>'
-      +'<div class="card"><h3>היסטוריה</h3>'
-      +S.requests.map(function(r){return '<div class="item"><b>'+esc(r.body)+'</b>'
-        +'<span class="tag '+(r.status==='answered'?'ok':r.status==='rejected'?'red':'warn')+'">'+esc(r.status)+'</span>'
-        +(r.response?'<pre>'+esc(r.response)+'</pre>':'')
-        +'<div class="small">'+dt(r.created_at)+'</div></div>';}).join('')+'</div>';
-    B('#sb').onclick=function(){
-      var v=B('#q').value.trim();if(!v)return;
-      var btn=B('#sb');btn.disabled=true;btn.textContent='מחפש…';
-      api({action:'ask',kind:'question',body:v}).then(function(){return api({action:'state'});})
-        .then(function(s){S=s;render('ask');})
-        .catch(function(e){btn.disabled=false;btn.textContent='שלח';alert(e.message);});
-    };
+  if(t==='tower')return renderTower(m);
+  if(t==='ask')return renderAsk(m);
+  if(t==='reality')return renderReality(m);
+}
+
+function renderTower(m){
+  var h='';
+  // 1. The next action — first thing on screen.
+  var na=T.next_action||{};
+  h+='<div class="next"><div class="lbl">הפעולה הבאה</div>'
+    +'<div class="what">'+esc(na.what)+'</div>'
+    +'<div class="why">'+esc(na.why)+'</div></div>';
+
+  // 2. Approval Inbox — approve / edit / reject, in place.
+  h+='<div class="card"><h3>ממתין להחלטתך · '+T.approvals.length+'</h3>';
+  if(!T.approvals.length){h+='<p class="small">אין פריטים בתור</p>';}
+  else{
+    h+=T.approvals.map(function(r,i){
+      return '<div class="appr" id="ap'+i+'">'
+        +'<div class="claim">'+esc(r.claim)+'</div>'
+        +'<div class="proj">'+esc(r.project_name||'')
+        +(r.confidence_label?'<span class="tag">'+esc(r.confidence_label)+'</span>':'')+'</div>'
+        +(r.why_now?'<div class="why">'+esc(r.why_now)+'</div>':'')
+        +'<div class="btns">'
+        +'<button class="b-ok" data-a="approved" data-i="'+i+'">אשר</button>'
+        +'<button class="b-ed" data-a="edit" data-i="'+i+'">תקן</button>'
+        +'<button class="b-no" data-a="rejected" data-i="'+i+'">דחה</button>'
+        +'</div></div>';
+    }).join('');
   }
-  if(t==='today'){
-    var day=S.changes.filter(function(c){return Date.now()-new Date(c.created_at)<864e5;});
-    var attn=S.manifest.filter(function(c){return /BLOCK|REVALIDATION|PARTIAL|PENDING/i.test(c.value+JSON.stringify(c.detail||{}));});
-    m.innerHTML='<div class="card"><h3>מה השתנה מאז אתמול</h3>'
-      +(day.length?day.map(function(c){return '<div class="item">'+esc(c.kind)+'<span class="tag">'+dt(c.created_at)+'</span></div>';}).join('')
-        :'<p class="small">אין שינויים ב-24 שעות</p>')+'</div>'
-      +'<div class="card"><h3>דורש תשומת לב</h3>'
-      +(attn.length?attn.map(function(c){return '<div class="item"><b>'+esc(c.component)+'</b>'
-        +'<span class="tag '+(/BLOCK/.test(c.value)?'red':'warn')+'">'+esc(c.value)+'</span></div>';}).join('')
-        :'<p class="small">הכול תקין</p>')+'</div>'
-      +'<div class="card"><h3>מחכה לאישור</h3>'
-      +(S.approvals.length?S.approvals.map(function(r){return '<div class="item">'+esc(r.project_name||'')+' — '+esc(r.claim||'')+'</div>';}).join('')
-        :'<p class="small">אין פריטים</p>')+'</div>';
+  h+='</div>';
+
+  // 3. The eight canonical departments.
+  h+='<div class="card"><h3>שמונה המחלקות</h3></div>';
+  h+=T.departments.map(function(d){
+    var mets=(d.metrics||[]).map(function(x){
+      var na=(x.value==='MISSING'||x.value==='לא-מדיד');
+      return '<div class="met"><div class="v'+(na?' na':'')+'">'+esc(x.value)+'</div>'
+        +'<div class="k">'+esc(x.label)+'</div></div>';
+    }).join('');
+    return '<div class="dept s-'+esc(d.state)+'">'
+      +'<div class="top"><div class="nm">'+esc(d.name)+'</div>'+stateTag(d.state)+'</div>'
+      +'<div class="mets">'+mets+'</div>'
+      +(d.stuck?'<div class="stuck">תקוע: '+esc(d.stuck)+'</div>':'')
+      +'<div class="nxt">הבא: '+esc(d.next)+'</div>'
+      +(d.ceo?'<div class="ceo">דורש החלטה שלך: '+esc(d.ceo)+'</div>':'')
+      +'<div class="cmds">'+esc((d.cmds||[]).join(' · '))+'</div>'
+      +'</div>';
+  }).join('');
+
+  // 4. Money — sales and funding side by side.
+  var mo=T.money||{};
+  h+='<div class="card"><h3>כסף</h3>'
+    +'<div class="mets">'
+    +'<div class="met"><div class="v">'+(mo.orders_month==null?'<span class="na">לא-מדיד</span>':esc(mo.orders_month))+'</div>'
+    +'<div class="k">הזמנות החודש</div></div>'
+    +'<div class="met"><div class="v">'+esc(mo.funding)+'</div><div class="k">הזדמנויות מימון</div></div>'
+    +'<div class="met"><div class="v na">'+esc(mo.attributed)+'</div><div class="k">הכנסה מיוחסת</div></div>'
+    +'</div><div class="small" style="margin-top:8px">'+esc(mo.orders_source)+'</div></div>';
+
+  // 5. What changed · opportunities · new deliverables.
+  h+='<div class="card"><h3>מה השתנה · 7 ימים</h3>'
+    +(T.changed.length?T.changed.slice(0,8).map(function(c){
+        return '<div class="item">'+esc(c.kind)+'<span class="tag">'+day(c.created_at)+'</span></div>';
+      }).join(''):'<p class="small">אין שינויים</p>')+'</div>';
+
+  h+='<div class="card"><h3>הזדמנויות</h3>'
+    +'<div class="mets"><div class="met"><div class="v">'+esc(T.opportunities.count)+'</div>'
+    +'<div class="k">בפנקס</div></div>'
+    +'<div class="met"><div class="v">'+esc(T.opportunities.signals)+'</div><div class="k">סיגנלים</div></div></div></div>';
+
+  var dl=T.deliverables||{recent:[]};
+  h+='<div class="card"><h3>תוצרים חדשים · '+esc(dl.count)+'</h3>'
+    +((dl.recent||[]).length?dl.recent.map(function(a){
+        return '<div class="item">'+esc(a.name||a.kind)+'<span class="tag">'+day(a.created_at)+'</span></div>';
+      }).join(''):'<p class="small">אין תוצרים</p>')+'</div>';
+
+  h+='<p class="small" style="text-align:center;padding:6px 0">עודכן '+dt(T.generated_at)+'</p>';
+  m.innerHTML=h;
+
+  // Wire the decision buttons.
+  var bs=m.querySelectorAll('.btns button');
+  for(var i=0;i<bs.length;i++)(function(b){
+    b.onclick=function(){decide(b.getAttribute('data-a'),Number(b.getAttribute('data-i')),b);};
+  })(bs[i]);
+}
+
+function decide(action,idx,btn){
+  var r=T.approvals[idx];
+  var body={action:'decide',target:'recommendation',id:r.id,decision:action};
+  if(action==='edit'){
+    var nv=prompt('נסח מחדש את ההמלצה:',r.claim);
+    if(nv===null)return;
+    nv=nv.trim();
+    if(!nv){alert('טקסט ריק — לא נשמר');return;}
+    body.claim=nv;
   }
-  if(t==='reality'){
-    m.innerHTML='<div class="card"><h3>Reality Manifest</h3>'
-      +S.manifest.map(function(c){return '<div class="item"><b>'+esc(c.component)+'</b>'
-        +'<span class="tag '+(/LIVE|v0/.test(c.value)?'ok':/BLOCK/.test(c.value)?'red':'warn')+'">'+esc(c.value)+'</span>'
-        +'<div class="small">'+dt(c.updated_at)+'</div></div>';}).join('')+'</div>';
-  }
+  var row=B('#ap'+idx),all=row.querySelectorAll('button');
+  for(var i=0;i<all.length;i++)all[i].disabled=true;
+  btn.textContent='…';
+  api(body).then(function(){return api({action:'tower'});})
+    .then(function(x){T=x;render('tower');})
+    .catch(function(e){
+      for(var i=0;i<all.length;i++)all[i].disabled=false;
+      alert('שגיאה: '+e.message);
+    });
+}
+
+function renderAsk(m){
+  m.innerHTML='<div class="card"><h3>שאל את פרסקו</h3>'
+    +'<textarea id="q" placeholder="לדוגמה: כמה הזמנות נכנסו החודש"></textarea>'
+    +'<button class="act" id="sb">שלח</button></div>'
+    +'<div class="card"><h3>היסטוריה</h3>'
+    +S.requests.map(function(r){return '<div class="item"><b>'+esc(r.body)+'</b>'
+      +'<span class="tag '+(r.status==='answered'?'ok':r.status==='rejected'?'bad':'warn')+'">'+esc(r.status)+'</span>'
+      +(r.response?'<pre>'+esc(r.response)+'</pre>':'')
+      +'<div class="small">'+dt(r.created_at)+'</div></div>';}).join('')+'</div>';
+  B('#sb').onclick=function(){
+    var v=B('#q').value.trim();if(!v)return;
+    var btn=B('#sb');btn.disabled=true;btn.textContent='מחפש…';
+    api({action:'ask',kind:'question',body:v}).then(function(){return api({action:'state'});})
+      .then(function(s){S=s;render('ask');})
+      .catch(function(e){btn.disabled=false;btn.textContent='שלח';alert(e.message);});
+  };
+}
+
+function renderReality(m){
+  m.innerHTML='<div class="card"><h3>Reality Manifest</h3>'
+    +T.manifest.map(function(c){return '<div class="item"><b>'+esc(c.component)+'</b>'
+      +'<span class="tag '+(/LIVE|v0/.test(c.value)?'ok':/BLOCK/.test(c.value)?'bad':'warn')+'">'+esc(c.value)+'</span>'
+      +'<div class="small">'+dt(c.updated_at)+'</div></div>';}).join('')+'</div>'
+    +'<div class="card"><h3>הפנקס</h3><div class="mets">'
+    +Object.keys(T.totals).map(function(k){
+      return '<div class="met"><div class="v">'+esc(T.totals[k])+'</div><div class="k">'+esc(k)+'</div></div>';
+    }).join('')+'</div></div>';
 }
 </script>
 </body>
