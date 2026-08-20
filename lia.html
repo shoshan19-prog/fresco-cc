@@ -39,6 +39,13 @@ button#mic.on{background:#ff4d4f}
 <div class="card" id="caughtCard" style="display:none"><h2>קלטתי:</h2>
 <ul class="caught" id="caught"></ul></div>
 
+<!-- what LIA answered out loud -->
+<div class="card" id="answerCard" style="display:none"><h2 id="answerTitle">LIA:</h2>
+<p id="answerText" style="font-size:17px"></p>
+<div class="row"><button class="det" onclick="toggleAnswerDetails()">פרטים</button>
+<button class="det" onclick="explainSimply()">תסבירי פשוט</button></div>
+<div id="answerDetails" style="display:none"></div></div>
+
 <!-- the single capture card: idle → review → failed -->
 <div class="card focus" id="capture">
 <h2 id="capTitle">ספר ל-LIA</h2>
@@ -89,6 +96,9 @@ function setMode(m){
   ta.className='heard';ta.rows=8;ta.style.display='block';
   A.innerHTML='<button class="big" id="sendBtn" onclick="sendNote()">שלח ל-LIA</button>'
    +'<button class="big ghost" onclick="speakAgain()">דבר שוב</button>';
+ }else if(m==='thinking'){
+  T.textContent='בודקת…';H.textContent='ניגשת למערכות של פרסקו.';
+  ta.style.display='none';A.innerHTML='';
  }else if(m==='failed'){
   T.textContent='לא הצלחתי לתמלל.';H.textContent='לחץ דבר שוב.';
   ta.style.display='none';
@@ -251,9 +261,8 @@ function startSR(){
   const ta=document.getElementById('note');ta.value=(BASE?BASE+'\n':'')+finals.trim();
   const c=conf.length?conf.reduce((x,y)=>x+y,0)/conf.length:null;
   VOICE={model:'browser_speech',language:'he-IL',duration_s:secs,low_confidence:c!==null&&c<0.6};
-  setMode('review');ta.focus();
   if(VOICE.low_confidence)stat('⚠ חלק מהמילים לא ברורות — בדוק ותקן');
-  if(voiceUX())reflect();};
+  afterTranscript();};
  SR=r;try{r.start();}catch(e){SR=null;startRecorder();return;}
  uiStart();}
 /* engine 2: record and let Whisper transcribe. Used only where engine 1 is absent. */
@@ -291,9 +300,8 @@ async function finishRec(){
   ta.value=(ta.value.trim()?ta.value.trim()+'\n':'')+out.text.trim();
   VOICE={model:out.model,language:out.language,duration_s:out.duration_s,
          avg_logprob:out.avg_logprob,low_confidence:out.low_confidence};
-  setMode('review');ta.focus();
   if(out.low_confidence)stat('⚠ חלק מהמילים לא ברורות — בדוק ותקן');
-  if(voiceUX())reflect();
+  afterTranscript();
  }catch(e){blob=null;stat('התמלול נכשל (רשת) — לחץ דבר שוב');}}
 /* -- voice confirmation: speak -> hear a short reflection -> say yes/no ---
    On a phone the hands are busy, so the normal flow needs no tap at all. The
@@ -350,6 +358,133 @@ function askCorrection(){
   if(!txt){stat('לא שמעתי. אפשר לתקן בטקסט ולשלוח.');return;}
   document.getElementById('note').value=txt.trim();   // the corrected sentence replaces the old one
   reflect();});}
+
+/* ── voice executive: one brain, three roads ─────────────────────────────
+   The Reasoning Kernel in command-center is the brain — same code, same key,
+   same capabilities (Priority, mail, projects, products, knowledge). Nothing
+   here reasons about the business; it only decides WHICH road a sentence takes
+   and how the answer is spoken.
+
+     ASK       read-only. Answer immediately, out loud, no confirmation.
+     REMEMBER  a note. Reflect it back, wait for כן, then the existing pipeline.
+     DO        never executes from voice. R0/R1 (read, local draft) run; anything
+               that leaves the building is prepared and left for visual approval.
+*/
+const CC='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
+async function ccApi(b){const r=await fetch(CC,{method:'POST',
+ headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:JSON.stringify(b)});
+ if(r.status===401){localStorage.removeItem('lia_code');location.reload();throw new Error('401');}
+ if(!r.ok)throw new Error((await r.text()).slice(0,120));return r.json();}
+
+const ACT_RE=/(?:^|\s)(?:תכיני|תכין|תעני|תענה|תשלחי|תשלח|תעדכני|תעדכן|תוסיפי|תמחקי|תזמיני|תפרסמי|תשלמי)(?:\s|$)/;
+const OUTWARD_RE=/(?:^|\s)(?:תשלחי|תשלח|תפרסמי|תשלמי|תזמיני)(?:\s|$)/;
+const READ_RE=/(?:^|\s)(?:תבדקי|תבדוק|תראי|תבררי|תסתכלי|תמצאי|תחפשי|תסכמי|תגידי|תספרי|תראה)(?:\s|$)/;
+const Q_RE=/(?:^|\s)(?:כמה|מה|מי|איפה|מתי|האם|למה|איזה|כמו)(?:\s|$)|מה קורה|מה חדש|מה מצב/;
+const MEM_RE=/(?:^|\s)(?:דיברתי|נפגשתי|שוחחתי|הבטחתי|סיכמנו|סיכמתי|החלטנו|החלטתי|הוחלט|אמרתי)(?:\s|$)|תזכירי לי/;
+function classify(t){
+ const s=(t||'').trim();
+ if(MEM_RE.test(s))return 'REMEMBER';          // a report of something that happened is a note
+ if(ACT_RE.test(s))return 'DO';
+ if(READ_RE.test(s)||Q_RE.test(s))return 'ASK';
+ return 'REMEMBER';                            // unknown → the safe road: reflect and confirm
+}
+function afterTranscript(){
+ const t=document.getElementById('note').value.trim();
+ if(!t){setMode('failed');return;}
+ const intent=classify(t);
+ if(intent==='ASK'){VOICE={};setMode('thinking');doAsk(t);}
+ else if(intent==='DO'){VOICE={};setMode('thinking');doAct(t);}
+ else{setMode('review');if(voiceUX())reflect();}}
+
+/* ── the spoken answer contract: answer · what matters · what to do ────── */
+let LAST=null;                                   // {q,res} — the conversation's context
+function sentences(s,n){const p=(s||'').replace(/\s+/g,' ').split(/(?<=[.!?])\s+/);return p.slice(0,n).join(' ');}
+function spokenAnswer(r){
+ if(r.self_diagnosis)return 'אני לא יכולה לענות על זה עדיין. '+(r.missing_information||[]).join(' ');
+ let out=sentences(r.answer,3);
+ const rec=(r.recommended_next_action||'').trim();
+ if(rec&&out.indexOf(rec)<0)out+=' ההמלצה שלי: '+rec;
+ if(r.confidence==='INSUFFICIENT_EVIDENCE')out='אין לי מספיק מידע כדי לענות על זה. '+out;
+ if(r.confidence==='ACTION_REQUIRES_APPROVAL')out+=' זה דורש את האישור שלך.';
+ return out;}
+function showAnswer(r,title){
+ document.getElementById('answerTitle').textContent=title||'LIA:';
+ document.getElementById('answerText').textContent=r.__plain||spokenAnswer(r);
+ const D=document.getElementById('answerDetails');let h='';
+ const list=(t,a)=>a&&a.length?'<p class="dim" style="margin-top:8px"><b>'+t+'</b></p><ul>'+
+   a.map(x=>'<li>'+esc(String(x))+'</li>').join('')+'</ul>':'';
+ h+=list('עובדות (מהמערכות)',r.facts)+list('הסקות שלי',r.inferences)
+   +list('סיכונים והזדמנויות',r.risks_opportunities)+list('מה חסר לי',r.missing_information)
+   +list('מקורות',r.sources);
+ D.innerHTML=h||'<p class="dim">אין פירוט נוסף.</p>';
+ document.getElementById('answerCard').style.display='block';}
+function toggleAnswerDetails(){const e=document.getElementById('answerDetails');
+ e.style.display=e.style.display==='none'?'block':'none';}
+
+async function doAsk(text,prefix){
+ speak('רגע, בודקת.');
+ try{
+  const q=prefix?prefix+' '+text:text;
+  const res=await ccApi({action:'kernel',body:q});
+  LAST={q:text,res:res};
+  showAnswer(res);setMode('idle');
+  speak(spokenAnswer(res),()=>listenFollowUp());
+ }catch(e){setMode('idle');stat('לא הצלחתי להגיע למערכת ('+e.message+')');
+  speak('לא הצלחתי להגיע למערכת כרגע.');}}
+
+/* One short, visible follow-up window. Most follow-ups are answered from the
+   evidence already on the table — no second call to the model. */
+const FOLLOW_MS=6000;
+function listenFollowUp(){
+ if(!voiceUX())return;
+ listenOnce(FOLLOW_MS,'מקשיב — פרטי / למה / מה את ממליצה',t=>{
+  if(!t)return;                                  // silence just ends the exchange
+  const a=norm(t);
+  if(!LAST)return;
+  const r=LAST.res;
+  const say=x=>{r.__plain=x;showAnswer(r);speak(x,()=>listenFollowUp());};
+  if(/^(פרטי|תפרטי|עוד|הרחיבי|פירוט)$/.test(a))
+   return say((r.facts||[]).join(' ')||'אין לי פירוט מעבר למה שאמרתי.');
+  if(/^(למה|למה\?|על מה את מתבססת|מאיפה)$/.test(a))
+   return say('אלה ההסקות שלי: '+((r.inferences||[]).join(' ')||'אין')+' המקורות: '+((r.sources||[]).join(', ')||'—'));
+  if(/(ממליצה|המלצה|מה כדאי)/.test(a))
+   return say((r.recommended_next_action||'אין לי המלצה מבוססת כרגע.'));
+  if(/(להחליט|החלטה)/.test(a))
+   return say(r.confidence==='ACTION_REQUIRES_APPROVAL'?'צריך את האישור שלך לפעולה שהצעתי.'
+     :((r.missing_information||[]).join(' ')||'אין כרגע החלטה שדורשת אותך.'));
+  if(/(תסבירי|במילים פשוטות|בעצם אומר|מה חשוב)/.test(a))return explainSimply();
+  // anything else is a new question, asked in the context of the last one
+  setMode('thinking');doAsk(t,'בהמשך לשאלה הקודמת ("'+LAST.q+'"):');});}
+
+/* ── the explainer: model output translated before it reaches David ────── */
+function explainSimply(){
+ if(!LAST){speak('אין לי תשובה פתוחה להסביר.');return;}
+ const r=LAST.res,n=(r.facts||[]).length,m=(r.inferences||[]).length;
+ let t='במילים פשוטות: '+sentences(r.answer,2);
+ if(n||m)t+=' '+n+' מהדברים מגיעים ישירות מהמערכות, ו'+m+' הם הערכה שלי.';
+ const risk=(r.risks_opportunities||[])[0];if(risk)t+=' מה שחשוב פה: '+risk+'.';
+ if(r.recommended_next_action)t+=' מה שהייתי עושה: '+r.recommended_next_action;
+ if(r.confidence==='ACTION_REQUIRES_APPROVAL')t+=' יש כאן החלטה שרק אתה יכול לקבל.';
+ else if(r.confidence==='INSUFFICIENT_EVIDENCE')t+=' חסר לי מידע כדי להיות בטוחה.';
+ r.__plain=t;showAnswer(r,'במילים פשוטות:');speak(t,()=>listenFollowUp());}
+
+/* ── DO: voice never changes permissions ──────────────────────────────── */
+async function doAct(text){
+ const outward=OUTWARD_RE.test(text);
+ try{
+  const res=await ccApi({action:'kernel',body:text});
+  LAST={q:text,res:res};
+  let spoken=spokenAnswer(res);
+  if(outward){
+   spoken+=' זו פעולה שיוצאת החוצה — אני לא מבצעת אותה באישור קולי. רשמתי אותה לאישור במסך.';
+   await ccApi({action:'ask',kind:'change_request',body:text});
+  }else{
+   await ccApi({action:'ask',kind:'change_request',body:text});
+   spoken+=' הכנתי את זה והשארתי לאישור שלך.';
+  }
+  res.__plain=spoken;showAnswer(res,outward?'מוכן לאישור במסך:':'הכנתי:');
+  setMode('idle');speak(spoken,()=>listenFollowUp());
+ }catch(e){setMode('idle');stat('לא הצלחתי ('+e.message+')');speak('לא הצלחתי לבצע את זה.');}}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopRec('hidden');});
 window.addEventListener('pagehide',()=>stopRec('hidden'));
 if(CODE){api({action:'state'}).then(boot).catch(()=>{});}
