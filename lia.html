@@ -65,6 +65,7 @@ button#mic.on{background:#ff4d4f}
  <div class="stats" id="stats" style="margin-top:14px"></div>
  <div class="row"><button class="ghost" onclick="runExpire()">נקה פגי-תוקף</button>
  <button class="ghost" onclick="load()">רענן</button>
+ <button class="ghost" id="privBtn" onclick="togglePrivacy()">מצב פרטיות: כבוי</button>
  <button class="ghost" onclick="getInstaller()">הורד את המתקין למחשב</button>
  <span class="dim" id="instStat"></span></div>
  <pre id="audit" style="display:none"></pre>
@@ -171,7 +172,9 @@ function render(st){
  Q.innerHTML=h;
 }
 function showDetails(id){const e=document.getElementById('d_'+id);e.style.display=e.style.display==='none'?'block':'none';}
-function toggleAdvanced(){const e=document.getElementById('advanced');e.style.display=e.style.display==='none'?'block':'none';}
+function toggleAdvanced(){document.getElementById('privBtn').textContent=
+  privacyOn()?'מצב פרטיות: פועל':'מצב פרטיות: כבוי';
+ const e=document.getElementById('advanced');e.style.display=e.style.display==='none'?'block':'none';}
 async function confirmObj(id){await api({action:'confirm',id});await load();}
 async function runExpire(){const r=await api({action:'expire'});document.getElementById('sub').textContent=r.expired+' הועברו ל-EXPIRED (audit נשמר)';await load();}
 async function showAudit(id){const r=await api({action:'audit',id});const p=document.getElementById('audit');
@@ -446,36 +449,105 @@ function said(answer,facts,sources,missing){
  return {answer:answer,facts:facts||[],inferences:[],sources:sources||[],
          risks_opportunities:[],missing_information:missing||[],
          recommended_next_action:'',confidence:missing&&missing.length?'INSUFFICIENT_EVIDENCE':'HIGH'};}
-const MONEY_RE=/(כסף|שקל|שקלים|סכום|הכנסה|מחזור|רווח|עלות|מחיר)/;
+/* Money is a management fact, not a secret. It is spoken by default; PRIVACY is
+   an explicit mode David turns on (in פרטים) for when someone else can hear. */
+function privacyOn(){return localStorage.getItem('lia_privacy')==='1';}
+function togglePrivacy(){localStorage.setItem('lia_privacy',privacyOn()?'0':'1');
+ document.getElementById('privBtn').textContent=privacyOn()?'מצב פרטיות: פועל':'מצב פרטיות: כבוי';}
+function money(n){if(privacyOn())return '—';
+ const v=Math.round(Number(n)||0);
+ return v>=1000?String(Math.round(v/100)/10).replace(/\.0$/,'')+' אלף ש"ח':v+' ש"ח';}
 const DIRECT=[
- {re:/(מכרנו|מכירות|הזמנות|הזמנה|מכירה)/,run:capSales},
+ {re:/(פוקוס|מה לעשות עכשיו|במה להתמקד)/,run:capFocus},
+ {re:/(מכרנו|מכירות|הזמנות|הזמנה|מכירה|כמה כסף|מחזור)/,run:capSales},
  {re:/(הכי חשוב|מה דחוף|מה לטפל|מה אני צריך)/,run:capImportant},
+ {re:/(התחייבות|התחייבויות|הבטחתי|מה פתוח|מה אני חייב|הבטחות)/,run:capOpen},
+ {re:/(מה השתנה|מה חדש|מה קרה)/,run:capChanges},
+ {re:/(פרויקט)/,run:capProject},
+ {re:/(מוצר|מפרט|TDS|קטלוג|תעודה)/,run:capProduct},
  {re:/(מה קורה עם|לקוח|לקוחה)/,run:capCustomer},
  {re:/(מייל|מיילים|דואר|תגובה)/,run:capMail},
 ];
+const CAN_DO='אני יכולה לענות על: מכירות היום או החודש · מה מחכה להחלטה · ההתחייבויות הפתוחות שלך · '
+ +'מה קורה עם לקוח · פרויקט · מוצר או מפרט · חיפוש במייל · ופוקוס.';
 async function askDirect(text){
  const hit=DIRECT.find(d=>d.re.test(text));
  let res;
  try{res=hit?await hit.run(text):said(
-   'בלי מודל שפה אני יכולה לענות רק על שאלות מוגדרות: מכירות, מה מחכה להחלטה, מה קורה עם לקוח, וחיפוש במייל.',
-   [],[],['מפתח מודל שפה בצד השרת']);}
+   'לא זיהיתי את השאלה. '+CAN_DO,[],[],
+   ['מפתח מודל שפה — בלעדיו אני מבינה רק את הנושאים שמניתי, לא שאלה חופשית']);}
  catch(e){res=said('לא הצלחתי להביא את הנתונים ('+e.message+').',[],[],['חיבור']);}
- if(MONEY_RE.test(text))res.missing_information=(res.missing_information||[])
-   .concat(['סכומי כסף לא נאמרים בקול — זה כלל קיים במערכת']);
  LAST={q:text,res:res};showAnswer(res);setMode('idle');
- let spoken=res.answer;
- if(MONEY_RE.test(text))spoken+=' סכומי כסף אני לא מקריאה — זה כלל קיים במערכת.';
- speak(spoken,()=>listenFollowUp());return res;}
+ speak(res.answer,()=>listenFollowUp());return res;}
+
+/* Open promises come from LIA's own notebook — the objects the Bridge extracted. */
+async function capOpen(){
+ const st=await api({action:'state'});
+ const q=(st.queue||[]).filter(o=>['COMMITMENT','TASK','DOCUMENT_REQUEST','FOLLOW_UP'].indexOf(o.object_type)>=0);
+ if(!q.length)return said('אין לך התחייבויות פתוחות בפנקס.',[],['הפנקס של LIA']);
+ const due=q.map(o=>({o:o,d:(o.payload.fields||{}).deadline||(o.payload.fields||{}).due||''}))
+            .sort((a,b)=>(a.d||'9999').localeCompare(b.d||'9999'));
+ const first=due[0];
+ return said(q.length+' התחייבויות פתוחות. הקרובה: '+subject(first.o)+(first.d?' עד '+heDate(first.d):'')+'.',
+   due.slice(0,5).map(x=>(TYPE_HE[x.o.object_type]||'')+': '+subject(x.o)+(x.d?' — '+heDate(x.d):'')),
+   ['הפנקס של LIA']);}
+async function capChanges(){
+ const r=await cap('company_changes',{days:7});
+ const rows=r.rows||[];
+ return said(rows.length?'בשבוע האחרון נרשמו '+rows.length+' אירועים במערכת. האחרון: '+(rows[0].kind||'')+'.'
+   :'לא נרשמו אירועים בשבוע האחרון.',
+   rows.slice(0,5).map(x=>(x.kind||'')+' · '+String(x.created_at||'').slice(0,10)),[r.source]);}
+function termAfter(text,re){const m=text.match(re);return m?m[1]:'';}
+async function capProject(text){
+ const n=termAfter(text,/פרויקט\s+(?:ה)?([֐-׿A-Za-z][֐-׿A-Za-z\-' ]{1,20})/);
+ if(!n)return said('איזה פרויקט? אמור "מה קורה בפרויקט ..."',[],[],['שם פרויקט']);
+ const r=await cap('project_lookup',{query:n.trim()});
+ const rows=r.rows||[];
+ return said(rows.length?rows.length+' פרויקטים תואמים ל'+n+'. הראשון: '+(rows[0].name||'')
+   +(rows[0].city?' ב'+rows[0].city:'')+'.':'לא מצאתי פרויקט בשם '+n+'.',
+   rows.slice(0,5).map(x=>(x.name||'')+' · '+(x.city||'')+' · '+(x.publish_state||'')),[r.source]);}
+async function capProduct(text){
+ const n=termAfter(text,/(?:מוצר|מפרט|קטלוג|תעודה)\s+(?:של\s+)?(?:ה)?([֐-׿A-Za-z0-9][֐-׿A-Za-z0-9\-' ]{1,20})/);
+ if(!n)return said('איזה מוצר? אמור "מוצר ..." או "מפרט של ..."',[],[],['שם מוצר']);
+ const [p,k]=await Promise.all([cap('product_lookup',{query:n.trim()}),
+                                cap('knowledge_lookup',{query:n.trim()})]);
+ const po=p.rows||[],ko=k.rows||[];
+ return said((po.length?po.length+' מוצרים תואמים. הראשון: '+(po[0].name||'')+'.':'לא מצאתי מוצר בשם '+n+'.')
+   +(ko.length?' יש '+ko.length+' מסמכים קשורים.':''),
+   po.slice(0,4).map(x=>(x.sku||'')+' · '+(x.name||''))
+    .concat(ko.slice(0,4).map(x=>'מסמך: '+(x.title||''))),[p.source,k.source]);}
+/* "תעשי לי פוקוס" — ranked from data, not from a model: what is overdue, what
+   waits for a decision, and what the day actually did. Three things, no more. */
+async function capFocus(){
+ const [st,rec,sales]=await Promise.all([api({action:'state'}),cap('next_decision'),
+                                         api({action:'sales'})]);
+ const t=todayISO();
+ const open=(st.queue||[]).map(o=>({o:o,d:(o.payload.fields||{}).deadline||(o.payload.fields||{}).due||''}))
+   .filter(x=>x.d).sort((a,b)=>a.d.localeCompare(b.d));
+ const late=open.filter(x=>x.d<t),soon=open.filter(x=>x.d>=t);
+ const dec=rec.rows||[];
+ const items=[];
+ if(late.length)items.push('באיחור: '+subject(late[0].o)+' (היה '+heDate(late[0].d)+')');
+ if(dec.length)items.push('מחכה להחלטה שלך: '+(dec[0].claim||''));
+ if(soon.length)items.push('הכי קרוב: '+subject(soon[0].o)+' עד '+heDate(soon[0].d));
+ if(!items.length)items.push('אין באיחור ואין החלטות תלויות');
+ return said('פוקוס: '+items.slice(0,3).join('. ')+'. היום מכרנו '+money(sales.today_amount)
+   +' ב-'+(sales.today_orders||0)+' הזמנות.',
+   late.concat(soon).slice(0,5).map(x=>(TYPE_HE[x.o.object_type]||'')+': '+subject(x.o)+' — '+heDate(x.d))
+     .concat(dec.slice(0,3).map(d=>'החלטה: '+(d.claim||''))),
+   ['הפנקס של LIA','recommendation','ORDERS']);}
 function todayISO(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
 async function capSales(text){
- const r=await cap('priority_sales',{months_back:1});
- const rows=r.rows||[],t=todayISO(),today=rows.filter(o=>o.date===t);
- const who=[...new Set(today.map(o=>o.customer).filter(Boolean))].slice(0,3);
- const a=today.length
-  ?'היום נכנסו '+today.length+' הזמנות'+(who.length?', מ'+who.join(', ')+'.':'.')
-   +' החודש '+rows.length+' הזמנות.'
-  :'היום עוד לא נכנסה הזמנה. החודש נכנסו '+rows.length+' הזמנות.';
- return said(a,today.slice(0,5).map(o=>o.ORDNAME+' · '+(o.customer||'')+' · '+o.date),[r.source]);}
+ const monthly=/(חודש|החודש)/.test(text);
+ const r=await api({action:'sales',from:monthly?todayISO().slice(0,8)+'01':todayISO()});
+ if(r.error)return said('פריוריטי לא זמין כרגע ('+(r.message||r.error)+').',[],[],['חיבור לפריוריטי']);
+ const top=(r.top_customers||[]).map(c=>c.customer+' '+money(c.amount));
+ let a=r.today_orders
+  ?'היום מכרנו '+money(r.today_amount)+' ב-'+r.today_orders+' הזמנות.'
+   +(r.biggest_order?' הגדולה: '+r.biggest_order.customer+' '+money(r.biggest_order.amount)+'.':'')
+  :'היום עוד לא נכנסה הזמנה.';
+ if(monthly)a+=' מתחילת החודש '+money(r.range_amount)+' ב-'+r.range_orders+' הזמנות.';
+ return said(a,top.concat(['כולל מע\"מ: '+money(r.today_amount_incl_vat)]),[r.source]);}
 async function capImportant(){
  const [rec,ch]=await Promise.all([cap('next_decision'),cap('company_changes',{days:3})]);
  const d=rec.rows||[];

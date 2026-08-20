@@ -42,27 +42,38 @@ for (const t of ['תכיני תשובה ל-Davide.', 'תעני לו שאנחנו
 
 // The keyless road: with no model key the same sentences must still reach a real
 // capability, and the questions that genuinely need a model must say so.
-const dblock = src.slice(src.indexOf('const MONEY_RE='), src.indexOf('async function askDirect'));
-const {DIRECT, MONEY_RE} = new Function(
-  dblock.replace(/,run:cap\w+/g, (m) => ',name:"' + m.slice(5) + '"') +
-  '\nreturn {DIRECT, MONEY_RE};')();
+const dblock = src.slice(src.indexOf('const DIRECT='), src.indexOf('async function askDirect'));
+const DIRECT = new Function(
+  dblock.replace(/,run:cap\w+/g, (m) => ',name:"' + m.slice(5) + '"') + '\nreturn DIRECT;')();
 const ROUTES = [
   ['ליה, כמה מכרנו היום?', 'capSales'],
-  ['כמה הזמנות נכנסו היום', 'capSales'],
+  ['כמה כסף עשינו היום', 'capSales'],
   ['מה הכי חשוב שאני צריך לטפל בו היום?', 'capImportant'],
   ['מה קורה עם לקוח למדא', 'capCustomer'],
   ['תבדקי את המיילים ותראי מה דורש מאיתנו תגובה.', 'capMail'],
+  ['ליה, תעשי לי פוקוס', 'capFocus'],
+  ['מה ההתחייבויות הפתוחות שלי', 'capOpen'],
+  ['מה קורה בפרויקט המלון', 'capProject'],
+  ['תביאי לי מפרט של פרסקוליט', 'capProduct'],
+  ['מה השתנה השבוע', 'capChanges'],
 ];
 for (const [t, want] of ROUTES) {
   const hit = DIRECT.find((d) => d.re.test(t));
   const got = hit ? hit.name : '(none)';
   if (got !== want) { console.log(`FAIL  keyless ${want} expected, got ${got}  ::  ${t}`); bad++; }
 }
-// money is never spoken — an existing standing rule, so the guard must fire
-for (const t of ['כמה כסף עשינו היום', 'מה המחזור החודש', 'מה הרווח על ההזמנה']) {
-  if (!MONEY_RE.test(t)) { console.log(`FAIL  money guard missed :: ${t}`); bad++; }
-}
-if (MONEY_RE.test('כמה הזמנות נכנסו היום')) { console.log('FAIL  money guard over-fires'); bad++; }
-
-console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + ROUTES.length + 4}/${CASES.length + 5 + ROUTES.length + 4} routing asserts passed`);
+// Money is spoken by default; privacy is an explicit mode, never the default.
+const mblock = src.slice(src.indexOf('function privacyOn()'), src.indexOf('const DIRECT='));
+let store = {};
+globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null),
+                            setItem: (k, v) => { store[k] = String(v); } };
+const { money, privacyOn } = new Function(mblock + '\nreturn {money, privacyOn};')();
+if (privacyOn()) { console.log('FAIL  privacy must default to OFF'); bad++; }
+if (money(51960) !== '52 אלף ש"ח') { console.log(`FAIL  money(51960) = ${money(51960)}`); bad++; }
+if (money(5365) !== '5.4 אלף ש"ח') { console.log(`FAIL  money(5365) = ${money(5365)}`); bad++; }
+if (money(640) !== '640 ש"ח') { console.log(`FAIL  money(640) = ${money(640)}`); bad++; }
+store.lia_privacy = '1';
+if (money(51960) !== '—') { console.log('FAIL  privacy mode does not hide amounts'); bad++; }
+store = {};
+console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + ROUTES.length + 4} asserts passed`);
 process.exit(bad ? 1 : 0);
