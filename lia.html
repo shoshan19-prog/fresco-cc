@@ -36,7 +36,8 @@ pre{background:#12151b;border-radius:8px;padding:10px;font-size:11px;overflow-x:
 button#mic.on{background:#ff4d4f}
 #login{max-width:360px;margin:80px auto}
 .ansMain{font-size:19px;line-height:1.85}
-.ansSec{font-size:16px;line-height:1.75;margin-top:10px}.ansSec b{color:var(--acc)}</style></head><body>
+.ansSec{font-size:16px;line-height:1.75;margin-top:10px}.ansSec b{color:var(--acc)}
+.masked{-webkit-text-security:disc}</style></head><body>
 
 <div id="login" class="card"><h1>LIA</h1><p class="dim">קוד הכניסה של מרכז הפיקוד</p>
 <div class="row"><input id="code" type="password" placeholder="קוד"><button onclick="login()">כניסה</button></div></div>
@@ -77,8 +78,11 @@ button#mic.on{background:#ff4d4f}
  <button class="ghost" id="privBtn" onclick="togglePrivacy()">מצב פרטיות: כבוי</button>
  <button class="ghost" onclick="getInstaller()">הורד את המתקין למחשב</button>
  <span class="dim" id="instStat"></span></div>
- <div class="row"><input id="mk" type="password" placeholder="מפתח Anthropic (sk-ant-...)" style="max-width:320px">
- <button class="ghost" onclick="setModelKey()">חבר מודל שפה</button><span class="dim" id="mkStat"></span></div>
+ <div class="row"><input id="mk" type="text" class="masked" placeholder="מפתח Anthropic (sk-ant-...)"
+  autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" dir="ltr" style="max-width:280px">
+ <button class="ghost" onclick="pasteKey()">📋 הדבק</button>
+ <button class="ghost" onclick="setModelKey()">חבר מודל שפה</button></div>
+ <p class="dim" id="mkStat" style="margin-top:6px"></p>
  <pre id="audit" style="display:none"></pre>
 </div></div>
 
@@ -192,6 +196,16 @@ function showDetails(id){const e=document.getElementById('d_'+id);e.style.displa
    the one legitimate home: the MODEL_API_KEY Edge Function Secret. The field is
    wiped on every path, and the status flips to connected only when the state
    endpoint sees the secret actually installed server-side. */
+/* Mobile keyboards often refuse to paste into a password field, so the key
+   field is a masked TEXT input, and this button reads the clipboard directly —
+   one tap instead of fighting the long-press menu. The value still lives only
+   in the field until verify, and the field is wiped on every path. */
+async function pasteKey(){
+ const el=document.getElementById('mk'),st=document.getElementById('mkStat');
+ try{const t=(await navigator.clipboard.readText()||'').trim();
+  if(t){el.value=t;st.textContent='הודבק ✓ — עכשיו לחץ "חבר מודל שפה"';}
+  else st.textContent='הלוח ריק — העתק קודם את המפתח מהמייל או מהאתר של Anthropic';
+ }catch(e){st.textContent='הדפדפן חסם קריאה מהלוח — החזק אצבע בתוך השדה ובחר "הדבק"';}}
 async function setModelKey(){
  const el=document.getElementById('mk'),st=document.getElementById('mkStat');
  const k=el.value.trim();if(!k)return;
