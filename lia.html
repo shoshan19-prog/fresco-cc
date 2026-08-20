@@ -34,7 +34,9 @@ pre{background:#12151b;border-radius:8px;padding:10px;font-size:11px;overflow-x:
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
 #recBar{display:none}
 button#mic.on{background:#ff4d4f}
-#login{max-width:360px;margin:80px auto}</style></head><body>
+#login{max-width:360px;margin:80px auto}
+.ansMain{font-size:19px;line-height:1.85}
+.ansSec{font-size:16px;line-height:1.75;margin-top:10px}.ansSec b{color:var(--acc)}</style></head><body>
 
 <div id="login" class="card"><h1>LIA</h1><p class="dim">קוד הכניסה של מרכז הפיקוד</p>
 <div class="row"><input id="code" type="password" placeholder="קוד"><button onclick="login()">כניסה</button></div></div>
@@ -48,7 +50,7 @@ button#mic.on{background:#ff4d4f}
 
 <!-- what LIA answered out loud -->
 <div class="card" id="answerCard" style="display:none"><h2 id="answerTitle">LIA:</h2>
-<p id="answerText" style="font-size:17px"></p>
+<div id="answerText"></div>
 <div class="row"><button class="det" onclick="toggleAnswerDetails()">פרטים</button>
 <button class="det" onclick="explainSimply()">תסבירי פשוט</button></div>
 <div id="answerDetails" style="display:none"></div></div>
@@ -185,13 +187,20 @@ function render(st){
  Q.innerHTML=h;
 }
 function showDetails(id){const e=document.getElementById('d_'+id);e.style.display=e.style.display==='none'?'block':'none';}
+/* SECURITY: the key is never stored — not in the DB, not in localStorage, not
+   here. This only VERIFIES it live so David knows it works, then points him at
+   the one legitimate home: the MODEL_API_KEY Edge Function Secret. The field is
+   wiped on every path, and the status flips to connected only when the state
+   endpoint sees the secret actually installed server-side. */
 async function setModelKey(){
  const el=document.getElementById('mk'),st=document.getElementById('mkStat');
  const k=el.value.trim();if(!k)return;
  st.textContent='מאמת מול Anthropic…';
- try{const r=await api({action:'set_model_key',key:k});
-  el.value='';                                   // the field never keeps the secret
-  if(r&&r.ok){st.textContent='מחובר ✓ ('+(r.model||'')+') — שאל שאלה חופשית';MODEL_ON=true;subLine();}
+ try{const r=await api({action:'verify_model_key',key:k});
+  el.value='';
+  if(r&&r.ok){st.innerHTML='המפתח תקין ✓ ('+esc(r.model||'')+'). אני לא שומרת מפתחות — שמור אותו במקום המאובטח: '
+   +'<a href="https://supabase.com/dashboard/project/bkgukulvjfvkubvuvwwz/functions/secrets" target="_blank" rel="noopener" style="color:var(--acc)">Supabase → Edge Functions → Secrets</a>'
+   +' → Add secret → שם: MODEL_API_KEY, ערך: המפתח. תוך דקה הכותרת כאן תתעדכן ל"מודל שפה מחובר".';}
   else st.textContent=(r&&r.message)||'נכשל';
  }catch(e){el.value='';st.textContent='נכשל (רשת)';}}
 function toggleAdvanced(){document.getElementById('privBtn').textContent=
@@ -341,6 +350,7 @@ const CONFIRM_MS=7000, CORRECT_MS=15000;
 function norm(s){return (s||'').replace(/[^֐-׿a-zA-Z ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();}
 function voiceUX(){return !!(SRC&&window.speechSynthesis);}
 function speak(text,done){
+ text=speakable(heb(text));LAST_SPOKEN=text;
  if(!window.speechSynthesis){if(done)setTimeout(done,0);return;}
  try{speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(text);u.lang='he-IL';u.rate=1.05;
@@ -421,24 +431,45 @@ function afterTranscript(){
  else if(intent==='DO'){VOICE={};setMode('thinking');doAct(t);}
  else{setMode('review');if(voiceUX())reflect();}}
 
-/* ── the spoken answer contract: answer · what matters · what to do ────── */
-let LAST=null;                                   // {q,res} — the conversation's context
+/* ── Hebrew-first presentation: David reads and hears Hebrew, always ─────
+   The kernel is already instructed to answer in Hebrew; this layer guarantees
+   it at the surface. System terms are translated before they reach the screen,
+   and text that is still mostly English is never sent to speech — the voice
+   says the answer is on screen instead of reading English out loud. */
+const HE_TERMS=[[/\bPROPOSED\b/g,'ממתין לאישור'],[/\bCORROBORATED\b/g,'מאומת'],
+ [/\bCANONICAL\b/g,'מאושר'],[/priority_sales/g,'נתוני המכירות'],
+ [/mail_thread_fetch/g,'קריאת המייל'],[/mail_search/g,'חיפוש במייל'],
+ [/next_decision/g,'תור ההחלטות'],[/company_changes/g,'יומן השינויים'],
+ [/change_request/g,'בקשה לאישור'],[/\binference(s)?\b/gi,'הערכה']];
+function heb(x){x=String(x||'');for(const [re,he] of HE_TERMS)x=x.replace(re,he);return x;}
+function speakable(x){const latin=(x.match(/[A-Za-z]/g)||[]).length;
+ return latin>x.length*0.4?'התשובה המלאה מוצגת על המסך.':x;}
+let LAST=null,LAST_SPOKEN='';                    // the conversation's context
 function sentences(s,n){const p=(s||'').replace(/\s+/g,' ').split(/(?<=[.!?])\s+/);return p.slice(0,n).join(' ');}
+function interestingOf(r){return heb((r.risks_opportunities||[])[0]||(r.inferences||[])[0]||'');}
+/* voice is SHORTER than screen: two sentences, then an offer — not a lecture */
 function spokenAnswer(r){
- if(r.self_diagnosis)return 'אני לא יכולה לענות על זה עדיין. '+(r.missing_information||[]).join(' ');
- let out=sentences(r.answer,3);
- const rec=(r.recommended_next_action||'').trim();
- if(rec&&out.indexOf(rec)<0)out+=' ההמלצה שלי: '+rec;
- if(r.confidence==='INSUFFICIENT_EVIDENCE')out='אין לי מספיק מידע כדי לענות על זה. '+out;
- if(r.confidence==='ACTION_REQUIRES_APPROVAL')out+=' זה דורש את האישור שלך.';
+ if(r.self_diagnosis)return 'אני לא יכולה לענות על זה עדיין. '+heb((r.missing_information||[]).join(' '));
+ let out=heb(sentences(r.answer,2));
+ if(r.confidence==='INSUFFICIENT_EVIDENCE')out='אין לי מספיק מידע מלא. '+out;
+ if(r.confidence==='ACTION_REQUIRES_APPROVAL')return out+' זה דורש את האישור שלך.';
+ const more=interestingOf(r)||heb(r.recommended_next_action||'');
+ if(more)out+=' יש נקודה שכדאי לבדוק. רוצה שאפרט?';
  return out;}
 function showAnswer(r,title){
- document.getElementById('answerTitle').textContent=title||'LIA:';
- document.getElementById('answerText').textContent=r.__plain||spokenAnswer(r);
+ document.getElementById('answerTitle').textContent=title||'ליה';
+ const box=document.getElementById('answerText');
+ if(r.__plain){box.innerHTML='<p class="ansMain">'+esc(heb(r.__plain))+'</p>';}
+ else{
+  let h='<p class="ansMain">'+esc(heb(sentences(r.answer,3)))+'</p>';
+  const intr=interestingOf(r),rec=heb(r.recommended_next_action||'');
+  if(intr)h+='<p class="ansSec"><b>מה שמעניין:</b> '+esc(clip(intr,180))+'</p>';
+  if(rec)h+='<p class="ansSec"><b>אני ממליצה:</b> '+esc(clip(rec,180))+'</p>';
+  box.innerHTML=h;}
  const D=document.getElementById('answerDetails');let h='';
  const list=(t,a)=>a&&a.length?'<p class="dim" style="margin-top:8px"><b>'+t+'</b></p><ul>'+
-   a.map(x=>'<li>'+esc(String(x))+'</li>').join('')+'</ul>':'';
- h+=list('עובדות (מהמערכות)',r.facts)+list('הסקות שלי',r.inferences)
+   a.map(x=>'<li>'+esc(heb(String(x)))+'</li>').join('')+'</ul>':'';
+ h+=list('עובדות (מהמערכות)',r.facts)+list('ההערכות שלי',r.inferences)
    +list('סיכונים והזדמנויות',r.risks_opportunities)+list('מה חסר לי',r.missing_information)
    +list('מקורות',r.sources);
  D.innerHTML=h||'<p class="dim">אין פירוט נוסף.</p>';
@@ -615,8 +646,12 @@ function listenFollowUp(){
   if(!LAST)return;
   const r=LAST.res;
   const say=x=>{r.__plain=x;showAnswer(r);speak(x,()=>listenFollowUp());};
-  if(/^(פרטי|תפרטי|עוד|הרחיבי|פירוט)$/.test(a))
-   return say((r.facts||[]).join(' ')||'אין לי פירוט מעבר למה שאמרתי.');
+  if(/^(פרטי|תפרטי|עוד|הרחיבי|פירוט|כן)$/.test(a)){
+   const parts=[interestingOf(r),heb(r.recommended_next_action||''),heb((r.facts||[]).slice(0,3).join('. '))];
+   return say(parts.filter(Boolean).join(' ')||'אין לי פירוט מעבר למה שאמרתי.');}
+  if(/(מי הלקוחות|אילו לקוחות|מאיזה לקוחות)/.test(a))
+   return say(heb((r.facts||[]).slice(0,4).join('. '))||'אין לי פירוט לקוחות בתשובה הזו.');
+  if(/(חזרי|תחזרי|שוב)/.test(a))return say(LAST_SPOKEN||heb(sentences(r.answer,2)));
   if(/^(למה|למה\?|על מה את מתבססת|מאיפה)$/.test(a))
    return say('אלה ההסקות שלי: '+((r.inferences||[]).join(' ')||'אין')+' המקורות: '+((r.sources||[]).join(', ')||'—'));
   if(/(ממליצה|המלצה|מה כדאי)/.test(a))
