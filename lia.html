@@ -25,7 +25,7 @@ button#mic.on{background:#ff4d4f;color:#fff;border-color:#ff4d4f}</style></head>
 <h1>LIA · פנקס ההצעות</h1><p class="dim" id="sub">Build 1 · פרודקשן</p>
 <div class="card"><b>ספר ל-LIA</b><p class="dim">משפט חופשי — הבטחה, החלטה, משימה. נשמר לתור ומעובד בריצת inbox הבאה במחשב.</p>
 <textarea id="note" rows="2" placeholder="דיברתי עם … אמרתי שאשלח … עד יום …"></textarea>
-<div class="row"><button onclick="sendNote()">שמור פתק</button>
+<div class="row"><button id="sendBtn" onclick="sendNote()">שמור פתק</button>
 <button id="mic" class="ghost" onclick="micTap()" style="display:none">🎤 דבר עם LIA</button>
 <span class="dim" id="noteStat"></span></div>
 <div class="row" id="recBar"><span class="rec"></span><b id="recTime">00:00</b>
@@ -50,10 +50,10 @@ function render(st){
  +'<div class="stat"><b>'+st.counts.canonical+'</b><span class="dim">מאושרים</span></div>'
  +'<div class="stat"><b>'+st.counts.pending_notes+'</b><span class="dim">פתקים לעיבוד</span></div>'
  +'<div class="stat"><b>'+st.counts.expired+'</b><span class="dim">פגו (audit נשמר)</span></div>';
+ SERVER_VOICE=!!(st.voice&&st.voice.available);
  const mb=document.getElementById('mic');
- const vok=!!(st.voice&&st.voice.available)&&micSupported();
- mb.style.display=vok?'inline-block':'none';
- if(st.voice&&!st.voice.available)document.getElementById('sub').textContent='Build 1 · פרודקשן · מיקרופון כבוי (חסר מפתח תמלול בשרת)';
+ mb.style.display=micSupported()?'inline-block':'none';
+ if(!micSupported())document.getElementById('sub').textContent='Build 1 · פרודקשן · הדפדפן הזה לא תומך בהקלאה קולית';
  const Q=document.getElementById('queue');
  Q.innerHTML=st.queue.length?'':'<p class="dim" style="margin-top:8px">התור ריק — ספר ל-LIA משהו, או הרץ inbox במחשב.</p>';
  for(const o of st.queue){const d=(o.payload.fields||{}).deadline||(o.payload.fields||{}).due;
@@ -67,24 +67,82 @@ function render(st){
 async function confirmObj(id){await api({action:'confirm',id});await load();}
 async function runExpire(){const r=await api({action:'expire'});document.getElementById('sub').textContent=r.expired+' הועברו ל-EXPIRED (audit נשמר)';await load();}
 async function showAudit(id){const r=await api({action:'audit',id});document.getElementById('auditCard').style.display='block';document.getElementById('audit').textContent=JSON.stringify(r,null,1);}
-async function sendNote(){const ta=document.getElementById('note');const t=ta.value.trim();if(!t)return;
-const b=VOICE.model?{action:'note',text:t,source:'voice_note',transcription:VOICE}:{action:'note',text:t,source:'typed'};
-await api(b);ta.value='';VOICE={};document.getElementById('noteStat').textContent='נשמר לתור ✓';await load();}
-/* ── voice note ────────────────────────────────────────────────────────────
-   The microphone opens ONLY on an explicit tap, shows a visible red indicator
-   the whole time, and the tracks are released the instant recording ends — on
-   stop, on the 2-minute cap, on an error, on leaving the page. Nothing listens
-   in the background and no recording is ever kept: the blob goes straight to
-   the transcribe endpoint and is dropped. The transcript lands in the SAME
-   textarea, so David reads and edits it before it enters the same note queue. */
-const MAX_REC_MS=120000;let MR=null,CHUNKS=[],STREAM=null,T0=0,TIMER=null,VOICE={};
-function micSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
-function pickMime(){for(const m of ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'])
- {try{if(MediaRecorder.isTypeSupported(m))return m;}catch(e){}}return '';}
+/* One submission_id per press of Save. A double-tap, a flaky network or a replayed
+   request reuses it and is swallowed server-side; the SAME sentence sent again next
+   week gets a fresh id and is correctly a new note. The id is cleared only on
+   success, so a failed send retries as the same submission, not a second one. */
+let SUBMIT_ID=null,SENDING=false;
+function uuid(){if(crypto.randomUUID)return crypto.randomUUID();
+ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+  const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});}
+async function sendNote(){
+ const ta=document.getElementById('note'),btn=document.getElementById('sendBtn');
+ const t=ta.value.trim();if(!t||SENDING)return;
+ if(!SUBMIT_ID)SUBMIT_ID=uuid();
+ SENDING=true;btn.disabled=true;
+ try{
+  const b={action:'note',text:t,submission_id:SUBMIT_ID,
+    ...(VOICE.model?{source:'voice_note',transcription:VOICE}:{source:'typed'})};
+  const res=await api(b);
+  if(!res||res.ok!==true)throw new Error('rejected');
+  SUBMIT_ID=null;VOICE={};ta.value='';stat('נשמר לתור ✓');await load();
+ }catch(e){stat('השליחה נכשלה — לחץ שוב');}
+ finally{SENDING=false;btn.disabled=false;}}
+/* -- voice note ---------------------------------------------------------
+   Two engines, one behaviour. The browser's OWN speech recognition is the
+   default: no key, no upload, no recording at all - the phone hears the words
+   and hands back text, exactly like the keyboard's dictation button. Only a
+   browser without recognition of its own falls back to recording and sending
+   the audio to Whisper (which needs OPENAI_API_KEY on the server).
+   Either way: the microphone opens ONLY on an explicit tap, a red dot and a
+   timer are visible the entire time, everything stops on stop / the 2-minute
+   cap / an error / hiding or leaving the page, and no recording is ever kept. */
+const MAX_REC_MS=120000;
+const SRC=window.SpeechRecognition||window.webkitSpeechRecognition;
+let MR=null,CHUNKS=[],STREAM=null,SR=null,T0=0,TIMER=null,BASE='',VOICE={},SERVER_VOICE=false;
+function recorderSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
+function micSupported(){return !!SRC||(recorderSupported()&&SERVER_VOICE);}
+function recording(){return !!SR||!!(MR&&MR.state==='recording');}
 function stat(s){document.getElementById('noteStat').textContent=s;}
-function micTap(){if(MR&&MR.state==='recording')stopRec('user');else startRec();}
-async function startRec(){
- if(!micSupported()){stat('הדפדפן לא תומך בהקלטה');return;}
+function micTap(){if(recording())stopRec('user');else if(SRC)startSR();else startRecorder();}
+function uiStart(){T0=Date.now();stat('');BASE=document.getElementById('note').value.trim();
+ const b=document.getElementById('mic');b.textContent='⏹ עצור';b.classList.add('on');
+ document.getElementById('recBar').style.display='flex';
+ TIMER=setInterval(()=>{const el=Math.floor((Date.now()-T0)/1000);
+  document.getElementById('recTime').textContent=String(Math.floor(el/60)).padStart(2,'0')+':'+String(el%60).padStart(2,'0');
+  if(Date.now()-T0>=MAX_REC_MS)stopRec('limit');},250);}
+function uiStop(){if(TIMER){clearInterval(TIMER);TIMER=null;}
+ const b=document.getElementById('mic');b.textContent='🎤 דבר עם LIA';b.classList.remove('on');
+ document.getElementById('recBar').style.display='none';document.getElementById('recTime').textContent='00:00';}
+function stopRec(why){
+ if(SR){try{SR.stop();}catch(e){SR=null;uiStop();}return;}
+ if(MR&&MR.state==='recording'){MR._why=why;try{MR.stop();}catch(e){releaseMic();}}else releaseMic();}
+/* engine 1: the browser transcribes. Nothing is recorded, so nothing can leak. */
+function startSR(){
+ let r;try{r=new SRC();}catch(e){startRecorder();return;}
+ r.lang='he-IL';r.interimResults=true;r.continuous=true;r.maxAlternatives=1;
+ let finals='';const conf=[];
+ r.onresult=e=>{let interim='';
+  for(let i=e.resultIndex;i<e.results.length;i++){const res=e.results[i];
+   if(res.isFinal){finals+=res[0].transcript;if(res[0].confidence>0)conf.push(res[0].confidence);}
+   else interim+=res[0].transcript;}
+  document.getElementById('note').value=(BASE?BASE+'\n':'')+(finals+interim).trim();};
+ r.onerror=e=>{const k=e.error;SR=null;uiStop();
+  if((k==='language-not-supported'||k==='service-not-allowed'||k==='network')&&SERVER_VOICE&&recorderSupported()){startRecorder();return;}
+  stat(k==='not-allowed'?'אין הרשאת מיקרופון — אשר בהגדרות הדפדפן':'ההקלטה נכשלה ('+k+')');};
+ r.onend=()=>{if(!SR)return;SR=null;uiStop();
+  const secs=Math.round((Date.now()-T0)/1000);
+  if(!finals.trim()){stat('לא זוהה דיבור');return;}
+  const ta=document.getElementById('note');ta.value=(BASE?BASE+'\n':'')+finals.trim();ta.focus();
+  const c=conf.length?conf.reduce((x,y)=>x+y,0)/conf.length:null;
+  VOICE={model:'browser_speech',language:'he-IL',duration_s:secs,low_confidence:c!==null&&c<0.6};
+  stat((VOICE.low_confidence?'⚠ לא ברור — בדוק ותקן':'תומלל ✓ בדוק ושלח')+' ('+secs+' שנ\')');};
+ SR=r;try{r.start();}catch(e){SR=null;startRecorder();return;}
+ uiStart();}
+/* engine 2: record and let Whisper transcribe. Used only where engine 1 is absent. */
+async function startRecorder(){
+ if(!recorderSupported()){stat('הדפדפן לא תומך בהקלטה');return;}
+ if(!SERVER_VOICE){stat('התמלול לא מוגדר בשרת');return;}
  try{STREAM=await navigator.mediaDevices.getUserMedia({audio:true});}
  catch(e){stat(e&&e.name==='NotAllowedError'?'אין הרשאת מיקרופון — אשר בהגדרות הדפדפן':'המיקרופון לא זמין');return;}
  const mt=pickMime();CHUNKS=[];
@@ -92,20 +150,13 @@ async function startRec(){
  catch(e){try{MR=new MediaRecorder(STREAM);}catch(e2){releaseMic();stat('ההקלטה לא נתמכת');return;}}
  MR.ondataavailable=e=>{if(e.data&&e.data.size)CHUNKS.push(e.data);};
  MR.onerror=()=>stopRec('error');MR.onstop=finishRec;
- MR.start();T0=Date.now();stat('');
- const b=document.getElementById('mic');b.textContent='⏹ עצור';b.classList.add('on');
- document.getElementById('recBar').style.display='flex';
- TIMER=setInterval(()=>{const el=Math.floor((Date.now()-T0)/1000);
-  document.getElementById('recTime').textContent=String(Math.floor(el/60)).padStart(2,'0')+':'+String(el%60).padStart(2,'0');
-  if(Date.now()-T0>=MAX_REC_MS)stopRec('limit');},250);}
-function releaseMic(){if(STREAM){STREAM.getTracks().forEach(t=>t.stop());STREAM=null;}
- if(TIMER){clearInterval(TIMER);TIMER=null;}
- const b=document.getElementById('mic');b.textContent='🎤 דבר עם LIA';b.classList.remove('on');
- document.getElementById('recBar').style.display='none';document.getElementById('recTime').textContent='00:00';}
-function stopRec(why){if(MR&&MR.state==='recording'){MR._why=why;try{MR.stop();}catch(e){releaseMic();}}else releaseMic();}
+ MR.start();uiStart();}
+function pickMime(){for(const m of ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'])
+ {try{if(MediaRecorder.isTypeSupported(m))return m;}catch(e){}}return '';}
+function releaseMic(){if(STREAM){STREAM.getTracks().forEach(t=>t.stop());STREAM=null;}uiStop();}
 async function finishRec(){
  const secs=Math.round((Date.now()-T0)/1000);
- /* Safari can report an empty mimeType — fall back to what the chunks say, so the
+ /* Safari can report an empty mimeType - fall back to what the chunks say, so the
     file we hand Whisper is never named .webm while actually containing mp4. */
  const type=((MR&&MR.mimeType)||(CHUNKS[0]&&CHUNKS[0].type)||'audio/webm').split(';')[0];
  const why=MR&&MR._why;MR=null;releaseMic();               // tracks off BEFORE any network call
