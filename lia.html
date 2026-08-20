@@ -14,14 +14,22 @@ button.ghost{background:transparent;border:1px solid var(--line);color:var(--dim
 .quote{margin:4px 0;font-size:15px}.meta{font-size:12px;color:var(--dim)}
 .stats{display:flex;gap:14px;flex-wrap:wrap}.stat b{font-size:22px;display:block}
 pre{background:#12151b;border-radius:8px;padding:10px;font-size:11px;overflow-x:auto;direction:ltr;text-align:left}
-#login{max-width:360px;margin:80px auto}</style></head><body>
+#login{max-width:360px;margin:80px auto}
+.rec{width:11px;height:11px;border-radius:50%;background:#ff4d4f;display:inline-block;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+#recBar{display:none;align-items:center;gap:8px}
+button#mic.on{background:#ff4d4f;color:#fff;border-color:#ff4d4f}</style></head><body>
 <div id="login" class="card"><h1>LIA</h1><p class="dim">קוד הכניסה של מרכז הפיקוד</p>
 <div class="row"><input id="code" type="password" placeholder="קוד"><button onclick="login()">כניסה</button></div></div>
 <div id="app" style="display:none">
 <h1>LIA · פנקס ההצעות</h1><p class="dim" id="sub">Build 1 · פרודקשן</p>
 <div class="card"><b>ספר ל-LIA</b><p class="dim">משפט חופשי — הבטחה, החלטה, משימה. נשמר לתור ומעובד בריצת inbox הבאה במחשב.</p>
 <textarea id="note" rows="2" placeholder="דיברתי עם … אמרתי שאשלח … עד יום …"></textarea>
-<div class="row"><button onclick="sendNote()">שמור פתק</button><span class="dim" id="noteStat"></span></div></div>
+<div class="row"><button onclick="sendNote()">שמור פתק</button>
+<button id="mic" class="ghost" onclick="micTap()" style="display:none">🎤 דבר עם LIA</button>
+<span class="dim" id="noteStat"></span></div>
+<div class="row" id="recBar"><span class="rec"></span><b id="recTime">00:00</b>
+<span class="dim">מקליט — לחץ ⏹ כשסיימת</span></div></div>
 <div class="card"><b>התקנת ה-Bridge במחשב</b><p class="dim">הורד פעם אחת, שמור, ולחץ פעמיים. הוא מוצא את תיקיית פרסקו לבד ומתקין.</p><div class="row"><button onclick="getInstaller()">הורד את המתקין</button><span class="dim" id="instStat"></span></div></div>
 <div class="card"><div class="stats" id="stats"></div></div>
 <div class="card"><div class="row" style="justify-content:space-between"><b>התור הפעיל</b>
@@ -42,6 +50,10 @@ function render(st){
  +'<div class="stat"><b>'+st.counts.canonical+'</b><span class="dim">מאושרים</span></div>'
  +'<div class="stat"><b>'+st.counts.pending_notes+'</b><span class="dim">פתקים לעיבוד</span></div>'
  +'<div class="stat"><b>'+st.counts.expired+'</b><span class="dim">פגו (audit נשמר)</span></div>';
+ const mb=document.getElementById('mic');
+ const vok=!!(st.voice&&st.voice.available)&&micSupported();
+ mb.style.display=vok?'inline-block':'none';
+ if(st.voice&&!st.voice.available)document.getElementById('sub').textContent='Build 1 · פרודקשן · מיקרופון כבוי (חסר מפתח תמלול בשרת)';
  const Q=document.getElementById('queue');
  Q.innerHTML=st.queue.length?'':'<p class="dim" style="margin-top:8px">התור ריק — ספר ל-LIA משהו, או הרץ inbox במחשב.</p>';
  for(const o of st.queue){const d=(o.payload.fields||{}).deadline||(o.payload.fields||{}).due;
@@ -55,7 +67,66 @@ function render(st){
 async function confirmObj(id){await api({action:'confirm',id});await load();}
 async function runExpire(){const r=await api({action:'expire'});document.getElementById('sub').textContent=r.expired+' הועברו ל-EXPIRED (audit נשמר)';await load();}
 async function showAudit(id){const r=await api({action:'audit',id});document.getElementById('auditCard').style.display='block';document.getElementById('audit').textContent=JSON.stringify(r,null,1);}
-async function sendNote(){const t=document.getElementById('note').value.trim();if(!t)return;await api({action:'note',text:t});document.getElementById('note').value='';document.getElementById('noteStat').textContent='נשמר לתור ✓';await load();}
+async function sendNote(){const ta=document.getElementById('note');const t=ta.value.trim();if(!t)return;
+const b=VOICE.model?{action:'note',text:t,source:'voice_note',transcription:VOICE}:{action:'note',text:t,source:'typed'};
+await api(b);ta.value='';VOICE={};document.getElementById('noteStat').textContent='נשמר לתור ✓';await load();}
+/* ── voice note ────────────────────────────────────────────────────────────
+   The microphone opens ONLY on an explicit tap, shows a visible red indicator
+   the whole time, and the tracks are released the instant recording ends — on
+   stop, on the 2-minute cap, on an error, on leaving the page. Nothing listens
+   in the background and no recording is ever kept: the blob goes straight to
+   the transcribe endpoint and is dropped. The transcript lands in the SAME
+   textarea, so David reads and edits it before it enters the same note queue. */
+const MAX_REC_MS=120000;let MR=null,CHUNKS=[],STREAM=null,T0=0,TIMER=null,VOICE={};
+function micSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
+function pickMime(){for(const m of ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'])
+ {try{if(MediaRecorder.isTypeSupported(m))return m;}catch(e){}}return '';}
+function stat(s){document.getElementById('noteStat').textContent=s;}
+function micTap(){if(MR&&MR.state==='recording')stopRec('user');else startRec();}
+async function startRec(){
+ if(!micSupported()){stat('הדפדפן לא תומך בהקלטה');return;}
+ try{STREAM=await navigator.mediaDevices.getUserMedia({audio:true});}
+ catch(e){stat(e&&e.name==='NotAllowedError'?'אין הרשאת מיקרופון — אשר בהגדרות הדפדפן':'המיקרופון לא זמין');return;}
+ const mt=pickMime();CHUNKS=[];
+ try{MR=mt?new MediaRecorder(STREAM,{mimeType:mt}):new MediaRecorder(STREAM);}
+ catch(e){try{MR=new MediaRecorder(STREAM);}catch(e2){releaseMic();stat('ההקלטה לא נתמכת');return;}}
+ MR.ondataavailable=e=>{if(e.data&&e.data.size)CHUNKS.push(e.data);};
+ MR.onerror=()=>stopRec('error');MR.onstop=finishRec;
+ MR.start();T0=Date.now();stat('');
+ const b=document.getElementById('mic');b.textContent='⏹ עצור';b.classList.add('on');
+ document.getElementById('recBar').style.display='flex';
+ TIMER=setInterval(()=>{const el=Math.floor((Date.now()-T0)/1000);
+  document.getElementById('recTime').textContent=String(Math.floor(el/60)).padStart(2,'0')+':'+String(el%60).padStart(2,'0');
+  if(Date.now()-T0>=MAX_REC_MS)stopRec('limit');},250);}
+function releaseMic(){if(STREAM){STREAM.getTracks().forEach(t=>t.stop());STREAM=null;}
+ if(TIMER){clearInterval(TIMER);TIMER=null;}
+ const b=document.getElementById('mic');b.textContent='🎤 דבר עם LIA';b.classList.remove('on');
+ document.getElementById('recBar').style.display='none';document.getElementById('recTime').textContent='00:00';}
+function stopRec(why){if(MR&&MR.state==='recording'){MR._why=why;try{MR.stop();}catch(e){releaseMic();}}else releaseMic();}
+async function finishRec(){
+ const secs=Math.round((Date.now()-T0)/1000);
+ /* Safari can report an empty mimeType — fall back to what the chunks say, so the
+    file we hand Whisper is never named .webm while actually containing mp4. */
+ const type=((MR&&MR.mimeType)||(CHUNKS[0]&&CHUNKS[0].type)||'audio/webm').split(';')[0];
+ const why=MR&&MR._why;MR=null;releaseMic();               // tracks off BEFORE any network call
+ let blob=new Blob(CHUNKS,{type});CHUNKS=[];
+ if(why==='error'){blob=null;stat('ההקלטה נכשלה');return;}
+ if(!blob.size||secs<1){blob=null;stat('לא נקלט קול');return;}
+ stat('מתמלל…');
+ try{const r=await fetch(API+'&transcribe=1',{method:'POST',
+   headers:{'x-fresco-code':CODE,'x-audio-type':type,'Content-Type':'application/octet-stream'},body:blob});
+  blob=null;                                               // the recording ends its life here
+  if(r.status===401){localStorage.removeItem('lia_code');location.reload();return;}
+  const out=await r.json().catch(()=>({}));
+  if(!r.ok||!out.text){stat(out.message||'התמלול נכשל');return;}
+  const ta=document.getElementById('note');
+  ta.value=(ta.value.trim()?ta.value.trim()+'\n':'')+out.text.trim();ta.focus();
+  VOICE={model:out.model,language:out.language,duration_s:out.duration_s,
+         avg_logprob:out.avg_logprob,low_confidence:out.low_confidence};
+  stat((out.low_confidence?'⚠ התמלול לא ברור — בדוק ותקן':'תומלל ✓ בדוק ושלח')+' ('+secs+' שנ\')');
+ }catch(e){blob=null;stat('התמלול נכשל (רשת)');}}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopRec('hidden');});
+window.addEventListener('pagehide',()=>stopRec('hidden'));
 async function getInstaller(){const s=document.getElementById('instStat');s.textContent='מוריד…';
 const r=await fetch(API+'&install=1',{headers:{'x-fresco-code':CODE}});
 if(!r.ok){s.textContent='שגיאה';return;}const b=await r.blob();const u=URL.createObjectURL(b);
