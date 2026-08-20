@@ -34,8 +34,8 @@ let CODE=localStorage.getItem('lia_code')||'';
 async function api(b){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:JSON.stringify(b)});if(r.status===401){localStorage.removeItem('lia_code');location.reload();}return r.json();}
 async function login(){CODE=document.getElementById('code').value.trim();const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:'{"action":"state"}'});if(r.ok){localStorage.setItem('lia_code',CODE);boot(await r.json());}else alert('קוד שגוי');}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';render(st);}
-async function load(){render(await api({action:'state'}));}
+function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';render(st);if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}}
+async function load(){try{render(await api({action:'state'}));}catch(e){}}
 function render(st){
  const S=document.getElementById('stats');
  S.innerHTML='<div class="stat"><b>'+st.counts.active+'</b><span class="dim">פעילים</span></div>'
