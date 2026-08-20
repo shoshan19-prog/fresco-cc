@@ -1,72 +1,177 @@
 <!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>LIA · פנקס</title><style>
-:root{--bg:#0f1115;--card:#1a1e26;--line:#2a303c;--txt:#e8eaf0;--dim:#8b93a5;--acc:#5b9dff;--ok:#3fbf7f}
-*{box-sizing:border-box;margin:0}body{background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,'Segoe UI',sans-serif;padding:16px;max-width:760px;margin:auto}
+:root{--bg:#0f1115;--card:#1a1e26;--line:#2a303c;--txt:#e8eaf0;--dim:#8b93a5;--acc:#5b9dff;--ok:#3fbf7f;--warn:#e0a63c}
+*{box-sizing:border-box;margin:0}body{background:var(--bg);color:var(--txt);font:16px/1.6 system-ui,'Segoe UI',sans-serif;padding:16px;max-width:760px;margin:auto}
 h1{font-size:20px;margin-bottom:2px}.dim{color:var(--dim);font-size:13px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0}
-textarea,input{width:100%;background:#12151b;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
-button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 16px;font:inherit;cursor:pointer;margin-inline-start:6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+.card.focus{border-color:var(--acc)}
+.card h2{font-size:17px;margin-bottom:8px}
+textarea,input{width:100%;background:#12151b;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:12px;font:inherit}
+textarea{resize:vertical}
+textarea.heard{font-size:17px;line-height:1.7;max-height:44vh;overflow-y:auto}
+button{background:var(--acc);color:#fff;border:0;border-radius:9px;padding:12px 20px;font:inherit;cursor:pointer}
+button.big{font-size:17px;padding:14px 24px}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--dim)}
-.row{display:flex;gap:8px;align-items:center;margin-top:8px}
-.obj{border-top:1px solid var(--line);padding:10px 0}.obj:first-child{border-top:0}
-.badge{font-size:11px;border-radius:20px;padding:2px 10px;border:1px solid var(--line);color:var(--dim)}
+button:disabled{opacity:.55}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.obj{border-top:1px solid var(--line);padding:12px 0}.obj:first-child{border-top:0}
+.badge{font-size:11px;border-radius:20px;padding:2px 10px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
 .badge.CANONICAL{color:var(--ok);border-color:var(--ok)}.badge.CORROBORATED{color:var(--acc);border-color:var(--acc)}
-.quote{margin:4px 0;font-size:15px}.meta{font-size:12px;color:var(--dim)}
-.stats{display:flex;gap:14px;flex-wrap:wrap}.stat b{font-size:22px;display:block}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+.quote{margin:4px 0;color:var(--dim);font-size:14px}
+.stats{display:flex;gap:16px;flex-wrap:wrap}.stat b{font-size:20px;display:block}
+.caught li{margin:6px 0}.caught b{color:var(--ok)}
+.det{color:var(--dim);font-size:13px;text-decoration:underline;cursor:pointer;background:none;border:0;padding:4px 0}
 pre{background:#12151b;border-radius:8px;padding:10px;font-size:11px;overflow-x:auto;direction:ltr;text-align:left}
-#login{max-width:360px;margin:80px auto}
-.rec{width:11px;height:11px;border-radius:50%;background:#ff4d4f;display:inline-block;animation:pulse 1s infinite}
+.rec{width:12px;height:12px;border-radius:50%;background:#ff4d4f;display:inline-block;animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
-#recBar{display:none;align-items:center;gap:8px}
-button#mic.on{background:#ff4d4f;color:#fff;border-color:#ff4d4f}</style></head><body>
+#recBar{display:none}
+button#mic.on{background:#ff4d4f}
+#login{max-width:360px;margin:80px auto}</style></head><body>
+
 <div id="login" class="card"><h1>LIA</h1><p class="dim">קוד הכניסה של מרכז הפיקוד</p>
 <div class="row"><input id="code" type="password" placeholder="קוד"><button onclick="login()">כניסה</button></div></div>
+
 <div id="app" style="display:none">
-<h1>LIA · פנקס ההצעות</h1><p class="dim" id="sub">Build 1 · פרודקשן</p>
-<div class="card"><b>ספר ל-LIA</b><p class="dim">משפט חופשי — הבטחה, החלטה, משימה. נשמר לתור ומעובד בריצת inbox הבאה במחשב.</p>
-<textarea id="note" rows="2" placeholder="דיברתי עם … אמרתי שאשלח … עד יום …"></textarea>
-<div class="row"><button id="sendBtn" onclick="sendNote()">שמור פתק</button>
-<button id="mic" class="ghost" onclick="micTap()" style="display:none">🎤 דבר עם LIA</button>
-<span class="dim" id="noteStat"></span></div>
+<h1>LIA</h1><p class="dim" id="sub">הפנקס של דוד</p>
+
+<!-- what LIA understood, right after a send -->
+<div class="card" id="caughtCard" style="display:none"><h2>קלטתי:</h2>
+<ul class="caught" id="caught"></ul></div>
+
+<!-- the single capture card: idle → review → failed -->
+<div class="card focus" id="capture">
+<h2 id="capTitle">ספר ל-LIA</h2>
+<p class="dim" id="capHint">משפט חופשי — הבטחה, החלטה, משימה.</p>
+<textarea id="note" rows="3" placeholder="דיברתי עם … אמרתי שאשלח … עד יום …"></textarea>
+<div class="row" id="capActions"></div>
 <div class="row" id="recBar"><span class="rec"></span><b id="recTime">00:00</b>
-<span class="dim">מקליט — לחץ ⏹ כשסיימת</span></div></div>
-<div class="card"><b>התקנת ה-Bridge במחשב</b><p class="dim">הורד פעם אחת, שמור, ולחץ פעמיים. הוא מוצא את תיקיית פרסקו לבד ומתקין.</p><div class="row"><button onclick="getInstaller()">הורד את המתקין</button><span class="dim" id="instStat"></span></div></div>
-<div class="card"><div class="stats" id="stats"></div></div>
-<div class="card"><div class="row" style="justify-content:space-between"><b>התור הפעיל</b>
-<span><button class="ghost" onclick="runExpire()">נקה פגי-תוקף</button><button class="ghost" onclick="load()">רענן</button></span></div>
-<div id="queue"></div></div>
-<div class="card" id="auditCard" style="display:none"><b>ראיות ומסלול</b><pre id="audit"></pre></div>
+<span class="dim" id="recLabel">מקליט — לחץ ⏹ כשסיימת</span></div>
+<p class="dim" id="noteStat" style="margin-top:8px"></p>
+</div>
+
+<div class="card"><div class="row" style="justify-content:space-between;margin:0">
+<b id="queueTitle">מה פתוח</b>
+<button class="det" onclick="toggleAdvanced()">פרטים</button></div>
+<div id="queue"></div>
+<div id="advanced" style="display:none">
+ <div class="stats" id="stats" style="margin-top:14px"></div>
+ <div class="row"><button class="ghost" onclick="runExpire()">נקה פגי-תוקף</button>
+ <button class="ghost" onclick="load()">רענן</button>
+ <button class="ghost" onclick="getInstaller()">הורד את המתקין למחשב</button>
+ <span class="dim" id="instStat"></span></div>
+ <pre id="audit" style="display:none"></pre>
+</div></div>
+
 </div><script>
 const API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/lia?api=1';
 let CODE=localStorage.getItem('lia_code')||'';
 async function api(b){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:JSON.stringify(b)});if(r.status===401){localStorage.removeItem('lia_code');location.reload();}return r.json();}
 async function login(){CODE=document.getElementById('code').value.trim();const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:'{"action":"state"}'});if(r.ok){localStorage.setItem('lia_code',CODE);boot(await r.json());}else alert('קוד שגוי');}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';render(st);if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}}
+function stat(s){document.getElementById('noteStat').textContent=s;}
+function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';
+ setMode('idle');render(st);
+ if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}}
 async function load(){try{render(await api({action:'state'}));}catch(e){}}
+
+/* ── the three states of the capture card ────────────────────────────────
+   idle    write or speak
+   review  "זה מה ששמעתי" — the full transcript, editable, two actions only
+   failed  nothing was transcribed; the only way out is to speak again      */
+let MODE='idle';
+function setMode(m){
+ MODE=m;
+ const T=document.getElementById('capTitle'),H=document.getElementById('capHint'),
+       A=document.getElementById('capActions'),ta=document.getElementById('note');
+ if(m==='review'){
+  T.textContent='זה מה ששמעתי:';H.textContent='קרא, תקן אם צריך, ושלח.';
+  ta.className='heard';ta.rows=8;ta.style.display='block';
+  A.innerHTML='<button class="big" id="sendBtn" onclick="sendNote()">שלח ל-LIA</button>'
+   +'<button class="big ghost" onclick="speakAgain()">דבר שוב</button>';
+ }else if(m==='failed'){
+  T.textContent='לא הצלחתי לתמלל.';H.textContent='לחץ דבר שוב.';
+  ta.style.display='none';
+  A.innerHTML='<button class="big" onclick="speakAgain()">דבר שוב</button>';
+ }else{
+  T.textContent='ספר ל-LIA';H.textContent='משפט חופשי — הבטחה, החלטה, משימה.';
+  ta.className='';ta.rows=3;ta.style.display='block';
+  A.innerHTML='<button class="big" id="sendBtn" onclick="sendNote()">שמור פתק</button>'
+   +'<button class="big ghost" id="mic" onclick="micTap()" style="display:none">🎤 דבר עם LIA</button>';
+  applyMicVisibility();
+ }
+}
+function speakAgain(){const ta=document.getElementById('note');ta.value='';VOICE={};setMode('idle');stat('');micTap();}
+function applyMicVisibility(){const b=document.getElementById('mic');if(b)b.style.display=micSupported()?'inline-block':'none';}
+
+/* ── what LIA understood, in David's words ───────────────────────────── */
+const TYPE_HE={COMMITMENT:'התחייבות',DECISION:'החלטה',TASK:'משימה',DOCUMENT_REQUEST:'בקשת מסמך',
+ OPPORTUNITY:'הזדמנות',RISK:'סיכון',TECHNICAL_QUESTION:'שאלה טכנית',COMMERCIAL_QUESTION:'שאלה מסחרית',
+ IDEA:'רעיון',FOLLOW_UP:'מעקב',PERSON:'איש קשר',PRODUCT:'מוצר',PROJECT_SIGNAL:'סימן פרויקט'};
+function heDate(d){if(!d)return '';const p=String(d).split('-');return p.length===3?(+p[2])+'.'+(+p[1]):d;}
+function clip(s,n){s=(s||'').trim();return s.length>n?s.slice(0,n)+'…':s;}
+function subject(o){const f=o.payload.fields||{};
+ let w=f.what||f.decision||o.payload.quote||'';
+ if(o.object_type==='COMMITMENT'&&f.promised_to_whom&&f.promised_to_whom!=='UNKNOWN')w+=' ל'+f.promised_to_whom;
+ if(o.object_type==='DOCUMENT_REQUEST'&&f.requested_by&&f.requested_by!=='UNKNOWN')w+=' (ביקש '+f.requested_by+')';
+ return clip(w,140);}
+function deadlineOf(o){const f=o.payload.fields||{};const d=f.deadline||f.due;
+ if(d)return heDate(d);
+ if(f.deadline_status==='AMBIGUOUS'&&f.deadline_phrase)return f.deadline_phrase+' — לא ברור איזה תאריך';
+ return '';}
+function showCaught(objs){
+ const C=document.getElementById('caught');let h='';
+ for(const o of objs){h+='<li><b>'+(TYPE_HE[o.object_type]||o.object_type)+':</b> '+esc(subject(o));
+  const d=deadlineOf(o);if(d)h+='<br><span class="dim">דדליין: '+esc(d)+'</span>';h+='</li>';}
+ C.innerHTML=h||'<li class="dim">לא זוהה פריט עסקי חדש בפתק הזה.</li>';
+ document.getElementById('caughtCard').style.display='block';}
+
+/* ── main render ─────────────────────────────────────────────────────── */
+let LAST_IDS=[],WAITING=null;
 function render(st){
+ SERVER_VOICE=!!(st.voice&&st.voice.available);applyMicVisibility();
+ const ids=st.queue.map(o=>o.id);
+ if(WAITING){
+  const fresh=st.queue.filter(o=>!WAITING.before.includes(o.id));
+  if(fresh.length){showCaught(fresh);WAITING=null;
+   if(voiceUX())speak('קלטתי: '+fresh.map(o=>TYPE_HE[o.object_type]||o.object_type).join(', ')+'.');}
+  else if(Date.now()-WAITING.t>90000){showCaught([]);WAITING=null;}
+  else document.getElementById('caught').innerHTML='<li class="dim">LIA מעבדת… (ה-Bridge קולט תוך כמה שניות)</li>';
+ }
+ LAST_IDS=ids;
  const S=document.getElementById('stats');
  S.innerHTML='<div class="stat"><b>'+st.counts.active+'</b><span class="dim">פעילים</span></div>'
  +'<div class="stat"><b>'+st.counts.canonical+'</b><span class="dim">מאושרים</span></div>'
  +'<div class="stat"><b>'+st.counts.pending_notes+'</b><span class="dim">פתקים לעיבוד</span></div>'
  +'<div class="stat"><b>'+st.counts.expired+'</b><span class="dim">פגו (audit נשמר)</span></div>';
- SERVER_VOICE=!!(st.voice&&st.voice.available);
- const mb=document.getElementById('mic');
- mb.style.display=micSupported()?'inline-block':'none';
- if(!micSupported())document.getElementById('sub').textContent='Build 1 · פרודקשן · הדפדפן הזה לא תומך בהקלאה קולית';
+ document.getElementById('queueTitle').textContent='מה פתוח ('+st.queue.length+')';
  const Q=document.getElementById('queue');
- Q.innerHTML=st.queue.length?'':'<p class="dim" style="margin-top:8px">התור ריק — ספר ל-LIA משהו, או הרץ inbox במחשב.</p>';
- for(const o of st.queue){const d=(o.payload.fields||{}).deadline||(o.payload.fields||{}).due;
-  Q.innerHTML+='<div class="obj"><span class="badge '+o.verification_state+'">'+o.verification_state+'</span> '
-  +'<span class="badge">'+o.object_type+'</span>'+(d?' <span class="badge">עד '+d+'</span>':'')
-  +'<p class="quote">„'+esc(o.payload.quote)+'”</p>'
-  +'<div class="row"><button onclick="confirmObj(\''+o.id+'\')">אישור</button>'
-  +'<button class="ghost" onclick="showAudit(\''+o.id+'\')">ראיות</button>'
-  +'<span class="meta">'+o.id.slice(0,8)+' · '+(o.payload.speaker||'')+'</span></div></div>';}
+ if(!st.queue.length){Q.innerHTML='<p class="dim" style="margin-top:8px">אין פריטים פתוחים.</p>';return;}
+ let h='';
+ for(const o of st.queue){const d=deadlineOf(o);
+  h+='<div class="obj"><b>'+(TYPE_HE[o.object_type]||o.object_type)+':</b> '+esc(subject(o))
+   +(d?' <span class="badge'+(d.indexOf('לא ברור')>=0?' warn':'')+'">'+esc(d)+'</span>':'')
+   +'<p class="quote">„'+esc(clip(o.payload.quote,160))+'”</p>'
+   +'<div class="row"><button onclick="confirmObj(\''+o.id+'\')">אישור</button>'
+   +'<button class="det" onclick="showDetails(\''+o.id+'\')">פרטים</button></div>'
+   +'<div id="d_'+o.id+'" style="display:none;margin-top:8px">'
+   +'<span class="badge '+o.verification_state+'">'+o.verification_state+'</span> '
+   +'<span class="dim">'+o.id.slice(0,8)+' · '+esc(o.payload.speaker||'')+'</span>'
+   +'<div class="row"><button class="ghost" onclick="showAudit(\''+o.id+'\')">ראיות ומסלול</button></div></div></div>';}
+ Q.innerHTML=h;
 }
+function showDetails(id){const e=document.getElementById('d_'+id);e.style.display=e.style.display==='none'?'block':'none';}
+function toggleAdvanced(){const e=document.getElementById('advanced');e.style.display=e.style.display==='none'?'block':'none';}
 async function confirmObj(id){await api({action:'confirm',id});await load();}
 async function runExpire(){const r=await api({action:'expire'});document.getElementById('sub').textContent=r.expired+' הועברו ל-EXPIRED (audit נשמר)';await load();}
-async function showAudit(id){const r=await api({action:'audit',id});document.getElementById('auditCard').style.display='block';document.getElementById('audit').textContent=JSON.stringify(r,null,1);}
+async function showAudit(id){const r=await api({action:'audit',id});const p=document.getElementById('audit');
+ p.style.display='block';p.textContent=JSON.stringify(r,null,1);}
+async function getInstaller(){const s=document.getElementById('instStat');s.textContent='מוריד…';
+const r=await fetch(API+'&install=1',{headers:{'x-fresco-code':CODE}});
+if(!r.ok){s.textContent='שגיאה';return;}const b=await r.blob();const u=URL.createObjectURL(b);
+const a=document.createElement('a');a.href=u;a.download='install-david-bridge.bat';document.body.appendChild(a);a.click();
+a.remove();URL.revokeObjectURL(u);s.textContent='ירד ✓ שמור ולחץ פעמיים';}
+
 /* One submission_id per press of Save. A double-tap, a flaky network or a replayed
    request reuses it and is swallowed server-side; the SAME sentence sent again next
    week gets a fresh id and is correctly a new note. The id is cleared only on
@@ -79,15 +184,20 @@ async function sendNote(){
  const ta=document.getElementById('note'),btn=document.getElementById('sendBtn');
  const t=ta.value.trim();if(!t||SENDING)return;
  if(!SUBMIT_ID)SUBMIT_ID=uuid();
- SENDING=true;btn.disabled=true;
+ SENDING=true;if(btn)btn.disabled=true;
  try{
   const b={action:'note',text:t,submission_id:SUBMIT_ID,
     ...(VOICE.model?{source:'voice_note',transcription:VOICE}:{source:'typed'})};
   const res=await api(b);
   if(!res||res.ok!==true)throw new Error('rejected');
-  SUBMIT_ID=null;VOICE={};ta.value='';stat('נשמר לתור ✓');await load();
+  SUBMIT_ID=null;VOICE={};ta.value='';setMode('idle');stat('');
+  WAITING={before:LAST_IDS.slice(),t:Date.now()};
+  document.getElementById('caught').innerHTML='<li class="dim">LIA מעבדת…</li>';
+  document.getElementById('caughtCard').style.display='block';
+  await load();
  }catch(e){stat('השליחה נכשלה — לחץ שוב');}
- finally{SENDING=false;btn.disabled=false;}}
+ finally{SENDING=false;if(btn)btn.disabled=false;}}
+
 /* -- voice note ---------------------------------------------------------
    Two engines, one behaviour. The browser's OWN speech recognition is the
    default: no key, no upload, no recording at all - the phone hears the words
@@ -103,16 +213,16 @@ let MR=null,CHUNKS=[],STREAM=null,SR=null,T0=0,TIMER=null,BASE='',VOICE={},SERVE
 function recorderSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
 function micSupported(){return !!SRC||(recorderSupported()&&SERVER_VOICE);}
 function recording(){return !!SR||!!(MR&&MR.state==='recording');}
-function stat(s){document.getElementById('noteStat').textContent=s;}
 function micTap(){if(recording())stopRec('user');else if(SRC)startSR();else startRecorder();}
-function uiStart(){T0=Date.now();stat('');BASE=document.getElementById('note').value.trim();
- const b=document.getElementById('mic');b.textContent='⏹ עצור';b.classList.add('on');
+function uiStart(label){T0=Date.now();stat('');BASE=document.getElementById('note').value.trim();
+ document.getElementById('recLabel').textContent=label||'מקליט — לחץ ⏹ כשסיימת';
+ const b=document.getElementById('mic');if(b){b.textContent='⏹ עצור';b.classList.add('on');}
  document.getElementById('recBar').style.display='flex';
  TIMER=setInterval(()=>{const el=Math.floor((Date.now()-T0)/1000);
   document.getElementById('recTime').textContent=String(Math.floor(el/60)).padStart(2,'0')+':'+String(el%60).padStart(2,'0');
   if(Date.now()-T0>=MAX_REC_MS)stopRec('limit');},250);}
 function uiStop(){if(TIMER){clearInterval(TIMER);TIMER=null;}
- const b=document.getElementById('mic');b.textContent='🎤 דבר עם LIA';b.classList.remove('on');
+ const b=document.getElementById('mic');if(b){b.textContent='🎤 דבר עם LIA';b.classList.remove('on');}
  document.getElementById('recBar').style.display='none';document.getElementById('recTime').textContent='00:00';}
 function stopRec(why){
  if(SR){try{SR.stop();}catch(e){SR=null;uiStop();}return;}
@@ -122,21 +232,28 @@ function startSR(){
  let r;try{r=new SRC();}catch(e){startRecorder();return;}
  r.lang='he-IL';r.interimResults=true;r.continuous=true;r.maxAlternatives=1;
  let finals='';const conf=[];
- r.onresult=e=>{let interim='';
-  for(let i=e.resultIndex;i<e.results.length;i++){const res=e.results[i];
-   if(res.isFinal){finals+=res[0].transcript;if(res[0].confidence>0)conf.push(res[0].confidence);}
+ /* Rebuild the text from the WHOLE result list on every event. Accumulating
+    instead (finals += …) duplicated every word: Chrome re-reports results that
+    are already final, and resultIndex cannot be trusted to move past them. */
+ r.onresult=e=>{let fin='',interim='';conf.length=0;
+  for(let i=0;i<e.results.length;i++){const res=e.results[i];
+   if(res.isFinal){fin+=res[0].transcript;if(res[0].confidence>0)conf.push(res[0].confidence);}
    else interim+=res[0].transcript;}
-  document.getElementById('note').value=(BASE?BASE+'\n':'')+(finals+interim).trim();};
+  finals=fin;
+  document.getElementById('note').value=(BASE?BASE+'\n':'')+(fin+interim).trim();};
  r.onerror=e=>{const k=e.error;SR=null;uiStop();
   if((k==='language-not-supported'||k==='service-not-allowed'||k==='network')&&SERVER_VOICE&&recorderSupported()){startRecorder();return;}
+  if(k==='no-speech'){setMode('failed');return;}
   stat(k==='not-allowed'?'אין הרשאת מיקרופון — אשר בהגדרות הדפדפן':'ההקלטה נכשלה ('+k+')');};
  r.onend=()=>{if(!SR)return;SR=null;uiStop();
   const secs=Math.round((Date.now()-T0)/1000);
-  if(!finals.trim()){stat('לא זוהה דיבור');return;}
-  const ta=document.getElementById('note');ta.value=(BASE?BASE+'\n':'')+finals.trim();ta.focus();
+  if(!finals.trim()){setMode('failed');return;}
+  const ta=document.getElementById('note');ta.value=(BASE?BASE+'\n':'')+finals.trim();
   const c=conf.length?conf.reduce((x,y)=>x+y,0)/conf.length:null;
   VOICE={model:'browser_speech',language:'he-IL',duration_s:secs,low_confidence:c!==null&&c<0.6};
-  stat((VOICE.low_confidence?'⚠ לא ברור — בדוק ותקן':'תומלל ✓ בדוק ושלח')+' ('+secs+' שנ\')');};
+  setMode('review');ta.focus();
+  if(VOICE.low_confidence)stat('⚠ חלק מהמילים לא ברורות — בדוק ותקן');
+  if(voiceUX())reflect();};
  SR=r;try{r.start();}catch(e){SR=null;startRecorder();return;}
  uiStart();}
 /* engine 2: record and let Whisper transcribe. Used only where engine 1 is absent. */
@@ -161,27 +278,79 @@ async function finishRec(){
  const type=((MR&&MR.mimeType)||(CHUNKS[0]&&CHUNKS[0].type)||'audio/webm').split(';')[0];
  const why=MR&&MR._why;MR=null;releaseMic();               // tracks off BEFORE any network call
  let blob=new Blob(CHUNKS,{type});CHUNKS=[];
- if(why==='error'){blob=null;stat('ההקלטה נכשלה');return;}
- if(!blob.size||secs<1){blob=null;stat('לא נקלט קול');return;}
+ if(why==='error'){blob=null;setMode('failed');return;}
+ if(!blob.size||secs<1){blob=null;setMode('failed');return;}
  stat('מתמלל…');
  try{const r=await fetch(API+'&transcribe=1',{method:'POST',
    headers:{'x-fresco-code':CODE,'x-audio-type':type,'Content-Type':'application/octet-stream'},body:blob});
   blob=null;                                               // the recording ends its life here
   if(r.status===401){localStorage.removeItem('lia_code');location.reload();return;}
   const out=await r.json().catch(()=>({}));
-  if(!r.ok||!out.text){stat(out.message||'התמלול נכשל');return;}
+  if(!r.ok||!out.text){setMode('failed');return;}
   const ta=document.getElementById('note');
-  ta.value=(ta.value.trim()?ta.value.trim()+'\n':'')+out.text.trim();ta.focus();
+  ta.value=(ta.value.trim()?ta.value.trim()+'\n':'')+out.text.trim();
   VOICE={model:out.model,language:out.language,duration_s:out.duration_s,
          avg_logprob:out.avg_logprob,low_confidence:out.low_confidence};
-  stat((out.low_confidence?'⚠ התמלול לא ברור — בדוק ותקן':'תומלל ✓ בדוק ושלח')+' ('+secs+' שנ\')');
- }catch(e){blob=null;stat('התמלול נכשל (רשת)');}}
+  setMode('review');ta.focus();
+  if(out.low_confidence)stat('⚠ חלק מהמילים לא ברורות — בדוק ותקן');
+  if(voiceUX())reflect();
+ }catch(e){blob=null;stat('התמלול נכשל (רשת) — לחץ דבר שוב');}}
+/* -- voice confirmation: speak -> hear a short reflection -> say yes/no ---
+   On a phone the hands are busy, so the normal flow needs no tap at all. The
+   buttons never go away; they are the fallback, not the path. Three rules make
+   this safe: LIA listens for a SHORT fixed window and then stops (never in the
+   background), a confirmation counts only when the whole utterance IS a yes
+   word (so an unrelated sentence can never approve anything), and silence
+   NEVER means yes — it leaves the note sitting in review, waiting for David. */
+const YES=['כן','נכון','כן נכון','מאשר','מאשרת','אישור','אשר','בסדר','אוקיי','אוקי','yes','ok'];
+const NO=['לא','לא נכון','לא מדויק','תקן','תקני','לתקן','טעות','שגוי','no'];
+const CONFIRM_MS=7000, CORRECT_MS=15000;
+function norm(s){return (s||'').replace(/[^֐-׿a-zA-Z ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();}
+function voiceUX(){return !!(SRC&&window.speechSynthesis);}
+function speak(text,done){
+ if(!window.speechSynthesis){if(done)setTimeout(done,0);return;}
+ try{speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang='he-IL';u.rate=1.05;
+  const v=(speechSynthesis.getVoices()||[]).find(x=>/^he/i.test(x.lang));if(v)u.voice=v;
+  u.onend=()=>{if(done)setTimeout(done,350);};      // never listen while LIA is still talking
+  u.onerror=()=>{if(done)setTimeout(done,350);};
+  speechSynthesis.speak(u);
+ }catch(e){if(done)setTimeout(done,0);}}
+/* One short listening window. Not continuous, always visible, always ends. */
+function listenOnce(ms,label,onText){
+ if(!SRC){onText(null);return;}
+ let r;try{r=new SRC();}catch(e){onText(null);return;}
+ r.lang='he-IL';r.interimResults=false;r.continuous=false;r.maxAlternatives=1;
+ let got='',done=false,TO=null,CD=null;
+ const finish=()=>{if(done)return;done=true;clearTimeout(TO);clearInterval(CD);SR=null;uiStop();onText(got.trim()||null);};
+ r.onresult=e=>{let s='';for(let i=0;i<e.results.length;i++)s+=e.results[i][0].transcript;got=s;};
+ r.onerror=()=>{};
+ r.onend=finish;
+ SR=r;try{r.start();}catch(e){SR=null;onText(null);return;}
+ uiStart(label);
+ const until=Date.now()+ms;
+ CD=setInterval(()=>{const left=Math.max(0,Math.ceil((until-Date.now())/1000));
+  document.getElementById('recTime').textContent='0:'+String(left).padStart(2,'0');},200);
+ TO=setTimeout(()=>{try{r.stop();}catch(e){finish();}},ms);}
+function reflect(){
+ const t=document.getElementById('note').value.trim();
+ if(!t){setMode('failed');return;}
+ setMode('review');
+ speak('הבנתי: '+clip(t,180)+'. נכון?',()=>askYesNo(0));}
+function askYesNo(attempt){
+ listenOnce(CONFIRM_MS,'מקשיב לתשובה — אמור כן או לא',ans=>{
+  const a=norm(ans);
+  if(!a){stat('לא שמעתי תשובה — הפתק מחכה. אפשר לשלוח בכפתור או ללחוץ 🎤 שוב.');return;}
+  if(YES.indexOf(a)>=0){speak('שולח.');sendNote();return;}
+  if(NO.indexOf(a)>=0){speak('מה לתקן? אמור את המשפט המתוקן.',askCorrection);return;}
+  if(attempt<1){speak('לא הבנתי. אפשר לומר כן או לא.',()=>askYesNo(1));return;}
+  stat('לא הבנתי. שלח או תקן בכפתורים.');});}
+function askCorrection(){
+ listenOnce(CORRECT_MS,'מקשיב לתיקון',txt=>{
+  if(!txt){stat('לא שמעתי. אפשר לתקן בטקסט ולשלוח.');return;}
+  document.getElementById('note').value=txt.trim();   // the corrected sentence replaces the old one
+  reflect();});}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopRec('hidden');});
 window.addEventListener('pagehide',()=>stopRec('hidden'));
-async function getInstaller(){const s=document.getElementById('instStat');s.textContent='מוריד…';
-const r=await fetch(API+'&install=1',{headers:{'x-fresco-code':CODE}});
-if(!r.ok){s.textContent='שגיאה';return;}const b=await r.blob();const u=URL.createObjectURL(b);
-const a=document.createElement('a');a.href=u;a.download='install-david-bridge.bat';document.body.appendChild(a);a.click();
-a.remove();URL.revokeObjectURL(u);s.textContent='ירד ✓ שמור ולחץ פעמיים';}
 if(CODE){api({action:'state'}).then(boot).catch(()=>{});}
 </script></body></html>
