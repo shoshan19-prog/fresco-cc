@@ -68,6 +68,8 @@ button#mic.on{background:#ff4d4f}
  <button class="ghost" id="privBtn" onclick="togglePrivacy()">מצב פרטיות: כבוי</button>
  <button class="ghost" onclick="getInstaller()">הורד את המתקין למחשב</button>
  <span class="dim" id="instStat"></span></div>
+ <div class="row"><input id="mk" type="password" placeholder="מפתח Anthropic (sk-ant-...)" style="max-width:320px">
+ <button class="ghost" onclick="setModelKey()">חבר מודל שפה</button><span class="dim" id="mkStat"></span></div>
  <pre id="audit" style="display:none"></pre>
 </div></div>
 
@@ -81,6 +83,9 @@ function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';
  setMode('idle');render(st);
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}}
+let MODEL_ON=false;
+function subLine(){document.getElementById('sub').textContent=
+ MODEL_ON?'הפנקס של דוד · מודל שפה מחובר':'הפנקס של דוד · בלי מודל שפה — עונה על נושאים מוגדרים';}
 async function load(){try{render(await api({action:'state'}));}catch(e){}}
 
 /* ── the three states of the capture card ────────────────────────────────
@@ -141,6 +146,7 @@ function showCaught(objs){
 let LAST_IDS=[],WAITING=null;
 function render(st){
  SERVER_VOICE=!!(st.voice&&st.voice.available);applyMicVisibility();
+ MODEL_ON=!!(st.model&&st.model.connected);subLine();
  const ids=st.queue.map(o=>o.id);
  if(WAITING){
   const fresh=st.queue.filter(o=>!WAITING.before.includes(o.id));
@@ -172,6 +178,15 @@ function render(st){
  Q.innerHTML=h;
 }
 function showDetails(id){const e=document.getElementById('d_'+id);e.style.display=e.style.display==='none'?'block':'none';}
+async function setModelKey(){
+ const el=document.getElementById('mk'),st=document.getElementById('mkStat');
+ const k=el.value.trim();if(!k)return;
+ st.textContent='מאמת מול Anthropic…';
+ try{const r=await api({action:'set_model_key',key:k});
+  el.value='';                                   // the field never keeps the secret
+  if(r&&r.ok){st.textContent='מחובר ✓ ('+(r.model||'')+') — שאל שאלה חופשית';MODEL_ON=true;subLine();}
+  else st.textContent=(r&&r.message)||'נכשל';
+ }catch(e){el.value='';st.textContent='נכשל (רשת)';}}
 function toggleAdvanced(){document.getElementById('privBtn').textContent=
   privacyOn()?'מצב פרטיות: פועל':'מצב פרטיות: כבוי';
  const e=document.getElementById('advanced');e.style.display=e.style.display==='none'?'block':'none';}
