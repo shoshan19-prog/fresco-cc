@@ -39,5 +39,30 @@ for (const t of ['תשלחי לו את המפרט.', 'תפרסמי את זה', '
 for (const t of ['תכיני תשובה ל-Davide.', 'תעני לו שאנחנו מאשרים']) {
   if (OUTWARD.test(t)) { console.log(`FAIL  draft wrongly marked outward :: ${t}`); bad++; }
 }
-console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5}/${CASES.length + 5} routing asserts passed`);
+
+// The keyless road: with no model key the same sentences must still reach a real
+// capability, and the questions that genuinely need a model must say so.
+const dblock = src.slice(src.indexOf('const MONEY_RE='), src.indexOf('async function askDirect'));
+const {DIRECT, MONEY_RE} = new Function(
+  dblock.replace(/,run:cap\w+/g, (m) => ',name:"' + m.slice(5) + '"') +
+  '\nreturn {DIRECT, MONEY_RE};')();
+const ROUTES = [
+  ['ליה, כמה מכרנו היום?', 'capSales'],
+  ['כמה הזמנות נכנסו היום', 'capSales'],
+  ['מה הכי חשוב שאני צריך לטפל בו היום?', 'capImportant'],
+  ['מה קורה עם לקוח למדא', 'capCustomer'],
+  ['תבדקי את המיילים ותראי מה דורש מאיתנו תגובה.', 'capMail'],
+];
+for (const [t, want] of ROUTES) {
+  const hit = DIRECT.find((d) => d.re.test(t));
+  const got = hit ? hit.name : '(none)';
+  if (got !== want) { console.log(`FAIL  keyless ${want} expected, got ${got}  ::  ${t}`); bad++; }
+}
+// money is never spoken — an existing standing rule, so the guard must fire
+for (const t of ['כמה כסף עשינו היום', 'מה המחזור החודש', 'מה הרווח על ההזמנה']) {
+  if (!MONEY_RE.test(t)) { console.log(`FAIL  money guard missed :: ${t}`); bad++; }
+}
+if (MONEY_RE.test('כמה הזמנות נכנסו היום')) { console.log('FAIL  money guard over-fires'); bad++; }
+
+console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + ROUTES.length + 4}/${CASES.length + 5 + ROUTES.length + 4} routing asserts passed`);
 process.exit(bad ? 1 : 0);

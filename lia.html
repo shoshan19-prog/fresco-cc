@@ -426,11 +426,89 @@ async function doAsk(text,prefix){
  try{
   const q=prefix?prefix+' '+text:text;
   const res=await ccApi({action:'kernel',body:q});
+  /* No model key configured → the kernel says so instead of guessing. The
+     capabilities themselves need no model, so take the deterministic road
+     rather than telling David "I can't". It upgrades itself the moment a
+     model key exists — nothing here needs to be undone. */
+  if(res.self_diagnosis)return askDirect(text);
   LAST={q:text,res:res};
   showAnswer(res);setMode('idle');
   speak(spokenAnswer(res),()=>listenFollowUp());
  }catch(e){setMode('idle');stat('לא הצלחתי להגיע למערכת ('+e.message+')');
   speak('לא הצלחתי להגיע למערכת כרגע.');}}
+
+/* ── the keyless road: the SAME capabilities, called directly ─────────────
+   command-center exposes each capability on its own (action:'cap'), so real
+   answers do not depend on a language model — only the free-text understanding
+   does. What cannot be done without a model is said plainly, never faked. */
+async function cap(name,args){return ccApi({action:'cap',name:name,args:args||{}});}
+function said(answer,facts,sources,missing){
+ return {answer:answer,facts:facts||[],inferences:[],sources:sources||[],
+         risks_opportunities:[],missing_information:missing||[],
+         recommended_next_action:'',confidence:missing&&missing.length?'INSUFFICIENT_EVIDENCE':'HIGH'};}
+const MONEY_RE=/(כסף|שקל|שקלים|סכום|הכנסה|מחזור|רווח|עלות|מחיר)/;
+const DIRECT=[
+ {re:/(מכרנו|מכירות|הזמנות|הזמנה|מכירה)/,run:capSales},
+ {re:/(הכי חשוב|מה דחוף|מה לטפל|מה אני צריך)/,run:capImportant},
+ {re:/(מה קורה עם|לקוח|לקוחה)/,run:capCustomer},
+ {re:/(מייל|מיילים|דואר|תגובה)/,run:capMail},
+];
+async function askDirect(text){
+ const hit=DIRECT.find(d=>d.re.test(text));
+ let res;
+ try{res=hit?await hit.run(text):said(
+   'בלי מודל שפה אני יכולה לענות רק על שאלות מוגדרות: מכירות, מה מחכה להחלטה, מה קורה עם לקוח, וחיפוש במייל.',
+   [],[],['מפתח מודל שפה בצד השרת']);}
+ catch(e){res=said('לא הצלחתי להביא את הנתונים ('+e.message+').',[],[],['חיבור']);}
+ if(MONEY_RE.test(text))res.missing_information=(res.missing_information||[])
+   .concat(['סכומי כסף לא נאמרים בקול — זה כלל קיים במערכת']);
+ LAST={q:text,res:res};showAnswer(res);setMode('idle');
+ let spoken=res.answer;
+ if(MONEY_RE.test(text))spoken+=' סכומי כסף אני לא מקריאה — זה כלל קיים במערכת.';
+ speak(spoken,()=>listenFollowUp());return res;}
+function todayISO(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+async function capSales(text){
+ const r=await cap('priority_sales',{months_back:1});
+ const rows=r.rows||[],t=todayISO(),today=rows.filter(o=>o.date===t);
+ const who=[...new Set(today.map(o=>o.customer).filter(Boolean))].slice(0,3);
+ const a=today.length
+  ?'היום נכנסו '+today.length+' הזמנות'+(who.length?', מ'+who.join(', ')+'.':'.')
+   +' החודש '+rows.length+' הזמנות.'
+  :'היום עוד לא נכנסה הזמנה. החודש נכנסו '+rows.length+' הזמנות.';
+ return said(a,today.slice(0,5).map(o=>o.ORDNAME+' · '+(o.customer||'')+' · '+o.date),[r.source]);}
+async function capImportant(){
+ const [rec,ch]=await Promise.all([cap('next_decision'),cap('company_changes',{days:3})]);
+ const d=rec.rows||[];
+ const a=d.length
+  ?'יש '+d.length+' החלטות שמחכות לך. הראשונה: '+(d[0].claim||'')+'.'
+  :'אין החלטות שמחכות לך. בשלושת הימים האחרונים נרשמו '+((ch.rows||[]).length)+' אירועים במערכת.';
+ return said(a,d.slice(0,5).map(x=>(x.project_name?x.project_name+': ':'')+(x.claim||'')),
+   [rec.source,ch.source]);}
+function nameIn(text){
+ const m=text.match(/(?:לקוח|לקוחה|עם)\s+([֐-׿A-Za-z][֐-׿A-Za-z\-']{1,})/);
+ return m?m[1]:'';}
+async function capCustomer(text){
+ const n=nameIn(text);
+ if(!n)return said('לא זיהיתי את שם הלקוח. אמור את השם שוב.',[],[],['שם לקוח']);
+ const [s,m]=await Promise.all([cap('priority_sales',{customer:n,months_back:12}),
+                                cap('mail_search',{query:n})]);
+ const so=s.rows||[],mo=m.rows||[];
+ let a=so.length?n+': '+so.length+' הזמנות בשנה האחרונה, האחרונה ב-'+(so[0].date||'')+'.'
+                :n+': לא מצאתי הזמנות בשנה האחרונה.';
+ a+=mo.length?' במייל יש '+mo.length+' התכתבויות, האחרונה '+String(mo[0].sent_at||'').slice(0,10)+'.'
+             :' במייל לא מצאתי התכתבות.';
+ return said(a,so.slice(0,4).map(o=>o.ORDNAME+' · '+o.date)
+   .concat(mo.slice(0,4).map(x=>'מייל: '+(x.subject||''))),[s.source,m.source]);}
+async function capMail(text){
+ const m=text.match(/(?:על|בנושא|לגבי|מ)\s+([֐-׿A-Za-z][֐-׿A-Za-z\-']{2,})/);
+ if(!m)return said('בלי מודל שפה אני לא יכולה להכריע מה דורש תגובה — לזה צריך קריאה של תוכן ההודעות. '
+   +'אני כן יכולה לחפש נושא: אמור "תבדקי מייל על ..." ואביא את ההתכתבויות.',[],[],
+   ['מפתח מודל שפה','הרשאות Graph לקריאת גוף הודעה']);
+ const r=await cap('mail_search',{query:m[1]});
+ const rows=r.rows||[];
+ const a=rows.length?'מצאתי '+rows.length+' הודעות על '+m[1]+'. האחרונה מ'+(rows[0].from||'')+' ב-'
+   +String(rows[0].sent_at||'').slice(0,10)+'.':'לא מצאתי הודעות על '+m[1]+'.';
+ return said(a,rows.slice(0,5).map(x=>(x.subject||'')+' — '+(x.from||'')),[r.source]);}
 
 /* One short, visible follow-up window. Most follow-ups are answered from the
    evidence already on the table — no second call to the model. */
@@ -473,6 +551,12 @@ async function doAct(text){
  const outward=OUTWARD_RE.test(text);
  try{
   const res=await ccApi({action:'kernel',body:text});
+  if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft
+   await ccApi({action:'ask',kind:'change_request',body:text});
+   const r2=said('רשמתי את הבקשה לאישור במסך. להכין ניסוח בעצמי אני צריכה מודל שפה.',[],[],
+     ['מפתח מודל שפה']);
+   LAST={q:text,res:r2};showAnswer(r2,'נרשם לאישור:');setMode('idle');
+   speak(r2.answer,()=>listenFollowUp());return;}
   LAST={q:text,res:res};
   let spoken=spokenAnswer(res);
   if(outward){
