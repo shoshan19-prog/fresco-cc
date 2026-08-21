@@ -461,8 +461,17 @@ function afterTranscript(){
  const t=document.getElementById('note').value.trim();
  if(!t){setMode('failed');return;}
  const intent=classify(t);
- if(intent==='ASK'){VOICE={};setMode('thinking');doAsk(t);}
- else if(intent==='DO'){VOICE={};setMode('thinking');doAct(t);}
+ /* ASK and DO are answered immediately and never go through sendNote() (the
+    only place that used to clear the box), so the spoken question was left
+    sitting in the note field after setMode('idle') restored it to view. The
+    NEXT mic tap then read that leftover text as BASE and recorded on top of
+    it — a second, unrelated question got prefixed onto the first, and a third
+    tap prefixed both, compounding into exactly the long repeated-looking mess
+    David saw. The question has already been asked and answered; clear it now
+    so the next recording starts clean. REMEMBER keeps the text — David still
+    needs to review and send it. */
+ if(intent==='ASK'){document.getElementById('note').value='';VOICE={};setMode('thinking');doAsk(t);}
+ else if(intent==='DO'){document.getElementById('note').value='';VOICE={};setMode('thinking');doAct(t);}
  else{setMode('review');if(voiceUX())reflect();}}
 
 /* ── Hebrew-first presentation: David reads and hears Hebrew, always ─────
