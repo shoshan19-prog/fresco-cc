@@ -211,14 +211,15 @@ function closePanel(){document.getElementById('panel').classList.remove('on');}
    in localStorage, which is what makes "refresh and it is still there" true —
    this is the working memory of the conversation, not decoration. */
 const SKEY='lia_sessions', SCUR='lia_session_cur';
-let SESSION={id:'',title:'',ctx:'פרסקו',at:0,turns:[]};
+let SESSION={id:'',title:'',ctx:'פרסקו',at:0,turns:[],retracted:[]};
 function jget(k,d){try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?d:v;}catch(e){return d;}}
 function jset(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 function openSession(id){
  const idx=jget(SKEY,[]);
  const want=id||localStorage.getItem(SCUR)||'';
  const found=want?jget('lia_s_'+want,null):null;
- SESSION=found||{id:uuid(),title:'',ctx:'פרסקו',at:Date.now(),turns:[]};
+ SESSION=found||{id:uuid(),title:'',ctx:'פרסקו',at:Date.now(),turns:[],retracted:[]};
+ if(!Array.isArray(SESSION.retracted))SESSION.retracted=[];   // sessions saved before this existed
  localStorage.setItem(SCUR,SESSION.id);
  if(!idx.some(s=>s.id===SESSION.id))saveSession();
  renderThread();setCtx(SESSION.ctx);}
@@ -251,6 +252,22 @@ function addTurn(role,text,res){
  saveSession();renderThread();}
 /* The kernel gets the same conversation, paired into the {q,a} shape it expects
    and bounded to the last few exchanges — derived, never maintained separately. */
+/* A claim LIA withdrew stays withdrawn. She retracted "גרסת הייצור שונה מהקוד
+   שבמאגר" when David pressed her on it, and then stated it again as fact one
+   turn later — which tells him the correction was a formality. The kernel gates
+   the claim; this is what carries the gate's verdict forward, so it cannot come
+   back just because the subject did. */
+function rememberRetracted(res){
+ const list=(res&&res.retracted_claims)||[];
+ if(!Array.isArray(list)||!list.length)return;
+ const have=SESSION.retracted||(SESSION.retracted=[]);
+ for(const c of list){
+  const t=String(c||'').trim().slice(0,300);
+  if(t&&have.indexOf(t)<0)have.push(t);
+ }
+ SESSION.retracted=have.slice(-8);
+ saveSession();}
+function retractedForKernel(){return (SESSION.retracted||[]).slice(-8);}
 function historyForKernel(){
  const out=[];let q=null;
  for(const t of SESSION.turns){
@@ -278,16 +295,14 @@ function renderThread(){
   h+='<div class="msg lia"><div class="who">LIA</div><div class="bubble">'+esc(heb(t.text));
   const r=t.res;
   if(r&&!r.__plain){
-   const extra=[];
-   const intr=interestingOf(r);
-   /* No standing headings. David asked for this directly: "מה שמעניין" and
-      "אני ממליצה" stamped on every answer made her read like a form being
-      filled in. The extra line still appears when it genuinely adds something
-      the answer did not already say — it just speaks for itself now. */
-   if(intr&&!alreadySaid(t.text,intr))extra.push(intr);
-   const rec=heb(r.recommended_next_action||'');
-   if(rec&&!alreadySaid(t.text,rec))extra.push(rec);
-   for(const txt of extra)h+='<div class="more">'+esc(clip(txt,220))+'</div>';
+   /* Nothing is appended under the answer any more. First the standing headings
+      went; now the lines themselves. David's words: he does not need
+      "הזדמנות:" / "סיכון:" / "לאשר:" on every reply — that belongs in פרטים,
+      and in the conversation she should just talk to him. The kernel is told to
+      put its whole conclusion in the answer, so a second line underneath was
+      either a repetition of it or a report stapled to it. Everything is still
+      one click away, and none of it is lost: detailsHtml() renders the same
+      fields under פרטים. */
   }
   if(r)h+='<div class="deep" id="deep_'+i+'" style="display:none">'+detailsHtml(r)+'</div>';
   h+='</div>';
@@ -300,8 +315,13 @@ function renderThread(){
 function detailsHtml(r){
  const list=(t,a)=>a&&a.length?'<p class="dim" style="margin-top:8px"><b>'+t+'</b></p><ul>'+
    a.map(x=>'<li class="dim">'+esc(heb(String(x)))+'</li>').join('')+'</ul>':'';
+ /* The recommendation and the retractions moved here when the report lines came
+    out of the bubble — nothing was dropped, it just stopped being stapled to
+    every reply. */
  return (list('עובדות (מהמערכות)',r.facts)+list('ההערכות שלי',r.inferences)
+   +list('מה שהייתי עושה',r.recommended_next_action?[r.recommended_next_action]:null)
    +list('סיכונים והזדמנויות',r.risks_opportunities)+list('מה חסר לי',r.missing_information)
+   +list('משכתי בחזרה',r.retracted_claims)
    +list('מה שמעתי',r.__heard?[r.__heard]:null)+list('מקורות',r.sources))
    ||'<p class="dim">אין פירוט נוסף.</p>';}
 function toggleDeep(i){const e=document.getElementById('deep_'+i);
@@ -917,7 +937,8 @@ async function doAsk(text){
      question David asked, and the catch below reported it as "could not reach
      the system". doAct's identical-looking line stays const: there res is only
      ever mutated (res.__plain=...), which const permits. */
-  let res=await ccApi({action:'kernel',body:text,history:historyForKernel()});
+  let res=await ccApi({action:'kernel',body:text,history:historyForKernel(),
+    retracted:retractedForKernel()});
   /* No model key configured → the kernel says so instead of guessing. The
      capabilities themselves need no model, so take the deterministic road
      rather than telling David "I can't". It upgrades itself the moment a
@@ -928,6 +949,7 @@ async function doAsk(text){
      indistinguishable from no secret at all. Names only; never a key value. */
   if(res.self_diagnosis)return askDirect(text,res.self_diagnosis.config_seen);
   res=unwrapPayload(res);          // before it reaches memory, screen or voice
+  rememberRetracted(res);          // a withdrawn claim does not come back next turn
   LAST={q:text,res:res};
   showAnswer(res);setMode('idle');
   speak(spokenAnswer(res),()=>listenFollowUp());
@@ -1137,7 +1159,9 @@ function explainLast(){
 async function doAct(text){
  const outward=OUTWARD_RE.test(text);
  try{
-  const res=await ccApi({action:'kernel',body:text,history:historyForKernel()});
+  const res=await ccApi({action:'kernel',body:text,history:historyForKernel(),
+    retracted:retractedForKernel()});
+  rememberRetracted(res);
   if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft
    await ccApi({action:'ask',kind:'change_request',body:text});
    const r2=said('רשמתי את הבקשה לאישור במסך. להכין ניסוח בעצמי אני צריכה GPT.',[],[],

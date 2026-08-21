@@ -90,13 +90,20 @@ ok('the voice unwraps', /function spokenAnswer\([^)]*\)\{\s*r=unwrapPayload\(r\)
 ok('the kernel result is declared reassignable, because it is reassigned',
   /let res=await ccApi\(\{action:'kernel'/.test(src));
 ok('conversation memory stores the unwrapped result',
-  /res=unwrapPayload\(res\);[\s\S]{0,140}LAST=\{q:text,res:res\}/.test(src));
+  /res=unwrapPayload\(res\);[\s\S]{0,300}LAST=\{q:text,res:res\}/.test(src));
 
 // David asked for the standing headings to go.
 ok('"מה שמעניין" is no longer stamped on answers', !src.includes("'מה שמעניין'"));
 ok('"אני ממליצה" is no longer stamped on answers', !src.includes("'אני ממליצה'"));
-ok('the extra line still exists when it adds something',
-  /for\(const txt of extra\)/.test(src));
+// David went further than the headings: he does not want "הזדמנות:" / "סיכון:" /
+// "לאשר:" appended to every reply at all. In conversation she should talk to
+// him; the split belongs under פרטים. So the extra lines are gone from the
+// bubble — and nothing is lost, which is what the next two asserts check.
+ok('nothing is appended under the answer any more', !/class="more"/.test(src));
+ok('the recommendation is still reachable, under פרטים',
+  /list\('מה שהייתי עושה',r\.recommended_next_action/.test(src));
+ok('a withdrawn claim is visible there too',
+  /list\('משכתי בחזרה',r\.retracted_claims\)/.test(src));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);

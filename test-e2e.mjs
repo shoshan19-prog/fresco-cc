@@ -183,6 +183,105 @@ const seen = (page) => page.evaluate(() => {
   ok('a note under review still sends when he confirms it', noteCalls === 1, `note calls: ${noteCalls}`);
 }
 
+/* ── the retraction that came back ──────────────────────────────────────────
+   David's regression, run as a conversation rather than described:
+     1. מה הדבר הכי חשוב שקורה היום בפרסקו?   → the server returns an unfounded
+                                                current-state claim
+     2. למה בחרת דווקא בזה?                    → LIA retracts it
+     3. יש משהו חשוב שלא שאלתי?                → it must NOT come back
+   PASS is: the retracted claim is carried to the server on turn 3, so it cannot
+   be restated as fact without new evidence. */
+{
+  const { page } = await session({ width: 1280, height: 900 }, 'retraction');
+  const sent = [];
+  let turn = 0;
+  await page.route('**/functions/v1/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    if (body.action !== 'kernel')
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"items":[]}' });
+    sent.push(body);
+    turn++;
+    const base = { facts: [], inferences: [], sources: [], risks_opportunities: [],
+                   missing_information: [], recommended_next_action: '', confidence: 'HIGH' };
+    let r;
+    if (turn === 1) {            // the kernel's gate fires: unfounded, and withdrawn
+      r = { ...base, answer: 'אני לא יכולה לבדוק מצב פרודקשן, פריסות או קוד — אין לי חיבור לזה.',
+            confidence: 'INSUFFICIENT_EVIDENCE',
+            retracted_claims: ['גרסת הייצור v34 שונה מהותית מהקוד שבמאגר, והקוד החי לא מקומט.'] };
+    } else if (turn === 2) {
+      r = { ...base, answer: 'לא בדקתי שום מידע מחובר לפני שקבעתי את זה.',
+            confidence: 'INSUFFICIENT_EVIDENCE' };
+    } else {
+      r = { ...base, answer: 'בדקתי את ההתחייבויות ואת ההחלטות. שתי החלטות מחכות לך.',
+            capabilities_used: ['open_commitments', 'next_decision'] };
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(r) });
+  });
+
+  await seen(page); await ask(page, 'מה הדבר הכי חשוב שקורה היום בפרסקו?');
+  ok('turn 1 carries no retractions yet', (sent[0].retracted || []).length === 0);
+  // innerText, not textContent: פרטים is display:none inside the bubble, and it
+  // SHOULD hold the withdrawn claim — David is entitled to see what she pulled
+  // back. What must never happen is it being read as an answer.
+  const shown = await page.$$eval('#thread .msg.lia', n => n[n.length - 1].innerText);
+  ok('the unfounded claim never reaches the screen as an answer',
+    !/שונה מהותית|לא מקומט/.test(shown || ''), `got: ${JSON.stringify(shown)}`);
+  // innerText still returns text for a display:none node, so ask the layout.
+  ok('...and פרטים is closed until he opens it',
+    await page.$$eval('#thread .deep', n => getComputedStyle(n[n.length - 1]).display === 'none'));
+
+  await seen(page); await ask(page, 'למה בחרת דווקא בזה?');
+  await seen(page); await ask(page, 'יש משהו חשוב שלא שאלתי?');
+  const last = sent[sent.length - 1];
+  ok('the withdrawn claim is carried to the server on the later turn',
+    (last.retracted || []).some((r) => /גרסת הייצור/.test(r)),
+    `retracted sent: ${JSON.stringify(last.retracted)}`);
+  ok('it is carried once, not once per turn',
+    (last.retracted || []).filter((r) => /גרסת הייצור/.test(r)).length === 1);
+  ok('the conversation itself is still sent alongside it', Array.isArray(last.history));
+  ok('it survives a reload, because it lives in the session',
+    await page.evaluate(() => (JSON.parse(localStorage.getItem('lia_s_' + localStorage.getItem('lia_session_cur')))
+      .retracted || []).length === 1));
+
+  // A new conversation is a clean slate — a retraction is scoped to its session.
+  await page.click('button[title="שיחה חדשה"]');
+  await page.waitForTimeout(200);
+  ok('a new conversation starts with nothing withdrawn',
+    await page.evaluate(() => (SESSION.retracted || []).length === 0));
+}
+
+/* ── she talks, she does not file ───────────────────────────────────────────
+   "הזדמנות:" / "סיכון:" / "לאשר:" under every reply is a form being filled in.
+   The answer is the conversation; the split lives under פרטים. */
+{
+  const { page } = await session({ width: 1280, height: 900 }, 'tone');
+  await page.route('**/functions/v1/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    if (body.action !== 'kernel')
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"items":[]}' });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      answer: 'מצאתי משהו מעניין: משאב שיקום היה קונה בערך כל עשרה ימים, ונעצר לפני שנה כמעט בבת אחת. '
+        + 'זה נראה לי יותר כמו שבירת קשר מאשר דעיכה טבעית. אם הייתי במקומך, הייתי מתקשר אליהם קודם.',
+      facts: ['31 הזמנות ב-2024'], inferences: ['הפסקה חדה, לא דעיכה'],
+      risks_opportunities: ['לקוח שחוזר שווה יותר מלקוח חדש'],
+      recommended_next_action: 'להתקשר למשאב שיקום השבוע',
+      sources: ['ORDERS'], missing_information: [], confidence: 'HIGH',
+      capabilities_used: ['priority_sales'] })});
+  });
+  await seen(page);
+  await ask(page, 'תסתכלי על הלקוחות ותמצאי לי משהו חריג שלא הייתי רואה לבד.');
+  const bubble = await page.$$eval('#thread .msg.lia', n => n[n.length - 1].innerText);
+  ok('the analysis reads as one person talking', /משאב שיקום/.test(bubble));
+  ok('nothing is stapled underneath it',
+    !/להתקשר למשאב שיקום השבוע|לקוח שחוזר שווה/.test(bubble), `got: ${JSON.stringify(bubble.slice(0, 220))}`);
+  await page.click('#thread .msg.lia .acts .det');       // פרטים
+  await page.waitForTimeout(120);
+  const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
+  ok('the recommendation is there when he asks for it', /להתקשר למשאב שיקום השבוע/.test(deep));
+  ok('so is the opportunity', /לקוח שחוזר שווה/.test(deep));
+  ok('and the evidence', /31 הזמנות/.test(deep));
+}
+
 // ── the same flow on a phone, which is where David actually uses it ─────────
 {
   const { page } = await session({ width: 390, height: 844 }, 'mobile');
