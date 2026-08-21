@@ -78,10 +78,13 @@ button#mic.on{background:#ff4d4f}
  <button class="ghost" id="privBtn" onclick="togglePrivacy()">מצב פרטיות: כבוי</button>
  <button class="ghost" onclick="getInstaller()">הורד את המתקין למחשב</button>
  <span class="dim" id="instStat"></span></div>
- <div class="row"><input id="mk" type="text" class="masked" placeholder="מפתח Anthropic (sk-ant-...)"
+ <p style="margin-top:14px"><b>חיבור GPT ל-LIA Fresco</b></p>
+ <p class="dim" id="gptStat" style="margin:4px 0 8px">GPT עדיין לא מחובר</p>
+ <div class="row" style="margin-top:0"><input id="mk" type="text" class="masked" placeholder="sk-proj-..."
+  aria-label="OpenAI API Key"
   autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" dir="ltr" style="max-width:280px">
  <button class="ghost" onclick="pasteKey()">📋 הדבק</button>
- <button class="ghost" onclick="setModelKey()">חבר מודל שפה</button></div>
+ <button class="ghost" onclick="setModelKey()">חבר GPT</button></div>
  <p class="dim" id="mkStat" style="margin-top:6px"></p>
  <pre id="audit" style="display:none"></pre>
 </div></div>
@@ -97,8 +100,14 @@ function boot(st){document.getElementById('login').style.display='none';document
  setMode('idle');render(st);
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}}
 let MODEL_ON=false;
-function subLine(){document.getElementById('sub').textContent=
- MODEL_ON?'הפנקס של דוד · מודל שפה מחובר':'הפנקס של דוד · בלי מודל שפה — עונה על נושאים מוגדרים';}
+/* One source of truth for connection wording, in David's terms: Fresco LIA runs
+   on GPT, so that is what the panel says. The provider adapter underneath still
+   supports Anthropic as an internal fallback — it just isn't David's vocabulary. */
+function subLine(){
+ document.getElementById('sub').textContent=
+  MODEL_ON?'הפנקס של דוד · GPT מחובר':'הפנקס של דוד · בלי GPT — עונה על נושאים מוגדרים';
+ const g=document.getElementById('gptStat');
+ if(g)g.textContent=MODEL_ON?'GPT מחובר ל-LIA Fresco':'GPT עדיין לא מחובר';}
 async function load(){try{render(await api({action:'state'}));}catch(e){}}
 
 /* ── the three states of the capture card ────────────────────────────────
@@ -193,7 +202,7 @@ function render(st){
 function showDetails(id){const e=document.getElementById('d_'+id);e.style.display=e.style.display==='none'?'block':'none';}
 /* SECURITY: the key is never stored — not in the DB, not in localStorage, not
    here. This only VERIFIES it live so David knows it works, then points him at
-   the one legitimate home: the MODEL_API_KEY Edge Function Secret. The field is
+   the one legitimate home: the OPENAI_API_KEY Edge Function Secret. The field is
    wiped on every path, and the status flips to connected only when the state
    endpoint sees the secret actually installed server-side. */
 /* Mobile keyboards often refuse to paste into a password field, so the key
@@ -203,18 +212,19 @@ function showDetails(id){const e=document.getElementById('d_'+id);e.style.displa
 async function pasteKey(){
  const el=document.getElementById('mk'),st=document.getElementById('mkStat');
  try{const t=(await navigator.clipboard.readText()||'').trim();
-  if(t){el.value=t;st.textContent='הודבק ✓ — עכשיו לחץ "חבר מודל שפה"';}
-  else st.textContent='הלוח ריק — העתק קודם את המפתח מהמייל או מהאתר של Anthropic';
+  if(t){el.value=t;st.textContent='הודבק ✓ — עכשיו לחץ "חבר GPT"';}
+  else st.textContent='הלוח ריק — העתק קודם את המפתח מ-platform.openai.com';
  }catch(e){st.textContent='הדפדפן חסם קריאה מהלוח — החזק אצבע בתוך השדה ובחר "הדבק"';}}
 async function setModelKey(){
  const el=document.getElementById('mk'),st=document.getElementById('mkStat');
  const k=el.value.trim();if(!k)return;
- st.textContent='מאמת מול Anthropic…';
+ st.textContent='מאמת מול OpenAI…';
  try{const r=await api({action:'verify_model_key',key:k});
   el.value='';
   if(r&&r.ok){st.innerHTML='המפתח תקין ✓ ('+esc(r.model||'')+'). אני לא שומרת מפתחות — שמור אותו במקום המאובטח: '
    +'<a href="https://supabase.com/dashboard/project/bkgukulvjfvkubvuvwwz/functions/secrets" target="_blank" rel="noopener" style="color:var(--acc)">Supabase → Edge Functions → Secrets</a>'
-   +' → Add secret → שם: MODEL_API_KEY, ערך: המפתח. תוך דקה הכותרת כאן תתעדכן ל"מודל שפה מחובר".';}
+   +' → Add secret → שם: <b>OPENAI_API_KEY</b> (בדיוק כך), ערך: המפתח. '
+   +'תוך דקה השורה כאן תתעדכן ל"GPT מחובר ל-LIA Fresco".';}
   else st.textContent=(r&&r.message)||'נכשל';
  }catch(e){el.value='';st.textContent='נכשל (רשת)';}}
 function toggleAdvanced(){document.getElementById('privBtn').textContent=
@@ -588,7 +598,7 @@ async function askDirect(text,configSeen){
  let res;
  try{res=hit?await hit.run(text):said(
    'לא זיהיתי את השאלה. '+CAN_DO,[],[],
-   ['מפתח מודל שפה — בלעדיו אני מבינה רק את הנושאים שמניתי, לא שאלה חופשית']);}
+   ['חיבור GPT — בלעדיו אני מבינה רק את הנושאים שמניתי, לא שאלה חופשית']);}
  catch(e){res=said('לא הצלחתי להביא את הנתונים ('+e.message+').',[],[],['חיבור']);}
  if(configSeen){
   const n=configSeen.model_config_names_visible||[];
@@ -693,9 +703,9 @@ async function capCustomer(text){
    .concat(mo.slice(0,4).map(x=>'מייל: '+(x.subject||''))),[s.source,m.source]);}
 async function capMail(text){
  const m=text.match(/(?:על|בנושא|לגבי|מ)\s+([֐-׿A-Za-z][֐-׿A-Za-z\-']{2,})/);
- if(!m)return said('בלי מודל שפה אני לא יכולה להכריע מה דורש תגובה — לזה צריך קריאה של תוכן ההודעות. '
+ if(!m)return said('בלי GPT אני לא יכולה להכריע מה דורש תגובה — לזה צריך קריאה של תוכן ההודעות. '
    +'אני כן יכולה לחפש נושא: אמור "תבדקי מייל על ..." ואביא את ההתכתבויות.',[],[],
-   ['מפתח מודל שפה','הרשאות Graph לקריאת גוף הודעה']);
+   ['חיבור GPT','הרשאות Graph לקריאת גוף הודעה']);
  const r=await cap('mail_search',{query:m[1]});
  const rows=r.rows||[];
  const a=rows.length?'מצאתי '+rows.length+' הודעות על '+m[1]+'. האחרונה מ'+(rows[0].from||'')+' ב-'
@@ -749,8 +759,8 @@ async function doAct(text){
   const res=await ccApi({action:'kernel',body:text,history:HISTORY});
   if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft
    await ccApi({action:'ask',kind:'change_request',body:text});
-   const r2=said('רשמתי את הבקשה לאישור במסך. להכין ניסוח בעצמי אני צריכה מודל שפה.',[],[],
-     ['מפתח מודל שפה']);
+   const r2=said('רשמתי את הבקשה לאישור במסך. להכין ניסוח בעצמי אני צריכה GPT.',[],[],
+     ['חיבור GPT']);
    LAST={q:text,res:r2};pushHistory(text,r2.answer);showAnswer(r2,'נרשם לאישור:');setMode('idle');
    speak(r2.answer,()=>listenFollowUp());return;}
   LAST={q:text,res:res};pushHistory(text,res.answer);
