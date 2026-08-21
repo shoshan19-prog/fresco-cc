@@ -517,21 +517,44 @@ function interestingOf(r){return heb((r.risks_opportunities||[])[0]||(r.inferenc
 /* voice is SHORTER than screen: two sentences, then an offer — not a lecture */
 function spokenAnswer(r){
  if(r.self_diagnosis)return 'אני לא יכולה לענות על זה עדיין. '+heb((r.missing_information||[]).join(' '));
+ /* Voice is shorter than the screen: the opening two sentences carry the
+    conclusion, because the kernel is told to lead with it. */
  let out=heb(sentences(r.answer,2));
- if(r.confidence==='INSUFFICIENT_EVIDENCE')out='אין לי מספיק מידע מלא. '+out;
  if(r.confidence==='ACTION_REQUIRES_APPROVAL')return out+' זה דורש את האישור שלך.';
- const more=interestingOf(r)||heb(r.recommended_next_action||'');
- if(more)out+=' יש נקודה שכדאי לבדוק. רוצה שאפרט?';
+ /* Offer to elaborate only when something real is actually left unsaid — the old
+    version tacked the offer onto every answer, which made her sound scripted. */
+ const more=[interestingOf(r),heb(r.recommended_next_action||'')]
+   .find(x=>x&&!alreadySaid(r.answer,x));
+ if(more)out+=' רוצה שאפרט?';
  return out;}
+/* Does the answer already carry this point? The kernel is told to put its whole
+   conclusion in `answer`, so a recommendation or observation that merely restates
+   it must not be printed underneath as if it were a second thought. */
+function alreadySaid(answer,x){
+ const norm=s=>String(s||'').replace(/[^\p{L}\p{N} ]/gu,' ').replace(/\s+/g,' ').trim().toLowerCase();
+ const a=norm(answer),b=norm(x);
+ if(!b)return true;
+ if(a.includes(b))return true;
+ const w=b.split(' ').filter(t=>t.length>2);
+ if(!w.length)return true;
+ return w.filter(t=>a.includes(t)).length/w.length>=0.7;}
 function showAnswer(r,title){
  document.getElementById('answerTitle').textContent=title||'ליה';
  const box=document.getElementById('answerText');
  if(r.__plain){box.innerHTML='<p class="ansMain">'+esc(heb(r.__plain))+'</p>';}
  else{
-  let h='<p class="ansMain">'+esc(heb(sentences(r.answer,3)))+'</p>';
-  const intr=interestingOf(r),rec=heb(r.recommended_next_action||'');
-  if(intr)h+='<p class="ansSec"><b>מה שמעניין:</b> '+esc(clip(intr,180))+'</p>';
-  if(rec)h+='<p class="ansSec"><b>אני ממליצה:</b> '+esc(clip(rec,180))+'</p>';
+  /* The whole answer, not a three-sentence slice — the kernel controls length now,
+     and truncating mid-thought was cutting conclusions off. */
+  let h='<p class="ansMain">'+esc(heb(r.answer||''))+'</p>';
+  const extra=[];
+  const intr=interestingOf(r);
+  if(intr&&!alreadySaid(r.answer,intr))extra.push(['מה שמעניין',intr]);
+  const rec=heb(r.recommended_next_action||'');
+  if(rec&&!alreadySaid(r.answer,rec))extra.push(['אני ממליצה',rec]);
+  /* One additional point is part of the conversation and reads better unlabelled;
+     two means there is real analysis to separate, and headings earn their place. */
+  for(const [label,txt] of extra)
+   h+='<p class="ansSec">'+(extra.length>1?'<b>'+label+':</b> ':'')+esc(clip(txt,220))+'</p>';
   box.innerHTML=h;}
  const D=document.getElementById('answerDetails');let h='';
  const list=(t,a)=>a&&a.length?'<p class="dim" style="margin-top:8px"><b>'+t+'</b></p><ul>'+
