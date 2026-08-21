@@ -129,8 +129,58 @@ button#mic.on{background:#ff4d4f}
 <script>
 const API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/lia?api=1';
 let CODE=localStorage.getItem('lia_code')||'';
-async function api(b){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:JSON.stringify(b)});if(r.status===401){localStorage.removeItem('lia_code');location.reload();}return r.json();}
-async function login(){CODE=document.getElementById('code').value.trim();const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:'{"action":"state"}'});if(r.ok){localStorage.setItem('lia_code',CODE);boot(await r.json());}else alert('קוד שגוי');}
+/* One network layer for both functions.
+
+   The edge gateway returns the occasional 502 — three in the last 24h out of
+   1,518 requests. Two things then went wrong. api() never checked r.ok, so it
+   tried to JSON.parse an HTML error page and threw a raw SyntaxError. And
+   login() treated any non-ok response as a bad password, which is how a
+   momentary gateway hiccup told David his code was wrong and locked him out of
+   his own assistant.
+
+   So: retry a transient 5xx once, never parse a body that is not JSON, and keep
+   "wrong code" (401) strictly separate from "server had a moment" (5xx). */
+const TRANSIENT=[502,503,504,522,524];
+async function post(url,body,tries){
+ tries=tries||2;
+ let last=null;
+ for(let i=0;i<tries;i++){
+  let r;
+  try{
+   r=await fetch(url,{method:'POST',
+    headers:{'Content-Type':'application/json','x-fresco-code':CODE},
+    body:typeof body==='string'?body:JSON.stringify(body)});
+  }catch(e){ last={net:e}; await wait(600); continue; }        // dropped connection
+  if(r.status===401)return {status:401,r:r};
+  if(TRANSIENT.indexOf(r.status)>=0&&i<tries-1){ last={status:r.status}; await wait(600); continue; }
+  return {status:r.status,r:r};
+ }
+ return {status:last&&last.status||0,r:null,net:last&&last.net};
+}
+function wait(ms){return new Promise(function(res){setTimeout(res,ms);});}
+/* A body is only JSON if the server said so. A 502 page is not. */
+async function asJson(r){
+ if(!r)return null;
+ const ct=(r.headers&&r.headers.get('content-type'))||'';
+ if(ct.indexOf('json')<0)return null;
+ try{return await r.json();}catch(e){return null;}
+}
+async function api(b){
+ const {status,r}=await post(API,b);
+ if(status===401){localStorage.removeItem('lia_code');location.reload();return null;}
+ const j=await asJson(r);
+ if(j===null)throw new Error('server '+(status||'unreachable'));
+ return j;}
+async function login(){
+ CODE=document.getElementById('code').value.trim();
+ const {status,r}=await post(API,'{"action":"state"}');
+ const j=status===200?await asJson(r):null;
+ if(j){localStorage.setItem('lia_code',CODE);boot(j);return;}
+ /* Only a 401 means the code is wrong. Anything else is the server, and saying
+    "קוד שגוי" for it sends David hunting for a password that was never the
+    problem. */
+ alert(status===401?'קוד שגוי'
+   :'לא הצלחתי להגיע לשרת כרגע ('+(status||'אין חיבור')+'). הקוד כנראה בסדר — נסה שוב בעוד רגע.');}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
@@ -654,10 +704,12 @@ function askCorrection(){
                that leaves the building is prepared and left for visual approval.
 */
 const CC='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
-async function ccApi(b){const r=await fetch(CC,{method:'POST',
- headers:{'Content-Type':'application/json','x-fresco-code':CODE},body:JSON.stringify(b)});
- if(r.status===401){localStorage.removeItem('lia_code');location.reload();throw new Error('401');}
- if(!r.ok)throw new Error((await r.text()).slice(0,120));return r.json();}
+async function ccApi(b){
+ const {status,r}=await post(CC,b);
+ if(status===401){localStorage.removeItem('lia_code');location.reload();throw new Error('401');}
+ const j=await asJson(r);
+ if(j===null)throw new Error('server '+(status||'unreachable'));
+ return j;}
 
 const ACT_RE=/(?:^|\s)(?:תכיני|תכין|תעני|תענה|תשלחי|תשלח|תעדכני|תעדכן|תוסיפי|תמחקי|תזמיני|תפרסמי|תשלמי)(?:\s|$)/;
 const OUTWARD_RE=/(?:^|\s)(?:תשלחי|תשלח|תפרסמי|תשלמי|תזמיני)(?:\s|$)/;
