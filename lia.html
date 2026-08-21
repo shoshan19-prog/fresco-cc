@@ -292,17 +292,37 @@ function startSR(){
  let finals='';const conf=[];
  /* Rebuild the text from the WHOLE result list on every event. Accumulating
     instead (finals += …) duplicated every word: Chrome re-reports results that
-    are already final, and resultIndex cannot be trusted to move past them. */
- r.onresult=e=>{let fin='',interim='';conf.length=0;
+    are already final, and resultIndex cannot be trusted to move past them.
+    The SAME rule applies to the interim guess: some Android builds report
+    several non-final entries for the SAME evolving utterance rather than one
+    replacing the last, so summing them (interim += …) produced the repeated,
+    garbled live text David saw on mobile. Only the LAST non-final entry is the
+    current guess — take it, never add it to the ones before it. */
+ r.onresult=e=>{let fin='',interimLast='';conf.length=0;
   for(let i=0;i<e.results.length;i++){const res=e.results[i];
    if(res.isFinal){fin+=res[0].transcript;if(res[0].confidence>0)conf.push(res[0].confidence);}
-   else interim+=res[0].transcript;}
+   else interimLast=res[0].transcript;}
   finals=fin;
-  document.getElementById('note').value=(BASE?BASE+'\n':'')+(fin+interim).trim();};
+  document.getElementById('note').value=(BASE?BASE+'\n':'')+(fin+interimLast).trim();};
  r.onerror=e=>{const k=e.error;SR=null;uiStop();
   if((k==='language-not-supported'||k==='service-not-allowed'||k==='network')&&SERVER_VOICE&&recorderSupported()){startRecorder();return;}
   if(k==='no-speech'){setMode('failed');return;}
-  stat(k==='not-allowed'?'אין הרשאת מיקרופון — אשר בהגדרות הדפדפן':'ההקלטה נכשלה ('+k+')');};
+  if(k==='not-allowed'){stat('אין הרשאת מיקרופון — אשר בהגדרות הדפדפן');return;}
+  /* Any other error (e.g. 'aborted', which Android's speech service can raise
+     mid-recognition): never leave the live interim guess sitting in the box —
+     it was never confirmed. Keep ONLY what actually finished recognizing; if
+     nothing did, clear back to BASE so "דבר שוב" starts from a clean slate. */
+  const ta=document.getElementById('note');
+  if(finals.trim()){
+   ta.value=(BASE?BASE+'\n':'')+finals.trim();
+   const c=conf.length?conf.reduce((x,y)=>x+y,0)/conf.length:null;
+   VOICE={model:'browser_speech',language:'he-IL',duration_s:Math.round((Date.now()-T0)/1000),low_confidence:true};
+   stat('⚠ ההקלטה נעצרה באמצע ('+k+') — בדוק שהטקסט נכון');
+   afterTranscript();
+  }else{
+   ta.value=BASE;
+   setMode('failed');
+  }};
  r.onend=()=>{if(!SR)return;SR=null;uiStop();
   const secs=Math.round((Date.now()-T0)/1000);
   if(!finals.trim()){setMode('failed');return;}
