@@ -542,7 +542,11 @@ async function doAsk(text){
      capabilities themselves need no model, so take the deterministic road
      rather than telling David "I can't". It upgrades itself the moment a
      model key exists — nothing here needs to be undone. */
-  if(res.self_diagnosis)return askDirect(text);
+  /* No key on the server. Take the deterministic road as before, but carry the
+     server's own config report into the answer so "פרטים" says WHICH config name
+     the function can actually see — a typo'd secret name is otherwise
+     indistinguishable from no secret at all. Names only; never a key value. */
+  if(res.self_diagnosis)return askDirect(text,res.self_diagnosis.config_seen);
   LAST={q:text,res:res};pushHistory(text,res.answer);
   showAnswer(res);setMode('idle');
   speak(spokenAnswer(res),()=>listenFollowUp());
@@ -579,13 +583,20 @@ const DIRECT=[
 ];
 const CAN_DO='אני יכולה לענות על: מכירות היום או החודש · מה מחכה להחלטה · ההתחייבויות הפתוחות שלך · '
  +'מה קורה עם לקוח · פרויקט · מוצר או מפרט · חיפוש במייל · ופוקוס.';
-async function askDirect(text){
+async function askDirect(text,configSeen){
  const hit=DIRECT.find(d=>d.re.test(text));
  let res;
  try{res=hit?await hit.run(text):said(
    'לא זיהיתי את השאלה. '+CAN_DO,[],[],
    ['מפתח מודל שפה — בלעדיו אני מבינה רק את הנושאים שמניתי, לא שאלה חופשית']);}
  catch(e){res=said('לא הצלחתי להביא את הנתונים ('+e.message+').',[],[],['חיבור']);}
+ if(configSeen){
+  const n=configSeen.model_config_names_visible||[];
+  res.missing_information=(res.missing_information||[]).concat([
+   'מה השרת רואה בפועל: '+(n.length?n.join(', '):'אף שם הגדרה של מודל'),
+   'OPENAI_API_KEY: '+(configSeen.OPENAI_API_KEY?'נראה ✓':'לא נראה ✗')
+    +' · MODEL_PROVIDER: '+(configSeen.MODEL_PROVIDER||'(unset)')]);
+ }
  LAST={q:text,res:res};pushHistory(text,res.answer);showAnswer(res);setMode('idle');
  speak(res.answer,()=>listenFollowUp());return res;}
 
