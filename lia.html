@@ -312,6 +312,7 @@ function toggleDeep(i){const e=document.getElementById('deep_'+i);
    review  a spoken note read back before it is sent
    failed  nothing was transcribed; speak again                            */
 let MODE='idle';
+let PENDING_NOTE='';   // the note awaiting "לשמור?", so nothing else is filed as one
 function setMode(m){
  MODE=m;
  const H=document.getElementById('capHint'),A=document.getElementById('capActions'),
@@ -337,7 +338,16 @@ function applyMicVisibility(){const b=document.getElementById('mic');if(b)b.styl
 function sendPrimary(){
  const ta=document.getElementById('note'),t=ta.value.trim();
  if(!t||MODE==='thinking')return;
- if(MODE==='review'){sendNote(t);return;}
+ /* While she is waiting for "לשמור?", the send button used to file WHATEVER was
+    in the box as a note — so a question typed at that moment, or a plain "כן",
+    became a note and came back "לא זיהיתי פריט עסקי חדש בפתק הזה". Only the
+    note actually under review, or a yes to it, may be filed. Anything else
+    means David moved on, and falls through to normal routing. */
+ if(MODE==='review'){
+  if(t===PENDING_NOTE){sendNote(t);return;}
+  if(PENDING_NOTE&&YES.indexOf(norm(t))>=0){ta.value=PENDING_NOTE;sendNote(PENDING_NOTE);return;}
+  PENDING_NOTE='';
+ }
  const intent=classify(t,SESSION.turns.length>0);
  if(intent==='ASK'||intent==='DO'){
   addTurn('me',t);ta.value='';ta.rows=1;VOICE={};setMode('thinking');
@@ -672,6 +682,7 @@ function listenOnce(ms,label,onText){
 function reflect(){
  const t=document.getElementById('note').value.trim();
  if(!t){setMode('failed');return;}
+ PENDING_NOTE=t;                 // the exact text under review, so a later sentence is not mistaken for it
  setMode('review');
  /* The kernel is told never to repeat his question back to him, and then the
     panel read 180 characters of his own words aloud. Confirm that it was heard
@@ -730,14 +741,39 @@ const FOCUS_RE=/(?:^|\s)(?:פוקוס|להתמקד|לתעדף)(?:[\s.,!?]|$)|מ�
    Routing hint only; the ranking and the honesty about what she cannot do are
    the kernel's, not the panel's. */
 const SELF_RE=/(?:^|\s)(?:תשפרי|תשתפרי|תלמדי)(?:\s|$)|את עצמך|איפה את חלשה|מה קשה לך|מה לא עובד/;
+/* Asking her what she knows or understands is a question about the conversation,
+   not a note about the day. "את מכירה את הפרויקטים שאני עובד עליהם?" went to
+   REMEMBER on a cold start and came back "קלטתי, אבל לא זיהיתי פריט עסקי חדש". */
+const KNOW_RE=/(?:^|\s)(?:את|אתה)\s+(?:מכירה|מכיר|יודעת|יודע|מבינה|מבין|זוכרת|זוכר)(?:\s|$)|(?:^|\s)(?:מכירה|יודעת|מבינה)\s+את(?:\s|$)/;
+const EXPLAIN_RE=/(?:^|\s)(?:תסבירי|תסביר|הסבירי|תפרטי|תפרט|ספרי|תספרי|הרחיבי|תרחיבי)(?:[\s.,!?]|$)|מה ההבדל|מה זה אומר/;
+/* A correction or a change of subject is David steering the conversation. It is
+   never a new note — and while she is waiting for "לשמור?", it is the clearest
+   possible signal that he has moved on. */
+const CORRECT_RE=/לא לזה התכוונתי|לא התכוונתי|לא לזה|לא זה|עזבי|עזוב|נחזור ל|בוא נחזור|בעצם|רגע,/;
+/* The systems David builds himself. Dictation and typing produce all of these
+   spellings, and requiring the exact one would make her look like she does not
+   know her own name. Routing only — the kernel does the understanding. */
+const SYSPROJ_RE=/מטריאה|מטריה|מטריא|matriya|פרסקו\s*os|fresco\s*os/i;
+/* REMEMBER is now a road he has to ASK for. Everything below used to fall
+   through to it — "תסבירי", "לא לזה התכוונתי", the first sentence of any new
+   session — and each one came back as "לא זיהיתי פריט עסקי חדש בפתק הזה". */
+const SAVE_RE=/(?:^|\s)(?:תרשמי|תרשום|רשמי|תשמרי|תשמור|שמרי|תזכרי|תזכור)(?:[\s:,.\-–—]|$)|רשמי לי|קחי פתק|לפנקס/;
 function classify(t,hasOpenThread){
  const s=(t||'').trim();
- if(MEM_RE.test(s))return 'REMEMBER';          // a report of something that happened is a note
- if(ACT_RE.test(s))return 'DO';
- if(READ_RE.test(s)||Q_RE.test(s)||FOCUS_RE.test(s)||SELF_RE.test(s))return 'ASK';
- if(/[?？]\s*$/.test(s))return 'ASK';          // any question-shaped utterance, even without a keyword above
- if(hasOpenThread)return 'ASK';                // continuing an open conversation is a follow-up, not a fresh note
- return 'REMEMBER';                            // unknown, cold start → the safe road: reflect and confirm
+ /* A question stays a question even when it contains a past-tense verb:
+    "מה סיכמנו עם יוסי?" is him asking, and it used to be filed as a note. */
+ const asking=Q_RE.test(s)||READ_RE.test(s)||FOCUS_RE.test(s)||SELF_RE.test(s)
+   ||KNOW_RE.test(s)||EXPLAIN_RE.test(s)||CORRECT_RE.test(s)||SYSPROJ_RE.test(s)
+   ||/[?？]\s*$/.test(s);
+ if(SAVE_RE.test(s))return 'REMEMBER';         // he asked for it in so many words
+ if(ACT_RE.test(s))return 'DO';                // before the ASK signals: "תבדקי ותעני" is a DO
+ if(asking)return 'ASK';
+ if(MEM_RE.test(s))return 'REMEMBER';          // he is reporting something that happened
+ /* Default ASK, not REMEMBER. Contextual questions, corrections, explanations
+    and follow-ups are conversation; only dictation is a note. The cost is that
+    a note with no reporting verb ("פגישה עם מורן מחר") is answered rather than
+    filed — "תרשמי" puts it back on the note road. */
+ return 'ASK';
 }
 function afterTranscript(){
  if(SUBMITTED)return;SUBMITTED=true;   // debounce: one recording never becomes two turns
@@ -755,7 +791,10 @@ function afterTranscript(){
     needs to review and send it. */
  if(intent==='ASK'){document.getElementById('note').value='';VOICE={};setMode('thinking');doAsk(t);}
  else if(intent==='DO'){document.getElementById('note').value='';VOICE={};setMode('thinking');doAct(t);}
- else{setMode('review');if(voiceUX())reflect();}}
+ else{PENDING_NOTE=t;setMode('review');if(voiceUX())reflect();}}
+ // PENDING_NOTE is set on BOTH roads: reflect() runs only when there is a voice
+ // UX, and without it a typed note would sit in review with nothing recorded as
+ // pending — so pressing שלח would re-classify it instead of sending it.
 
 /* ── Hebrew-first presentation: David reads and hears Hebrew, always ─────
    The kernel is already instructed to answer in Hebrew; this layer guarantees

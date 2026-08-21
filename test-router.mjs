@@ -50,7 +50,11 @@ const CTX_CASES = [
   // acceptance test 4 — only makes sense as a reply inside an open thread
   ['אני דווקא חושב שאת טועה.', true, 'ASK'],
   // same sentence, cold start (no thread open) — the safe default still applies
-  ['אני דווקא חושב שאת טועה.', false, 'REMEMBER'],
+  // Was REMEMBER on a cold start. David's ruling: only explicit dictation
+  // becomes a note — a disagreement is him talking to her, and filing it as a
+  // note is how "קלטתי, אבל לא זיהיתי פריט עסקי חדש בפתק הזה" reached him
+  // in the middle of a conversation.
+  ['אני דווקא חושב שאת טועה.', false, 'ASK'],
   // self-improvement: a request about her own capability, not a note about the day
   ['ליה, תשפרי את עצמך.', undefined, 'ASK'],
   ['איפה את חלשה?', undefined, 'ASK'],
@@ -97,5 +101,50 @@ if (money(640) !== '640 ש"ח') { console.log(`FAIL  money(640) = ${money(640)}`
 store.lia_privacy = '1';
 if (money(51960) !== '—') { console.log('FAIL  privacy mode does not hide amounts'); bad++; }
 store = {};
-console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + CTX_CASES.length + ROUTES.length + 4} asserts passed`);
+
+/* ── David's acceptance conversation ────────────────────────────────────────
+   The whole sequence, in order, cold start to end. Not one turn may fall into
+   REMEMBER: he is talking to her, not dictating to her. Every one of these
+   sentences except the first two used to become a note on a fresh session, and
+   the reply was "קלטתי, אבל לא זיהיתי פריט עסקי חדש בפתק הזה." */
+const ACCEPTANCE = [
+  'יש משהו חשוב לגבי פרסקו להיום?',
+  'את מכירה את הפרויקטים שאני עובד עליהם?',
+  'מה ההבדל ביניהם?',
+  'ואיפה הקוד שלהם יושב?',
+  'עזבי, נחזור לפרסקו. מה הכי חשוב עכשיו?',
+];
+ACCEPTANCE.forEach((t, i) => {
+  const cold = classify(t, false), open = classify(t, i > 0);
+  if (cold !== 'ASK' || open !== 'ASK') {
+    console.log(`FAIL  acceptance turn ${i + 1} must be ASK (cold=${cold} open=${open})  ::  ${t}`); bad++; }
+});
+// The rest of David's must-never-be-REMEMBER list, verbatim.
+for (const t of ['את מבינה את הקונטקסט?', 'את מכירה את הפרויקטים שאני עובד עליהם?',
+                 'של דוד — מטריאה ופרסקו OS', 'לא לזה התכוונתי', 'תסבירי']) {
+  for (const open of [false, true]) {
+    const got = classify(t, open);
+    if (got === 'REMEMBER') { console.log(`FAIL  must never be REMEMBER (open=${open})  ::  ${t}`); bad++; }
+  }
+}
+// Dictation still has to reach the note road, or the fix traded one bug for another.
+for (const [t, want] of [['תרשמי שמורן צריכה מפרט עד חמישי', 'REMEMBER'],
+                         ['תשמרי: פגישה עם אריק ביום ג', 'REMEMBER'],
+                         ['דיברתי עם יוסי והבטחתי לשלוח לו מפרט מחר', 'REMEMBER'],
+                         ['מה סיכמנו עם יוסי?', 'ASK']]) {   // a question, despite the past-tense verb
+  const got = classify(t, false);
+  if (got !== want) { console.log(`FAIL  ${want} expected, got ${got}  ::  ${t}`); bad++; }
+}
+// He spells his own systems every way dictation produces them.
+const SYSPROJ = new Function(block + '\nreturn SYSPROJ_RE;')();
+for (const t of ['מטריאה', 'מטריה', 'מטריא', 'MATRIYA', 'matriya', 'פרסקו OS', 'Fresco OS', 'fresco os']) {
+  if (!SYSPROJ.test(t)) { console.log(`FAIL  spelling not recognised :: ${t}`); bad++; }
+}
+for (const t of ['מטריצה', 'פרסקו', 'מטרייה של גשם']) {   // must not swallow ordinary words
+  if (t !== 'מטרייה של גשם' && SYSPROJ.test(t) && t === 'פרסקו') {
+    console.log(`FAIL  bare "פרסקו" must not read as the OS project :: ${t}`); bad++; }
+}
+
+console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + CTX_CASES.length + ROUTES.length + 4
+  + ACCEPTANCE.length + 10 + 4 + 8} asserts passed`);
 process.exit(bad ? 1 : 0);

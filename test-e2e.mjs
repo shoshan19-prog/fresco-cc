@@ -20,7 +20,7 @@ const ok = (label, cond, extra) => { total++; if (!cond) { console.log(`FAIL  ${
 const browser = await chromium.launch();
 const errors = [];
 
-async function session(viewport, tag) {
+async function session(viewport, tag, initScript) {
   const ctx = await browser.newContext({ viewport, locale: 'he-IL' });
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push(`${tag} pageerror: ${e.message}`));
@@ -47,6 +47,7 @@ async function session(viewport, tag) {
     localStorage.setItem('lia_code', 'test-code');
     delete window.speechSynthesis;
   });
+  if (initScript) await page.addInitScript(initScript);
   await page.goto(PAGE);
   await page.waitForSelector('#app', { state: 'visible', timeout: 5000 });
   return { page, ctx };
@@ -113,6 +114,75 @@ const seen = (page) => page.evaluate(() => {
   ok('   and memory holds the sentence, not the payload',
     mem === 'שתי הזמנות של מרינה יצאו הבוקר.', `got: ${JSON.stringify(mem)}`);
 }
+/* ── the false-REMEMBER trap ────────────────────────────────────────────────
+   Mid-conversation David got "קלטתי, אבל לא זיהיתי פריט עסקי חדש בפתק הזה."
+   Two separate roads led there and both are exercised here: a cold-start
+   sentence that was not question-shaped, and — the one that actually bit —
+   anything typed while she was waiting for "לשמור?", which the send button
+   filed as a note without ever consulting the classifier. */
+{
+  /* Review is a VOICE-road state: sendPrimary() is the typed road and
+     afterTranscript() is the spoken one, and only the second puts her into
+     "רשמתי. לשמור?". So this session gets a speech engine — otherwise the trap
+     David fell into is unreachable and the test would prove nothing. */
+  const { page } = await session({ width: 1280, height: 900 }, 'remember-trap', () => {
+    class FakeSR {
+      start() {} stop() { if (this.onend) this.onend(); }
+    }
+    window.SpeechRecognition = FakeSR;
+    window.speechSynthesis = {
+      cancel() {}, getVoices() { return [{ name: 'Carmit', lang: 'he-IL' }]; },
+      speak(u) { setTimeout(() => u.onend && u.onend(), 0); },
+    };
+    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+  });
+  let noteCalls = 0;
+  await page.route('**/functions/v1/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    if (body.action === 'note') noteCalls++;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(
+      body.action === 'kernel'
+        ? { answer: 'שני פרויקטים: Fresco OS ו-MATRIYA.', facts: [], inferences: [], sources: [],
+            risks_opportunities: [], missing_information: [], recommended_next_action: '', confidence: 'HIGH' }
+        : { ok: true, items: [], objects: [] }) });
+  });
+
+  // The very first thing said in a fresh session, not question-shaped.
+  await seen(page);
+  await ask(page, 'של דוד — מטריאה ופרסקו OS');
+  ok('a cold-start sentence is answered, not filed as a note', noteCalls === 0, `note calls: ${noteCalls}`);
+  const b1 = await page.textContent('#thread .msg.lia .bubble');
+  ok('   and it never says it caught nothing',
+    !/לא זיהיתי פריט עסקי חדש/.test(b1 || ''), `got: ${JSON.stringify(b1)}`);
+
+  // Now put her into review the way the voice road does, with a real dictated
+  // note, and then change the subject on her.
+  await page.fill('#note', 'דיברתי עם יוסי והבטחתי לשלוח לו מפרט מחר');
+  await page.evaluate(() => { SUBMITTED = false; afterTranscript(); });
+  await page.waitForTimeout(200);
+  ok('a dictated note does go to review, not to the kernel',
+    await page.evaluate(() => MODE === 'review'), `MODE: ${await page.evaluate(() => MODE)}`);
+  ok('   and nothing was filed yet — it is waiting for him', noteCalls === 0, `note calls: ${noteCalls}`);
+
+  const beforeQ = noteCalls;
+  await seen(page);
+  await ask(page, 'רגע, את מכירה את הפרויקטים שאני עובד עליהם?');
+  ok('a question asked while she waits for "לשמור?" is ANSWERED, not filed',
+    noteCalls === beforeQ, `note calls went ${beforeQ} → ${noteCalls}`);
+  const b2 = await page.$$eval('#thread .msg.lia .bubble', n => n[n.length - 1].textContent);
+  ok('   and the answer is about his projects', /MATRIYA/.test(b2), `got: ${JSON.stringify(b2)}`);
+  ok('   review mode was released', await page.evaluate(() => MODE !== 'review'));
+
+  // The note road still has to work, or the fix traded one bug for another.
+  await page.fill('#note', 'סיכמתי עם אריק על פגישה בשבוע הבא');
+  await page.evaluate(() => { SUBMITTED = false; afterTranscript(); });
+  await page.waitForTimeout(200);
+  ok('   a dictated note is held for review, not sent behind his back', noteCalls === 0);
+  await page.click('#sendBtn');                       // he confirms the note under review
+  await page.waitForTimeout(400);
+  ok('a note under review still sends when he confirms it', noteCalls === 1, `note calls: ${noteCalls}`);
+}
+
 // ── the same flow on a phone, which is where David actually uses it ─────────
 {
   const { page } = await session({ width: 390, height: 844 }, 'mobile');
