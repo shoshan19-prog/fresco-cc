@@ -788,14 +788,24 @@ function alreadySaid(answer,x){
    evidence and confidence that were trapped in that string, so פרטים works
    instead of showing nothing. Defensive on purpose: this belongs here whatever
    the server does, because the panel must never show David a payload. */
+const BROKEN_ANSWER='משהו השתבש בניסוח התשובה אצלי. שאל שוב ואטפל בזה כמו שצריך.';
 function unwrapPayload(r){
  if(!r||typeof r!=='object')return r;
  const a=r.answer;
  if(typeof a!=='string')return r;
- const t=a.trim();
- if(t[0]!=='{'||t[t.length-1]!=='}')return r;
- let inner;try{inner=JSON.parse(t);}catch(e){return r;}
- if(!inner||typeof inner!=='object'||typeof inner.answer!=='string')return r;
+ let t=a.trim();
+ const fence=t.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);   // some models fence it
+ if(fence)t=fence[1].trim();
+ if(t[0]!=='{'||t[t.length-1]!=='}')return r;                  // ordinary prose, even if it opens with a brace
+ let inner;
+ try{inner=JSON.parse(t);}catch(e){
+  /* JSON-shaped and broken. It is still a payload, so it still never reaches
+     the bubble or the speaker — David gets a sentence instead of a blob. */
+  return Object.assign({},r,{answer:BROKEN_ANSWER,confidence:'LOW',
+   missing_information:['הפלט המקורי נפסל: לא עמד בחוזה התשובה']});}
+ if(!inner||typeof inner!=='object'||typeof inner.answer!=='string'||!inner.answer.trim())
+  return Object.assign({},r,{answer:BROKEN_ANSWER,confidence:'LOW',
+   missing_information:['הפלט המקורי נפסל: לא עמד בחוזה התשובה']});
  return Object.assign({},r,inner);}
 function showAnswer(r,title){
  r=unwrapPayload(r);

@@ -11,7 +11,7 @@ function slice(from, to) {
   return src.slice(a, b);
 }
 const unwrapPayload = new Function(
-  slice('function unwrapPayload', '\nfunction showAnswer') + '\nreturn unwrapPayload;')();
+  slice('const BROKEN_ANSWER', '\nfunction showAnswer') + '\nreturn unwrapPayload;')();
 
 let bad = 0, total = 0;
 function eq(label, got, want) {
@@ -45,6 +45,25 @@ eq('confidence is recovered too', fixed.confidence, 'HIGH');
 ok('fields from the outer envelope are kept',
   Array.isArray(fixed.capabilities_used) && fixed.capabilities_used[0] === 'none');
 
+// Fenced output — some models wrap the payload in a code fence.
+{
+  const fenced = { answer: '```json\n' + JSON.stringify({ answer: 'מורן מחכה לתשובה.', facts: [] }) + '\n```' };
+  eq('a fenced payload is unwrapped', unwrapPayload(fenced).answer, 'מורן מחכה לתשובה.');
+  const bare = { answer: '```\n' + JSON.stringify({ answer: 'שתי הודעות מחכות.' }) + '\n```' };
+  eq('a bare fence is unwrapped too', unwrapPayload(bare).answer, 'שתי הודעות מחכות.');
+}
+
+// JSON-shaped but broken must still never reach the bubble or the speaker.
+{
+  const broken = unwrapPayload({ answer: '{"answer": broken}' });
+  ok('malformed JSON never renders raw', !/[{}]/.test(broken.answer));
+  ok('malformed JSON drops to low confidence', broken.confidence === 'LOW');
+  const wrong = unwrapPayload({ answer: '{"facts":[1,2]}' });
+  ok('valid JSON with no answer field never renders raw', !/[{}\[\]]/.test(wrong.answer));
+  const empty = unwrapPayload({ answer: '{"answer":"   "}' });
+  ok('an empty answer string never renders raw', !/[{}]/.test(empty.answer));
+}
+
 // It must not "fix" anything that was already correct.
 {
   const normal = { answer: 'מורן מחכה לתשובה כבר יומיים.', facts: ['x'], confidence: 'MEDIUM' };
@@ -54,10 +73,6 @@ ok('fields from the outer envelope are kept',
 // Hebrew prose that merely mentions braces, or looks JSON-ish but is not.
 eq('an answer that only starts with a brace is left alone',
   unwrapPayload({ answer: '{ זה לא JSON' }).answer, '{ זה לא JSON');
-eq('malformed JSON is left alone rather than throwing',
-  unwrapPayload({ answer: '{"answer": broken}' }).answer, '{"answer": broken}');
-eq('a JSON object with no answer field is not unwrapped',
-  unwrapPayload({ answer: '{"facts":[1,2]}' }).answer, '{"facts":[1,2]}');
 
 // Shape safety — this runs on whatever the network returned.
 ok('null does not throw', unwrapPayload(null) === null);
