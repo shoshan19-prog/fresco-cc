@@ -450,17 +450,23 @@ const OUTWARD_RE=/(?:^|\s)(?:תשלחי|תשלח|תפרסמי|תשלמי|תזמ�
 const READ_RE=/(?:^|\s)(?:תבדקי|תבדוק|תראי|תבררי|תסתכלי|תמצאי|תחפשי|תסכמי|תגידי|תספרי|תראה)(?:\s|$)/;
 const Q_RE=/(?:^|\s)(?:כמה|מה|מי|איפה|מתי|האם|למה|איזה|כמו)(?:\s|$)|מה קורה|מה חדש|מה מצב/;
 const MEM_RE=/(?:^|\s)(?:דיברתי|נפגשתי|שוחחתי|הבטחתי|סיכמנו|סיכמתי|החלטנו|החלטתי|הוחלט|אמרתי)(?:\s|$)|תזכירי לי/;
-function classify(t){
+/* FOCUS is its own recognizable request (section 8 of the context-engine spec) —
+   this is a routing hint, not a hard-coded answer: it only tells the router
+   "this is a question for the kernel", the kernel itself does the reasoning. */
+const FOCUS_RE=/(?:^|\s)(?:פוקוס|להתמקד|לתעדף)(?:[\s.,!?]|$)|מה הכי דחוף|מה הכי חשוב|במה להתמקד/;
+function classify(t,hasOpenThread){
  const s=(t||'').trim();
  if(MEM_RE.test(s))return 'REMEMBER';          // a report of something that happened is a note
  if(ACT_RE.test(s))return 'DO';
- if(READ_RE.test(s)||Q_RE.test(s))return 'ASK';
- return 'REMEMBER';                            // unknown → the safe road: reflect and confirm
+ if(READ_RE.test(s)||Q_RE.test(s)||FOCUS_RE.test(s))return 'ASK';
+ if(/[?？]\s*$/.test(s))return 'ASK';          // any question-shaped utterance, even without a keyword above
+ if(hasOpenThread)return 'ASK';                // continuing an open conversation is a follow-up, not a fresh note
+ return 'REMEMBER';                            // unknown, cold start → the safe road: reflect and confirm
 }
 function afterTranscript(){
  const t=document.getElementById('note').value.trim();
  if(!t){setMode('failed');return;}
- const intent=classify(t);
+ const intent=classify(t,HISTORY.length>0);
  /* ASK and DO are answered immediately and never go through sendNote() (the
     only place that used to clear the box), so the spoken question was left
     sitting in the note field after setMode('idle') restored it to view. The
@@ -488,6 +494,14 @@ function heb(x){x=String(x||'');for(const [re,he] of HE_TERMS)x=x.replace(re,he)
 function speakable(x){const latin=(x.match(/[A-Za-z]/g)||[]).length;
  return latin>x.length*0.4?'התשובה המלאה מוצגת על המסך.':x;}
 let LAST=null,LAST_SPOKEN='';                    // the conversation's context
+/* HISTORY is the SAME conversation session, just carried further: real prior
+   turns (not a hand-built entity summary), sent with every kernel call so the
+   model resolves pronouns ("הוא","השני","הפרויקט הזה") and continued subjects
+   itself — exactly like a person re-reading the last few messages would.
+   Bounded to the last 4 exchanges; a page reload is the natural reset. */
+let HISTORY=[];
+function pushHistory(q,a){HISTORY.push({q:String(q||''),a:String(a||'').slice(0,4000)});
+ if(HISTORY.length>4)HISTORY.shift();}
 function sentences(s,n){const p=(s||'').replace(/\s+/g,' ').split(/(?<=[.!?])\s+/);return p.slice(0,n).join(' ');}
 function interestingOf(r){return heb((r.risks_opportunities||[])[0]||(r.inferences||[])[0]||'');}
 /* voice is SHORTER than screen: two sentences, then an offer — not a lecture */
@@ -520,17 +534,16 @@ function showAnswer(r,title){
 function toggleAnswerDetails(){const e=document.getElementById('answerDetails');
  e.style.display=e.style.display==='none'?'block':'none';}
 
-async function doAsk(text,prefix){
+async function doAsk(text){
  speak('רגע, בודקת.');
  try{
-  const q=prefix?prefix+' '+text:text;
-  const res=await ccApi({action:'kernel',body:q});
+  const res=await ccApi({action:'kernel',body:text,history:HISTORY});
   /* No model key configured → the kernel says so instead of guessing. The
      capabilities themselves need no model, so take the deterministic road
      rather than telling David "I can't". It upgrades itself the moment a
      model key exists — nothing here needs to be undone. */
   if(res.self_diagnosis)return askDirect(text);
-  LAST={q:text,res:res};
+  LAST={q:text,res:res};pushHistory(text,res.answer);
   showAnswer(res);setMode('idle');
   speak(spokenAnswer(res),()=>listenFollowUp());
  }catch(e){setMode('idle');stat('לא הצלחתי להגיע למערכת ('+e.message+')');
@@ -573,7 +586,7 @@ async function askDirect(text){
    'לא זיהיתי את השאלה. '+CAN_DO,[],[],
    ['מפתח מודל שפה — בלעדיו אני מבינה רק את הנושאים שמניתי, לא שאלה חופשית']);}
  catch(e){res=said('לא הצלחתי להביא את הנתונים ('+e.message+').',[],[],['חיבור']);}
- LAST={q:text,res:res};showAnswer(res);setMode('idle');
+ LAST={q:text,res:res};pushHistory(text,res.answer);showAnswer(res);setMode('idle');
  speak(res.answer,()=>listenFollowUp());return res;}
 
 /* Open promises come from LIA's own notebook — the objects the Bridge extracted. */
@@ -703,8 +716,8 @@ function listenFollowUp(){
    return say(r.confidence==='ACTION_REQUIRES_APPROVAL'?'צריך את האישור שלך לפעולה שהצעתי.'
      :((r.missing_information||[]).join(' ')||'אין כרגע החלטה שדורשת אותך.'));
   if(/(תסבירי|במילים פשוטות|בעצם אומר|מה חשוב)/.test(a))return explainSimply();
-  // anything else is a new question, asked in the context of the last one
-  setMode('thinking');doAsk(t,'בהמשך לשאלה הקודמת ("'+LAST.q+'"):');});}
+  // anything else is a new question — HISTORY already carries the last exchange
+  setMode('thinking');doAsk(t);});}
 
 /* ── the explainer: model output translated before it reaches David ────── */
 function explainSimply(){
@@ -722,14 +735,14 @@ function explainSimply(){
 async function doAct(text){
  const outward=OUTWARD_RE.test(text);
  try{
-  const res=await ccApi({action:'kernel',body:text});
+  const res=await ccApi({action:'kernel',body:text,history:HISTORY});
   if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft
    await ccApi({action:'ask',kind:'change_request',body:text});
    const r2=said('רשמתי את הבקשה לאישור במסך. להכין ניסוח בעצמי אני צריכה מודל שפה.',[],[],
      ['מפתח מודל שפה']);
-   LAST={q:text,res:r2};showAnswer(r2,'נרשם לאישור:');setMode('idle');
+   LAST={q:text,res:r2};pushHistory(text,r2.answer);showAnswer(r2,'נרשם לאישור:');setMode('idle');
    speak(r2.answer,()=>listenFollowUp());return;}
-  LAST={q:text,res:res};
+  LAST={q:text,res:res};pushHistory(text,res.answer);
   let spoken=spokenAnswer(res);
   if(outward){
    spoken+=' זו פעולה שיוצאת החוצה — אני לא מבצעת אותה באישור קולי. רשמתי אותה לאישור במסך.';

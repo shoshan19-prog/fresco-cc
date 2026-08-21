@@ -40,6 +40,23 @@ for (const t of ['תכיני תשובה ל-Davide.', 'תעני לו שאנחנו
   if (OUTWARD.test(t)) { console.log(`FAIL  draft wrongly marked outward :: ${t}`); bad++; }
 }
 
+// New-build acceptance: focus/question-shaped/mid-conversation utterances must
+// reach ASK (the kernel), not silently fall to REMEMBER's reflect-and-confirm.
+const CTX_CASES = [
+  // acceptance test 5 — must work standalone, cold start, no keyword overlap with Q_RE
+  ['תעשי לי פוקוס.', undefined, 'ASK'],
+  // acceptance test 2 — question-shaped with none of the Q_RE keywords
+  ['יש משהו שאני מפספס?', undefined, 'ASK'],
+  // acceptance test 4 — only makes sense as a reply inside an open thread
+  ['אני דווקא חושב שאת טועה.', true, 'ASK'],
+  // same sentence, cold start (no thread open) — the safe default still applies
+  ['אני דווקא חושב שאת טועה.', false, 'REMEMBER'],
+];
+for (const [t, hasOpenThread, want] of CTX_CASES) {
+  const got = classify(t, hasOpenThread);
+  if (got !== want) { console.log(`FAIL  ${want} expected (hasOpenThread=${hasOpenThread}), got ${got}  ::  ${t}`); bad++; }
+}
+
 // The keyless road: with no model key the same sentences must still reach a real
 // capability, and the questions that genuinely need a model must say so.
 const dblock = src.slice(src.indexOf('const DIRECT='), src.indexOf('async function askDirect'));
@@ -75,5 +92,5 @@ if (money(640) !== '640 ש"ח') { console.log(`FAIL  money(640) = ${money(640)}`
 store.lia_privacy = '1';
 if (money(51960) !== '—') { console.log('FAIL  privacy mode does not hide amounts'); bad++; }
 store = {};
-console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + ROUTES.length + 4} asserts passed`);
+console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + CTX_CASES.length + ROUTES.length + 4} asserts passed`);
 process.exit(bad ? 1 : 0);
