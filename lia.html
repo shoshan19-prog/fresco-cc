@@ -70,7 +70,8 @@ button#mic.on{background:#ff4d4f}
 .masked{-webkit-text-security:disc}</style></head><body>
 
 <div id="login" class="card"><h1>LIA</h1><p class="dim">קוד הכניסה של מרכז הפיקוד</p>
-<div class="row"><input id="code" type="password" placeholder="קוד"><button onclick="login()">כניסה</button></div></div>
+<div class="row"><input id="code" type="password" placeholder="קוד"><button onclick="login()">כניסה</button></div>
+<p class="dim" id="loginStat" style="margin-top:8px"></p></div>
 
 <div id="app" style="display:none">
 <header id="topbar">
@@ -158,11 +159,13 @@ async function post(url,body,tries){
  return {status:last&&last.status||0,r:null,net:last&&last.net};
 }
 function wait(ms){return new Promise(function(res){setTimeout(res,ms);});}
-/* A body is only JSON if the server said so. A 502 page is not. */
+/* If it parses, it IS JSON. Do not gate the SUCCESS path on a content-type
+   header: whether that header is readable depends on the browser, the origin
+   and CORS exposure, and making a working login depend on it is a risk with no
+   upside. A 502 error page fails JSON.parse on its own, which is the only thing
+   the check was ever really for. */
 async function asJson(r){
  if(!r)return null;
- const ct=(r.headers&&r.headers.get('content-type'))||'';
- if(ct.indexOf('json')<0)return null;
  try{return await r.json();}catch(e){return null;}
 }
 async function api(b){
@@ -179,8 +182,10 @@ async function login(){
  /* Only a 401 means the code is wrong. Anything else is the server, and saying
     "קוד שגוי" for it sends David hunting for a password that was never the
     problem. */
- alert(status===401?'קוד שגוי'
-   :'לא הצלחתי להגיע לשרת כרגע ('+(status||'אין חיבור')+'). הקוד כנראה בסדר — נסה שוב בעוד רגע.');}
+ const msg=status===401?'קוד שגוי'
+   :'לא הצלחתי להגיע לשרת כרגע ('+(status||'אין חיבור')+'). הקוד כנראה בסדר — נסה שוב בעוד רגע.';
+ const el=document.getElementById('loginStat');
+ if(el)el.textContent=msg; else alert(msg);}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
@@ -1113,5 +1118,11 @@ async function doAct(text){
   if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendPrimary();}});})();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopRec('hidden');});
 window.addEventListener('pagehide',()=>stopRec('hidden'));
-if(CODE){api({action:'state'}).then(boot).catch(()=>{});}
+/* A silent catch here is how a boot failure becomes "LIA can't connect" with
+   nothing on screen to act on. Fall back to the login form and say what
+   happened; a stale/blank code is expected, anything else is worth seeing. */
+if(CODE){api({action:'state'}).then(boot).catch((e)=>{
+  const el=document.getElementById('loginStat');
+  if(el)el.textContent='לא הצלחתי להתחבר אוטומטית ('+(e&&e.message||'')+'). הזן קוד ונסה שוב.';
+});}
 </script></body></html>

@@ -58,19 +58,36 @@ function harness(sequence) {
 {
   const h = harness([{ status: 502, ct: 'text/html', body: '<html>Bad Gateway</html>' }]);
   const out = await h.post('u', {}, 1);
-  eq('a non-JSON body yields null rather than throwing a SyntaxError',
+  eq('an HTML error page yields null rather than throwing a SyntaxError',
     await h.asJson(out.r), null);
 }
 {
   const h = harness([{ status: 200, ct: 'application/json; charset=utf-8', body: '{"a":1}' }]);
   const out = await h.post('u', {});
-  eq('a declared JSON body parses', (await h.asJson(out.r)).a, 1);
+  eq('a JSON body parses', (await h.asJson(out.r)).a, 1);
+}
+// THE REGRESSION. A valid JSON body must parse even when the content-type header
+// is absent or unreadable — whether a browser exposes that header depends on the
+// origin and CORS, and gating a working login on it locked David out.
+{
+  const h = harness([{ status: 200, ct: '', body: '{"ok":true}' }]);
+  const out = await h.post('u', {});
+  const j = await h.asJson(out.r);
+  ok('JSON with NO content-type still parses', j && j.ok === true);
+}
+{
+  const h = harness([{ status: 200, ct: 'text/plain', body: '{"ok":true}' }]);
+  const out = await h.post('u', {});
+  const j = await h.asJson(out.r);
+  ok('JSON mislabelled as text/plain still parses', j && j.ok === true);
 }
 {
   const h = harness([{ status: 200, ct: 'application/json', body: 'not json at all' }]);
   const out = await h.post('u', {});
   eq('a body that claims JSON but is not does not throw', await h.asJson(out.r), null);
 }
+ok('the success path is not gated on a content-type header',
+  !/indexOf\('json'\)<0/.test(src));
 // --- a dropped connection is survivable ------------------------------------
 {
   const h = harness([{ throw: true }, { status: 200, body: '{"ok":true}' }]);
@@ -103,6 +120,12 @@ ok('api() never parses an undeclared body', /asJson\(r\)/.test(apiSrc));
 const ccSrc = src.slice(src.indexOf('async function ccApi('), src.indexOf('const ACT_RE'));
 ok('ccApi() goes through post()', /await post\(CC,/.test(ccSrc));
 ok('ccApi() still clears a stale code on 401', /localStorage\.removeItem\('lia_code'\)/.test(ccSrc));
+
+// A boot failure that says nothing is indistinguishable from "LIA is broken".
+ok('the page-load boot no longer swallows its error',
+  !/api\(\{action:'state'\}\)\.then\(boot\)\.catch\(\(\)=>\{\}\)/.test(src));
+ok('a boot failure reaches a visible element', /loginStat/.test(src));
+ok('the login status element exists in the markup', /id="loginStat"/.test(html));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);
