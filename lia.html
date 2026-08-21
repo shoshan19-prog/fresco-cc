@@ -318,7 +318,9 @@ function render(st){
  if(WAITING){
   const fresh=st.queue.filter(o=>!WAITING.before.includes(o.id));
   if(fresh.length){showCaught(fresh);WAITING=null;
-   if(voiceUX())speak('קלטתי: '+fresh.map(o=>TYPE_HE[o.object_type]||o.object_type).join(', ')+'.');}
+   /* It used to recite the internal object-type labels. He does not need the
+      taxonomy read out — he needs to know it landed. */
+   if(voiceUX())speak(fresh.length===1?'רשמתי.':'רשמתי '+fresh.length+' דברים.');}
   else if(Date.now()-WAITING.t>90000){showCaught([]);WAITING=null;}
   else if(!WAITING.said){WAITING.said=true;stat('LIA מעבדת… (ה-Bridge קולט תוך כמה שניות)');}
  }
@@ -566,12 +568,29 @@ const NO=['לא','לא נכון','לא מדויק','תקן','תקני','לתקן
 const CONFIRM_MS=7000, CORRECT_MS=15000;
 function norm(s){return (s||'').replace(/[^֐-׿a-zA-Z ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();}
 function voiceUX(){return !!(SRC&&window.speechSynthesis);}
+/* Not just "any he-* voice": the platform often lists a thin "compact" variant
+   first, and that one is the robot. Prefer the full Hebrew voices by name, then
+   any non-compact he-*, and only then whatever is left. */
+/* The same three words before every single answer is the tell. Rotate a few
+   natural ones. Deterministic (a counter, not randomness) so the test can pin it
+   and so two answers in a row never open identically. */
+let _fill=0;
+const FILLERS=['רגע, בודקת.','שנייה.','בודקת עכשיו.','רגע אחד.'];
+function filler(){return FILLERS[_fill++%FILLERS.length];}
+function pickVoice(){
+ const all=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+ const he=all.filter(v=>/^he/i.test(v.lang||''));
+ if(!he.length)return null;
+ return he.find(v=>/carmit|natural|enhanced|premium/i.test(v.name||''))
+     || he.find(v=>!/compact|eloquence/i.test(v.name||''))
+     || he[0];}
 function speak(text,done){
  text=speakable(heb(text));LAST_SPOKEN=text;
  if(!window.speechSynthesis){if(done)setTimeout(done,0);return;}
  try{speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(text);u.lang='he-IL';u.rate=1.05;
-  const v=(speechSynthesis.getVoices()||[]).find(x=>/^he/i.test(x.lang));if(v)u.voice=v;
+  const u=new SpeechSynthesisUtterance(text);u.lang='he-IL';
+  u.rate=1.0;u.pitch=1.0;                        // 1.05 was a rushed-announcer cadence
+  u.voice=pickVoice()||u.voice;
   u.onend=()=>{if(done)setTimeout(done,350);};      // never listen while LIA is still talking
   u.onerror=()=>{if(done)setTimeout(done,350);};
   speechSynthesis.speak(u);
@@ -596,7 +615,16 @@ function reflect(){
  const t=document.getElementById('note').value.trim();
  if(!t){setMode('failed');return;}
  setMode('review');
- speak('הבנתי: '+clip(t,180)+'. נכון?',()=>askYesNo(0));}
+ /* The kernel is told never to repeat his question back to him, and then the
+    panel read 180 characters of his own words aloud. Confirm that it was heard
+    without reciting it: short notes need no echo at all, longer ones get the
+    first clause only — enough to catch a mis-hearing, not a recital. */
+ speak(t.length<60?'רשמתי. לשמור?':'רשמתי — '+firstClause(t)+'. נכון?',()=>askYesNo(0));}
+/* The opening clause, cut at a natural break rather than at a character count. */
+function firstClause(t){
+ const s=String(t||'').replace(/\s+/g,' ').trim();
+ const m=s.match(/^[^.!?,;]{1,90}/);
+ return (m?m[0]:s.slice(0,90)).trim();}
 function askYesNo(attempt){
  listenOnce(CONFIRM_MS,'מקשיב לתשובה — אמור כן או לא',ans=>{
   const a=norm(ans);
@@ -680,8 +708,33 @@ const HE_TERMS=[[/\bPROPOSED\b/g,'ממתין לאישור'],[/\bCORROBORATED\b/g
  [/next_decision/g,'תור ההחלטות'],[/company_changes/g,'יומן השינויים'],
  [/change_request/g,'בקשה לאישור'],[/\binference(s)?\b/gi,'הערכה']];
 function heb(x){x=String(x||'');for(const [re,he] of HE_TERMS)x=x.replace(re,he);return x;}
-function speakable(x){const latin=(x.match(/[A-Za-z]/g)||[]).length;
- return latin>x.length*0.4?'התשובה המלאה מוצגת על המסך.':x;}
+/* Everything that is punctuation ON A SCREEN is noise IN AN EAR. Markdown stars,
+   bullet dashes, the · separator, bracketed asides, URLs — a speech engine reads
+   them all out, and that is most of what made her sound like a machine. Strip to
+   what a person would actually say out loud. Pure, so test-voice.mjs can run it. */
+function spokenText(x){
+ return String(x||'')
+  .replace(/https?:\/\/\S+/g,'')            // nobody reads a URL aloud
+  .replace(/\([^)]{0,80}\)/g,'')             // asides belong on the screen
+  .replace(/[*_`#]+/g,'')                   // markdown emphasis and headings
+  .replace(/^\s*[-–—•]\s+/gm,'')            // bullet markers
+  .replace(/\s*·\s*/g,', ')                 // the separator reads as a full stop
+  .replace(/\s*[–—]\s*/g,', ')              // dashes become a breath, not a dash
+  .replace(/\.{2,}|…/g,'.')
+  .replace(/\s*\n+\s*/g,'. ')               // line breaks are sentence breaks
+  .replace(/\s{2,}/g,' ')
+  .replace(/\s+([,.!?])/g,'$1')
+  .replace(/([,.!?])\1+/g,'$1')
+  .trim();}
+/* A wall of identifiers (SKUs, ids, addresses) is genuinely not worth reading
+   aloud — but say so like a person, not with a canned system line. Ordinary
+   Latin words (a name, Priority, a project) are spoken: an accent beats a
+   robot announcing that the answer is elsewhere. */
+function speakable(x){
+ const t=spokenText(x);
+ const ids=(t.match(/[A-Za-z0-9@._\/-]/g)||[]).length;
+ return (t.length>80&&ids>t.length*0.6)
+  ? 'יש כאן בעיקר קודים ומספרים, אז שמתי את זה על המסך.' : t;}
 let LAST=null,LAST_SPOKEN='';                    // the conversation's context
 /* The kernel's history is DERIVED from SESSION.turns (historyForKernel), so the
    conversation David reads and the conversation the model reasons over are the
@@ -691,7 +744,11 @@ function sentences(s,n){const p=(s||'').replace(/\s+/g,' ').split(/(?<=[.!?])\s+
 function interestingOf(r){return heb((r.risks_opportunities||[])[0]||(r.inferences||[])[0]||'');}
 /* voice is SHORTER than screen: two sentences, then an offer — not a lecture */
 function spokenAnswer(r){
- if(r.self_diagnosis)return 'אני לא יכולה לענות על זה עדיין. '+heb((r.missing_information||[]).join(' '));
+ /* A configuration failure used to be read out verbatim — variable names and
+    all. Say the human half out loud; the exact technical detail is already on
+    the screen for whoever needs to act on it. */
+ if(r.self_diagnosis)return 'זה לא משהו שאני יכולה לענות עליו כרגע — חסר לי חיבור בצד השרת. '
+   +'כתבתי על המסך מה בדיוק חסר.';
  /* Voice is shorter than the screen: the opening two sentences carry the
     conclusion, because the kernel is told to lead with it. */
  let out=heb(sentences(r.answer,2));
@@ -721,7 +778,7 @@ function showAnswer(r,title){
  addTurn('lia',(title&&title!=='ליה'?title+' ':'')+text,r);}
 
 async function doAsk(text){
- speak('רגע, בודקת.');
+ speak(filler());
  try{
   const res=await ccApi({action:'kernel',body:text,history:historyForKernel()});
   /* No model key configured → the kernel says so instead of guessing. The
