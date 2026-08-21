@@ -422,11 +422,12 @@ async function sendNote(text){
 const MAX_REC_MS=120000;
 const SRC=window.SpeechRecognition||window.webkitSpeechRecognition;
 let MR=null,CHUNKS=[],STREAM=null,SR=null,T0=0,TIMER=null,BASE='',VOICE={},SERVER_VOICE=false;
+let SUBMITTED=false;   // reset per recording; guards against a double user turn
 function recorderSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
 function micSupported(){return !!SRC||(recorderSupported()&&SERVER_VOICE);}
 function recording(){return !!SR||!!(MR&&MR.state==='recording');}
 function micTap(){if(recording())stopRec('user');else if(SRC)startSR();else startRecorder();}
-function uiStart(label){T0=Date.now();stat('');BASE=document.getElementById('note').value.trim();
+function uiStart(label){T0=Date.now();stat('');SUBMITTED=false;BASE=document.getElementById('note').value.trim();
  document.getElementById('recLabel').textContent=label||'מקליט — לחץ ⏹ כשסיימת';
  const b=document.getElementById('mic');if(b){b.textContent='⏹ עצור';b.classList.add('on');}
  document.getElementById('recBar').style.display='flex';
@@ -440,6 +441,31 @@ function stopRec(why){
  if(SR){try{SR.stop();}catch(e){SR=null;uiStop();}return;}
  if(MR&&MR.state==='recording'){MR._why=why;try{MR.stop();}catch(e){releaseMic();}}else releaseMic();}
 /* engine 1: the browser transcribes. Nothing is recorded, so nothing can leak. */
+/* Voice input must become ONE clean utterance.
+
+   Some Android/Chrome speech services finalize an utterance PROGRESSIVELY:
+   every result carries the whole sentence so far, not just the new words. The
+   previous rebuild appended them, which is exactly what produced the string
+   David saw in production — "איךאיך אנחנואיך אנחנו מתקדמים".
+
+   So: merge, never append. A segment that extends what we already have replaces
+   it; one already contained (or replayed verbatim by the recognition service)
+   is dropped; only genuinely new speech is added. Pure, so test-speech.mjs can
+   run it against the real corrupted transcript. */
+function mergeSpeech(segments){
+ let out='';
+ for(const raw of segments||[]){
+  const seg=(raw||'').trim();
+  if(!seg)continue;
+  if(!out){out=seg;continue;}
+  if(seg===out)continue;                    // the same result replayed
+  if(seg.startsWith(out)){out=seg;continue;} // a growing restatement of one utterance
+  if(out.startsWith(seg))continue;           // an older, shorter state arriving late
+  if(out.endsWith(seg))continue;             // already sitting at the tail
+  out=out+' '+seg;                           // genuinely the next thing said
+ }
+ return out;
+}
 function startSR(){
  let r;try{r=new SRC();}catch(e){startRecorder();return;}
  r.lang='he-IL';r.interimResults=true;r.continuous=true;r.maxAlternatives=1;
@@ -452,12 +478,15 @@ function startSR(){
     replacing the last, so summing them (interim += …) produced the repeated,
     garbled live text David saw on mobile. Only the LAST non-final entry is the
     current guess — take it, never add it to the ones before it. */
- r.onresult=e=>{let fin='',interimLast='';conf.length=0;
+ r.onresult=e=>{const fins=[];let interimLast='';conf.length=0;
   for(let i=0;i<e.results.length;i++){const res=e.results[i];
-   if(res.isFinal){fin+=res[0].transcript;if(res[0].confidence>0)conf.push(res[0].confidence);}
+   if(res.isFinal){fins.push(res[0].transcript);if(res[0].confidence>0)conf.push(res[0].confidence);}
    else interimLast=res[0].transcript;}
-  finals=fin;
-  document.getElementById('note').value=(BASE?BASE+'\n':'')+(fin+interimLast).trim();};
+  finals=mergeSpeech(fins);
+  /* The live guess goes through the same merge: on these services the interim
+     is usually a superset of what is already final, so concatenating the two
+     doubled the visible text mid-sentence. */
+  document.getElementById('note').value=(BASE?BASE+'\n':'')+mergeSpeech([finals,interimLast]);};
  r.onerror=e=>{const k=e.error;SR=null;uiStop();
   if((k==='language-not-supported'||k==='service-not-allowed'||k==='network')&&SERVER_VOICE&&recorderSupported()){startRecorder();return;}
   if(k==='no-speech'){setMode('failed');return;}
@@ -608,16 +637,22 @@ const MEM_RE=/(?:^|\s)(?:דיברתי|נפגשתי|שוחחתי|הבטחתי|ס�
    this is a routing hint, not a hard-coded answer: it only tells the router
    "this is a question for the kernel", the kernel itself does the reasoning. */
 const FOCUS_RE=/(?:^|\s)(?:פוקוס|להתמקד|לתעדף)(?:[\s.,!?]|$)|מה הכי דחוף|מה הכי חשוב|במה להתמקד/;
+/* "ליה, תשפרי את עצמך" is a question about her own capability, not a note about
+   the day — it must reach the kernel, which reads the friction ledger and ranks.
+   Routing hint only; the ranking and the honesty about what she cannot do are
+   the kernel's, not the panel's. */
+const SELF_RE=/(?:^|\s)(?:תשפרי|תשתפרי|תלמדי)(?:\s|$)|את עצמך|איפה את חלשה|מה קשה לך|מה לא עובד/;
 function classify(t,hasOpenThread){
  const s=(t||'').trim();
  if(MEM_RE.test(s))return 'REMEMBER';          // a report of something that happened is a note
  if(ACT_RE.test(s))return 'DO';
- if(READ_RE.test(s)||Q_RE.test(s)||FOCUS_RE.test(s))return 'ASK';
+ if(READ_RE.test(s)||Q_RE.test(s)||FOCUS_RE.test(s)||SELF_RE.test(s))return 'ASK';
  if(/[?？]\s*$/.test(s))return 'ASK';          // any question-shaped utterance, even without a keyword above
  if(hasOpenThread)return 'ASK';                // continuing an open conversation is a follow-up, not a fresh note
  return 'REMEMBER';                            // unknown, cold start → the safe road: reflect and confirm
 }
 function afterTranscript(){
+ if(SUBMITTED)return;SUBMITTED=true;   // debounce: one recording never becomes two turns
  const t=document.getElementById('note').value.trim();
  if(!t){setMode('failed');return;}
  const intent=classify(t,SESSION.turns.length>0);

@@ -51,6 +51,11 @@ const CTX_CASES = [
   ['אני דווקא חושב שאת טועה.', true, 'ASK'],
   // same sentence, cold start (no thread open) — the safe default still applies
   ['אני דווקא חושב שאת טועה.', false, 'REMEMBER'],
+  // self-improvement: a request about her own capability, not a note about the day
+  ['ליה, תשפרי את עצמך.', undefined, 'ASK'],
+  ['איפה את חלשה?', undefined, 'ASK'],
+  // still a note — talking ABOUT improving something else is not self-review
+  ['סיכמתי עם אריק שנשפר את האריזה.', undefined, 'REMEMBER'],
 ];
 for (const [t, hasOpenThread, want] of CTX_CASES) {
   const got = classify(t, hasOpenThread);
