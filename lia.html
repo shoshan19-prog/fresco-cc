@@ -872,7 +872,13 @@ function showAnswer(r,title){
 async function doAsk(text){
  speak(filler());
  try{
-  const res=await ccApi({action:'kernel',body:text,history:historyForKernel()});
+  /* `let`, not `const`. This binding is genuinely REPLACED below — unwrapPayload
+     returns a new object — and a const that is reassigned throws
+     "Assignment to constant variable." at runtime. It did, on every single
+     question David asked, and the catch below reported it as "could not reach
+     the system". doAct's identical-looking line stays const: there res is only
+     ever mutated (res.__plain=...), which const permits. */
+  let res=await ccApi({action:'kernel',body:text,history:historyForKernel()});
   /* No model key configured → the kernel says so instead of guessing. The
      capabilities themselves need no model, so take the deterministic road
      rather than telling David "I can't". It upgrades itself the moment a

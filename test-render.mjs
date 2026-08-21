@@ -82,8 +82,15 @@ ok('a missing answer field does not throw', unwrapPayload({ facts: [] }).facts.l
 // It has to be applied on every road out: screen, voice, and memory.
 ok('the screen unwraps', /function showAnswer\([^)]*\)\{\s*r=unwrapPayload\(r\);/.test(src));
 ok('the voice unwraps', /function spokenAnswer\([^)]*\)\{\s*r=unwrapPayload\(r\);/.test(src));
-ok('conversation memory stores prose, not a payload',
-  /res=unwrapPayload\(res\);[\s\S]{0,120}LAST=\{q:text,res:res\}/.test(src));
+// This pair replaces a single regex that only checked the unwrap line was
+// PRESENT. It went green for three commits while that exact line threw
+// "Assignment to constant variable." on every question David asked — a source
+// string cannot see a runtime error. The behaviour is now proven for real in
+// test-e2e.mjs; what is still worth pinning here is the declaration.
+ok('the kernel result is declared reassignable, because it is reassigned',
+  /let res=await ccApi\(\{action:'kernel'/.test(src));
+ok('conversation memory stores the unwrapped result',
+  /res=unwrapPayload\(res\);[\s\S]{0,140}LAST=\{q:text,res:res\}/.test(src));
 
 // David asked for the standing headings to go.
 ok('"מה שמעניין" is no longer stamped on answers', !src.includes("'מה שמעניין'"));
