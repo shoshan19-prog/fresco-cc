@@ -129,12 +129,16 @@ const seen = (page) => page.evaluate(() => {
     class FakeSR {
       start() {} stop() { if (this.onend) this.onend(); }
     }
-    window.SpeechRecognition = FakeSR;
-    window.speechSynthesis = {
+    // defineProperty, not assignment: speechSynthesis is an accessor on
+    // Window, so `window.speechSynthesis = {...}` silently does nothing and the
+    // test ends up driving the real (voice-less) engine.
+    const put = (k, v) => Object.defineProperty(window, k, { value: v, configurable: true, writable: true });
+    put('SpeechRecognition', FakeSR);
+    put('speechSynthesis', {
       cancel() {}, getVoices() { return [{ name: 'Carmit', lang: 'he-IL' }]; },
       speak(u) { setTimeout(() => u.onend && u.onend(), 0); },
-    };
-    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+    });
+    put('SpeechSynthesisUtterance', function (t) { this.text = t; });
   });
   let noteCalls = 0;
   await page.route('**/functions/v1/**', async (route) => {

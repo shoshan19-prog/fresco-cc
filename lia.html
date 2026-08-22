@@ -327,6 +327,58 @@ function detailsHtml(r){
 function toggleDeep(i){const e=document.getElementById('deep_'+i);
  if(e)e.style.display=e.style.display==='none'?'block':'none';}
 
+/* ── the turn state machine ──────────────────────────────────────────────
+   IDLE → LISTENING → PROCESSING → SPEAKING → IDLE
+
+   There is deliberately NO edge from SPEAKING back to LISTENING. Every answer
+   used to end with speak(text, () => listenFollowUp()), and listenFollowUp
+   opened the microphone again with no gesture from David — then re-armed
+   itself after each follow-up. Two things fell out of that: LIA's own voice
+   landed in the open recognizer and came back as a question he never asked,
+   and a second turn started on top of a live one. The machine below is the
+   fix: the microphone opens from IDLE only, and only from a tap. */
+let TURN='IDLE';        // the authority for "may the microphone open" and "may a request go out"
+let TURN_ID=null;       // the id of the one live turn
+let TTS=false;          // LIA's voice is on the speaker right now
+const ISSUED=new Set(); // every request id ever sent — the same one never goes twice
+function turnState(){return TURN;}
+function setTurn(s){TURN=s;return s;}
+function busy(){return TURN==='PROCESSING'||TURN==='SPEAKING'||TTS;}
+/* The single gate in front of the microphone. Rule 3 lives in the !TTS half:
+   while she is speaking the mic cannot open, so she can never hear herself. */
+function micAllowed(){return TURN==='IDLE'&&!TTS;}
+/* One live turn at a time. Returns an id, or null when a turn is already
+   running — which is what makes a double tap, a duplicate speech-final event
+   and a re-render structurally incapable of producing a second request. */
+function beginTurn(){
+ if(TURN!=='IDLE'&&TURN!=='LISTENING')return null;
+ setTurn('PROCESSING');TURN_ID=uuid();return TURN_ID;}
+function endTurn(){setTurn('IDLE');TURN_ID=null;}
+/* A request id is issued once. Even if a caller is somehow entered twice with
+   the same turn, the second call sends nothing. */
+function issue(id){if(!id||ISSUED.has(id))return false;ISSUED.add(id);return true;}
+/* Every answer ends the same way: on screen, out loud, back to IDLE — and the
+   "back to IDLE" belongs to THIS utterance only. speechSynthesis.cancel()
+   fires onend on the sentence it replaced, so a callback from an utterance
+   David interrupted would otherwise end the turn that replaced it, and the
+   microphone would unlock in the middle of a live request. */
+let SPEAK_TOKEN=0;
+function speakTurn(text,keepMode){
+ setTurn('SPEAKING');if(!keepMode)setMode('idle');
+ const tok=++SPEAK_TOKEN;
+ speak(text,()=>{if(tok===SPEAK_TOKEN&&TURN==='SPEAKING')endTurn();});}
+function deliverText(spoken){speakTurn(spoken,false);}
+/* David typing is an explicit action and is never dropped: if she is still
+   talking she stops and takes the question. The microphone is the opposite —
+   it stays shut while she speaks, because a microphone can hear her and a
+   keyboard cannot. A request still in flight (PROCESSING) blocks both: that is
+   the one live turn, and this is the whole of rule 1. */
+function shutUp(){
+ SPEAK_TOKEN++;                                   // every pending callback is now stale
+ if(window.speechSynthesis){try{speechSynthesis.cancel();}catch(e){}}
+ TTS=false;
+ if(TURN==='SPEAKING')endTurn();}
+
 /* ── composer states ─────────────────────────────────────────────────────
    idle    type or speak — the router decides ask / remember / do
    review  a spoken note read back before it is sent
@@ -357,7 +409,9 @@ function applyMicVisibility(){const b=document.getElementById('mic');if(b)b.styl
    a report of something that happened is filed as a note. David never picks. */
 function sendPrimary(){
  const ta=document.getElementById('note'),t=ta.value.trim();
- if(!t||MODE==='thinking')return;
+ if(!t)return;
+ if(TURN==='PROCESSING')return;    // a request is in flight — this would be a second turn
+ if(TURN==='SPEAKING'||TTS)shutUp();  // he moved on mid-sentence: stop talking and listen to him
  /* While she is waiting for "לשמור?", the send button used to file WHATEVER was
     in the box as a note — so a question typed at that moment, or a plain "כן",
     became a note and came back "לא זיהיתי פריט עסקי חדש בפתק הזה". Only the
@@ -370,8 +424,12 @@ function sendPrimary(){
  }
  const intent=classify(t,SESSION.turns.length>0);
  if(intent==='ASK'||intent==='DO'){
+  /* The turn is taken here, before the message is echoed to the thread: a
+     second click of שלח (or Enter held down) gets null and returns, so it
+     cannot produce a second bubble OR a second request. */
+  const id=beginTurn();if(!id)return;
   addTurn('me',t);ta.value='';ta.rows=1;VOICE={};setMode('thinking');
-  (intent==='ASK'?doAsk:doAct)(t);
+  (intent==='ASK'?doAsk:doAct)(t,id);
  }else sendNote(t);}
 
 /* ── what LIA understood, in David's words ───────────────────────────── */
@@ -516,7 +574,20 @@ let SUBMITTED=false;   // reset per recording; guards against a double user turn
 function recorderSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);}
 function micSupported(){return !!SRC||(recorderSupported()&&SERVER_VOICE);}
 function recording(){return !!SR||!!(MR&&MR.state==='recording');}
-function micTap(){if(recording())stopRec('user');else if(SRC)startSR();else startRecorder();}
+/* The ONLY way the microphone opens. Not a callback, not a timer, not the end
+   of an utterance — a tap. While she is thinking or talking it says so and
+   does nothing, which is the whole of rules 1 and 3 at the door. */
+function micTap(){
+ if(recording()){stopRec('user');return;}
+ if(!micAllowed()){stat(TTS||TURN==='SPEAKING'?'רגע — אני עוד מדברת. לחץ שוב כשאסיים.':'רגע — אני עוד בודקת.');return;}
+ setTurn('LISTENING');
+ if(SRC)startSR();else startRecorder();}
+/* Stop anything that is listening, right now, WITHOUT submitting what it heard.
+   Killing a recognizer is not a user finishing a sentence: _killed makes both
+   its onend and its onerror return before they can start a turn. */
+function killRecognizer(why){
+ if(SR){const r=SR;r._killed=true;SR=null;try{(r.abort||r.stop).call(r);}catch(e){}uiStop();}
+ if(MR&&MR.state==='recording'){MR._killed=true;MR._why=why||'kill';try{MR.stop();}catch(e){releaseMic();}}}
 function uiStart(label){T0=Date.now();stat('');SUBMITTED=false;BASE=document.getElementById('note').value.trim();
  document.getElementById('recLabel').textContent=label||'מקליט — לחץ ⏹ כשסיימת';
  const b=document.getElementById('mic');if(b){b.textContent='⏹ עצור';b.classList.add('on');}
@@ -526,7 +597,10 @@ function uiStart(label){T0=Date.now();stat('');SUBMITTED=false;BASE=document.get
   if(Date.now()-T0>=MAX_REC_MS)stopRec('limit');},250);}
 function uiStop(){if(TIMER){clearInterval(TIMER);TIMER=null;}
  const b=document.getElementById('mic');if(b){b.textContent='🎤 דבר עם LIA';b.classList.remove('on');}
- document.getElementById('recBar').style.display='none';document.getElementById('recTime').textContent='00:00';}
+ document.getElementById('recBar').style.display='none';document.getElementById('recTime').textContent='00:00';
+ /* The microphone closed. Unless a turn has already taken over (afterTranscript
+    moves straight to PROCESSING), we are back to doing nothing. */
+ if(TURN==='LISTENING')setTurn('IDLE');}
 function stopRec(why){
  if(SR){try{SR.stop();}catch(e){SR=null;uiStop();}return;}
  if(MR&&MR.state==='recording'){MR._why=why;try{MR.stop();}catch(e){releaseMic();}}else releaseMic();}
@@ -577,7 +651,7 @@ function startSR(){
      is usually a superset of what is already final, so concatenating the two
      doubled the visible text mid-sentence. */
   document.getElementById('note').value=(BASE?BASE+'\n':'')+mergeSpeech([finals,interimLast]);};
- r.onerror=e=>{const k=e.error;SR=null;uiStop();
+ r.onerror=e=>{if(r._killed)return;const k=e.error;SR=null;uiStop();
   if((k==='language-not-supported'||k==='service-not-allowed'||k==='network')&&SERVER_VOICE&&recorderSupported()){startRecorder();return;}
   if(k==='no-speech'){setMode('failed');return;}
   if(k==='not-allowed'){stat('אין הרשאת מיקרופון — אשר בהגדרות הדפדפן');return;}
@@ -596,7 +670,7 @@ function startSR(){
    ta.value=BASE;
    setMode('failed');
   }};
- r.onend=()=>{if(!SR)return;SR=null;uiStop();
+ r.onend=()=>{if(r._killed||!SR)return;SR=null;uiStop();
   const secs=Math.round((Date.now()-T0)/1000);
   if(!finals.trim()){setMode('failed');return;}
   const ta=document.getElementById('note');ta.value=(BASE?BASE+'\n':'')+finals.trim();
@@ -626,8 +700,9 @@ async function finishRec(){
  /* Safari can report an empty mimeType - fall back to what the chunks say, so the
     file we hand Whisper is never named .webm while actually containing mp4. */
  const type=((MR&&MR.mimeType)||(CHUNKS[0]&&CHUNKS[0].type)||'audio/webm').split(';')[0];
- const why=MR&&MR._why;MR=null;releaseMic();               // tracks off BEFORE any network call
+ const why=MR&&MR._why,killed=MR&&MR._killed;MR=null;releaseMic();               // tracks off BEFORE any network call
  let blob=new Blob(CHUNKS,{type});CHUNKS=[];
+ if(killed){blob=null;CHUNKS=[];return;}                  // stopped by the system, not finished by David
  if(why==='error'){blob=null;setMode('failed');return;}
  if(!blob.size||secs<1){blob=null;setMode('failed');return;}
  stat('מתמלל…');
@@ -653,7 +728,6 @@ async function finishRec(){
    NEVER means yes — it leaves the note sitting in review, waiting for David. */
 const YES=['כן','נכון','כן נכון','מאשר','מאשרת','אישור','אשר','בסדר','אוקיי','אוקי','yes','ok'];
 const NO=['לא','לא נכון','לא מדויק','תקן','תקני','לתקן','טעות','שגוי','no'];
-const CONFIRM_MS=7000, CORRECT_MS=15000;
 function norm(s){return (s||'').replace(/[^֐-׿a-zA-Z ]/g,'').replace(/\s+/g,' ').trim().toLowerCase();}
 function voiceUX(){return !!(SRC&&window.speechSynthesis);}
 /* Not just "any he-* voice": the platform often lists a thin "compact" variant
@@ -674,31 +748,36 @@ function pickVoice(){
      || he[0];}
 function speak(text,done){
  text=speakable(heb(text));LAST_SPOKEN=text;
- if(!window.speechSynthesis){if(done)setTimeout(done,0);return;}
+ /* Rule 3, enforced rather than hoped for: nothing is listening while she
+    speaks. Not a "pause" — the recognizer is killed, and killed recognizers
+    do not submit what they heard. */
+ killRecognizer('tts');
+ if(!window.speechSynthesis){TTS=false;if(done)setTimeout(done,0);return;}
  try{speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(text);u.lang='he-IL';
   u.rate=1.0;u.pitch=1.0;                        // 1.05 was a rushed-announcer cadence
   u.voice=pickVoice()||u.voice;
-  u.onend=()=>{if(done)setTimeout(done,350);};      // never listen while LIA is still talking
-  u.onerror=()=>{if(done)setTimeout(done,350);};
-  speechSynthesis.speak(u);
- }catch(e){if(done)setTimeout(done,0);}}
-/* One short listening window. Not continuous, always visible, always ends. */
-function listenOnce(ms,label,onText){
- if(!SRC){onText(null);return;}
- let r;try{r=new SRC();}catch(e){onText(null);return;}
- r.lang='he-IL';r.interimResults=false;r.continuous=false;r.maxAlternatives=1;
- let got='',done=false,TO=null,CD=null;
- const finish=()=>{if(done)return;done=true;clearTimeout(TO);clearInterval(CD);SR=null;uiStop();onText(got.trim()||null);};
- r.onresult=e=>{let s='';for(let i=0;i<e.results.length;i++)s+=e.results[i][0].transcript;got=s;};
- r.onerror=()=>{};
- r.onend=finish;
- SR=r;try{r.start();}catch(e){SR=null;onText(null);return;}
- uiStart(label);
- const until=Date.now()+ms;
- CD=setInterval(()=>{const left=Math.max(0,Math.ceil((until-Date.now())/1000));
-  document.getElementById('recTime').textContent='0:'+String(left).padStart(2,'0');},200);
- TO=setTimeout(()=>{try{r.stop();}catch(e){finish();}},ms);}
+  /* cancel() above fires onend on the utterance it replaced, so this can be
+     reached twice for one sentence. It must be idempotent: `done` is the end
+     of a turn, and ending a turn twice used to open two recognizers. */
+  let fired=false,cap=null;
+  const fin=()=>{if(fired)return;fired=true;if(cap)clearTimeout(cap);TTS=false;if(done)setTimeout(done,350);};
+  u.onend=fin;u.onerror=fin;
+  /* A watchdog, because speechSynthesis is allowed to simply swallow an
+     utterance — no voices loaded yet, a backgrounded tab, an engine that
+     drops it — and then onend never comes. `done` is now the end of a TURN, so
+     a silent drop would leave her stuck in SPEAKING and refusing every next
+     question. Generous (a slow Hebrew voice is ~11 characters a second) and
+     capped, so it only ever fires when the engine has genuinely gone quiet. */
+  cap=setTimeout(fin,Math.min(30000,2500+text.length*110));
+  TTS=true;speechSynthesis.speak(u);
+ }catch(e){TTS=false;if(done)setTimeout(done,0);}}
+/* listenOnce() lived here: a fixed window that opened the microphone by itself
+   after LIA finished a sentence. Every automatic mic-open in the panel went
+   through it — the yes/no confirmation, the correction prompt, and the
+   follow-up window after every answer. All three are gone. The buttons that
+   were always described as "the fallback, not the path" are now the path:
+   שלח / דבר שוב for a note, and 🎤 for the next thing David wants to say. */
 function reflect(){
  const t=document.getElementById('note').value.trim();
  if(!t){setMode('failed');return;}
@@ -708,25 +787,19 @@ function reflect(){
     panel read 180 characters of his own words aloud. Confirm that it was heard
     without reciting it: short notes need no echo at all, longer ones get the
     first clause only — enough to catch a mis-hearing, not a recital. */
- speak(t.length<60?'רשמתי. לשמור?':'רשמתי — '+firstClause(t)+'. נכון?',()=>askYesNo(0));}
+ /* She reads it back and stops. The confirmation is a button now: an
+    automatic listening window here is the same SPEAKING→LISTENING edge that
+    broke the conversation, and it is the one most likely to hear her own
+    voice say "לשמור?" and file it. */
+ speakTurn(t.length<60?'רשמתי. לשמור? לחץ שלח.':'רשמתי — '+firstClause(t)+'. אם זה נכון, לחץ שלח.',true);}
 /* The opening clause, cut at a natural break rather than at a character count. */
 function firstClause(t){
  const s=String(t||'').replace(/\s+/g,' ').trim();
  const m=s.match(/^[^.!?,;]{1,90}/);
  return (m?m[0]:s.slice(0,90)).trim();}
-function askYesNo(attempt){
- listenOnce(CONFIRM_MS,'מקשיב לתשובה — אמור כן או לא',ans=>{
-  const a=norm(ans);
-  if(!a){stat('לא שמעתי תשובה — הפתק מחכה. אפשר לשלוח בכפתור או ללחוץ 🎤 שוב.');return;}
-  if(YES.indexOf(a)>=0){speak('שולח.');sendNote();return;}
-  if(NO.indexOf(a)>=0){speak('מה לתקן? אמור את המשפט המתוקן.',askCorrection);return;}
-  if(attempt<1){speak('לא הבנתי. אפשר לומר כן או לא.',()=>askYesNo(1));return;}
-  stat('לא הבנתי. שלח או תקן בכפתורים.');});}
-function askCorrection(){
- listenOnce(CORRECT_MS,'מקשיב לתיקון',txt=>{
-  if(!txt){stat('לא שמעתי. אפשר לתקן בטקסט ולשלוח.');return;}
-  document.getElementById('note').value=txt.trim();   // the corrected sentence replaces the old one
-  reflect();});}
+/* askYesNo() and askCorrection() lived here. Both were listening windows that
+   opened on their own after LIA spoke. The note under review is confirmed with
+   שלח and re-dictated with דבר שוב — both explicit, both already on screen. */
 
 /* ── voice executive: one brain, three roads ─────────────────────────────
    The Reasoning Kernel in command-center is the brain — same code, same key,
@@ -809,9 +882,12 @@ function afterTranscript(){
     David saw. The question has already been asked and answered; clear it now
     so the next recording starts clean. REMEMBER keeps the text — David still
     needs to review and send it. */
- if(intent==='ASK'){document.getElementById('note').value='';VOICE={};setMode('thinking');doAsk(t);}
- else if(intent==='DO'){document.getElementById('note').value='';VOICE={};setMode('thinking');doAct(t);}
- else{PENDING_NOTE=t;setMode('review');if(voiceUX())reflect();}}
+ if(intent==='ASK'||intent==='DO'){
+  const id=beginTurn();if(!id)return;      // a duplicate final event finds the turn already taken
+  document.getElementById('note').value='';VOICE={};setMode('thinking');
+  addTurn('me',t);
+  (intent==='ASK'?doAsk:doAct)(t,id);
+ }else{PENDING_NOTE=t;setMode('review');if(voiceUX())reflect();else endTurn();}}
  // PENDING_NOTE is set on BOTH roads: reflect() runs only when there is a voice
  // UX, and without it a typed note would sit in review with nothing recorded as
  // pending — so pressing שלח would re-classify it instead of sending it.
@@ -928,7 +1004,13 @@ function showAnswer(r,title){
  const text=r.__plain?heb(r.__plain):heb(r.answer||'');
  addTurn('lia',(title&&title!=='ליה'?title+' ':'')+text,r);}
 
-async function doAsk(text){
+async function doAsk(text,turnId){
+ /* One live turn. A second press, a duplicate speech-final event and a
+    re-render all land here, and all three get null and stop. */
+ const id=turnId||beginTurn();
+ if(!id)return;
+ const reqId=id+':ask';
+ if(!issue(reqId))return;          // the same request never goes out twice
  speak(filler());
  try{
   /* `let`, not `const`. This binding is genuinely REPLACED below — unwrapPayload
@@ -938,7 +1020,7 @@ async function doAsk(text){
      the system". doAct's identical-looking line stays const: there res is only
      ever mutated (res.__plain=...), which const permits. */
   let res=await ccApi({action:'kernel',body:text,history:historyForKernel(),
-    retracted:retractedForKernel()});
+    retracted:retractedForKernel(),request_id:reqId});
   /* No model key configured → the kernel says so instead of guessing. The
      capabilities themselves need no model, so take the deterministic road
      rather than telling David "I can't". It upgrades itself the moment a
@@ -947,14 +1029,14 @@ async function doAsk(text){
      server's own config report into the answer so "פרטים" says WHICH config name
      the function can actually see — a typo'd secret name is otherwise
      indistinguishable from no secret at all. Names only; never a key value. */
-  if(res.self_diagnosis)return askDirect(text,res.self_diagnosis.config_seen);
+  if(res.self_diagnosis)return askDirect(text,res.self_diagnosis.config_seen,id);
   res=unwrapPayload(res);          // before it reaches memory, screen or voice
   rememberRetracted(res);          // a withdrawn claim does not come back next turn
   LAST={q:text,res:res};
-  showAnswer(res);setMode('idle');
-  speak(spokenAnswer(res),()=>listenFollowUp());
- }catch(e){setMode('idle');stat('לא הצלחתי להגיע למערכת ('+e.message+')');
-  speak('לא הצלחתי להגיע למערכת כרגע.');}}
+  showAnswer(res);
+  deliverText(spokenAnswer(res));      // → SPEAKING → IDLE. Never → LISTENING.
+ }catch(e){stat('לא הצלחתי להגיע למערכת ('+e.message+')');
+  deliverText('לא הצלחתי להגיע למערכת כרגע.');}}
 
 /* ── the keyless road: the SAME capabilities, called directly ─────────────
    command-center exposes each capability on its own (action:'cap'), so real
@@ -986,7 +1068,7 @@ const DIRECT=[
 ];
 const CAN_DO='אני יכולה לענות על: מכירות היום או החודש · מה מחכה להחלטה · ההתחייבויות הפתוחות שלך · '
  +'מה קורה עם לקוח · פרויקט · מוצר או מפרט · חיפוש במייל · ופוקוס.';
-async function askDirect(text,configSeen){
+async function askDirect(text,configSeen,turnId){
  const hit=DIRECT.find(d=>d.re.test(text));
  let res;
  try{res=hit?await hit.run(text):said(
@@ -1000,8 +1082,8 @@ async function askDirect(text,configSeen){
    'OPENAI_API_KEY: '+(configSeen.OPENAI_API_KEY?'נראה ✓':'לא נראה ✗')
     +' · MODEL_PROVIDER: '+(configSeen.MODEL_PROVIDER||'(unset)')]);
  }
- LAST={q:text,res:res};showAnswer(res);setMode('idle');
- speak(res.answer,()=>listenFollowUp());return res;}
+ LAST={q:text,res:res};showAnswer(res);
+ deliverText(res.answer);return res;}
 
 /* Open promises come from LIA's own notebook — the objects the Bridge extracted. */
 async function capOpen(){
@@ -1105,33 +1187,13 @@ async function capMail(text){
    +String(rows[0].sent_at||'').slice(0,10)+'.':'לא מצאתי הודעות על '+m[1]+'.';
  return said(a,rows.slice(0,5).map(x=>(x.subject||'')+' — '+(x.from||'')),[r.source]);}
 
-/* One short, visible follow-up window. Most follow-ups are answered from the
-   evidence already on the table — no second call to the model. */
-const FOLLOW_MS=6000;
-function listenFollowUp(){
- if(!voiceUX())return;
- listenOnce(FOLLOW_MS,'מקשיב — פרטי / למה / מה את ממליצה',t=>{
-  if(!t)return;                                  // silence just ends the exchange
-  const a=norm(t);
-  if(!LAST)return;
-  const r=LAST.res;
-  const say=x=>{addTurn('lia',x,Object.assign({},r,{__plain:x}));speak(x,()=>listenFollowUp());};
-  if(/^(פרטי|תפרטי|עוד|הרחיבי|פירוט|כן)$/.test(a)){
-   const parts=[interestingOf(r),heb(r.recommended_next_action||''),heb((r.facts||[]).slice(0,3).join('. '))];
-   return say(parts.filter(Boolean).join(' ')||'אין לי פירוט מעבר למה שאמרתי.');}
-  if(/(מי הלקוחות|אילו לקוחות|מאיזה לקוחות)/.test(a))
-   return say(heb((r.facts||[]).slice(0,4).join('. '))||'אין לי פירוט לקוחות בתשובה הזו.');
-  if(/(חזרי|תחזרי|שוב)/.test(a))return say(LAST_SPOKEN||heb(sentences(r.answer,2)));
-  if(/^(למה|למה\?|על מה את מתבססת|מאיפה)$/.test(a))
-   return say('אלה ההסקות שלי: '+((r.inferences||[]).join(' ')||'אין')+' המקורות: '+((r.sources||[]).join(', ')||'—'));
-  if(/(ממליצה|המלצה|מה כדאי)/.test(a))
-   return say((r.recommended_next_action||'אין לי המלצה מבוססת כרגע.'));
-  if(/(להחליט|החלטה)/.test(a))
-   return say(r.confidence==='ACTION_REQUIRES_APPROVAL'?'צריך את האישור שלך לפעולה שהצעתי.'
-     :((r.missing_information||[]).join(' ')||'אין כרגע החלטה שדורשת אותך.'));
-  if(/(תסבירי|במילים פשוטות|בעצם אומר|מה חשוב)/.test(a))return explainLast();
-  // anything else is a new question — the session already carries the last exchange
-  setMode('thinking');doAsk(t);});}
+/* listenFollowUp() lived here — the six-second window that opened after every
+   single answer. It was the direct cause of what David reported: her own
+   filler ("רגע, בודקת.") landed in it, matched none of the follow-up phrases,
+   and fell through to `doAsk(t)` — a question he never asked, answered on top
+   of the one he did. It also re-armed itself after each follow-up, so the loop
+   never ended. The follow-up phrases it understood (פרטי / למה / ממליצה) are
+   the פרטים button and the conversation itself. */
 
 /* ── the explainer: model output translated before it reaches David ────── */
 function plainWords(r){
@@ -1146,28 +1208,43 @@ function plainWords(r){
 /* "תסבירי פשוט" answers as a NEW turn, so the original answer stays visible
    above it in the thread instead of being overwritten by its own explanation. */
 function explainTurn(i){
+ /* Not a new question, so it must not act like one: it reads the answer that
+    is already on the table (plainWords is pure — no capability call, no model
+    call, no database read) and it cannot start while a turn is running. */
+ if(busy())return;
  const turn=SESSION.turns[i];if(!turn||!turn.res)return;
+ /* Pressing it again is not a second request. If the explanation is already
+    the last thing she said, say that one again rather than generating a
+    second copy of it — this is what made repeated taps look like she was
+    re-running the whole conversation. */
+ const last=SESSION.turns[SESSION.turns.length-1];
+ if(last&&last.role==='lia'&&last.res&&last.res.__explains===i){
+  speakTurn(last.text,true);return;}
  const t=plainWords(turn.res);
- addTurn('lia',t,Object.assign({},turn.res,{__plain:t}));
- speak(t,()=>listenFollowUp());}
+ addTurn('lia',t,Object.assign({},turn.res,{__plain:t,__explains:i}));
+ speakTurn(t,true);}
 function explainLast(){
  for(let i=SESSION.turns.length-1;i>=0;i--)
   if(SESSION.turns[i].role==='lia'&&SESSION.turns[i].res)return explainTurn(i);
  speak('אין לי תשובה פתוחה להסביר.');}
 
 /* ── DO: voice never changes permissions ──────────────────────────────── */
-async function doAct(text){
+async function doAct(text,turnId){
+ const id=turnId||beginTurn();
+ if(!id)return;
+ const reqId=id+':act';
+ if(!issue(reqId))return;
  const outward=OUTWARD_RE.test(text);
  try{
   const res=await ccApi({action:'kernel',body:text,history:historyForKernel(),
-    retracted:retractedForKernel()});
+    retracted:retractedForKernel(),request_id:reqId});
   rememberRetracted(res);
   if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft
    await ccApi({action:'ask',kind:'change_request',body:text});
    const r2=said('רשמתי את הבקשה לאישור במסך. להכין ניסוח בעצמי אני צריכה GPT.',[],[],
      ['חיבור GPT']);
-   LAST={q:text,res:r2};showAnswer(r2,'נרשם לאישור:');setMode('idle');
-   speak(r2.answer,()=>listenFollowUp());return;}
+   LAST={q:text,res:r2};showAnswer(r2,'נרשם לאישור:');
+   deliverText(r2.answer);return;}
   LAST={q:text,res:res};
   let spoken=spokenAnswer(res);
   if(outward){
@@ -1178,8 +1255,8 @@ async function doAct(text){
    spoken+=' הכנתי את זה והשארתי לאישור שלך.';
   }
   res.__plain=spoken;showAnswer(res,outward?'מוכן לאישור במסך:':'הכנתי:');
-  setMode('idle');speak(spoken,()=>listenFollowUp());
- }catch(e){setMode('idle');stat('לא הצלחתי ('+e.message+')');speak('לא הצלחתי לבצע את זה.');}}
+  deliverText(spoken);
+ }catch(e){stat('לא הצלחתי ('+e.message+')');deliverText('לא הצלחתי לבצע את זה.');}}
 (function(){const ta=document.getElementById('note');
  const grow=()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,window.innerHeight*0.34)+'px';};
  ta.addEventListener('input',grow);

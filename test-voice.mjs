@@ -16,7 +16,7 @@ const { spokenText, speakable } = new Function(speech + '\nreturn {spokenText, s
 const { filler, FILLERS } = new Function(
   slice('let _fill=0;', 'function pickVoice') + '\nreturn {filler, FILLERS};')();
 const { firstClause } = new Function(
-  slice('function firstClause', '\nfunction askYesNo') + '\nreturn {firstClause};')();
+  slice('function firstClause', '\n/* askYesNo') + '\nreturn {firstClause};')();
 
 let bad = 0, total = 0;
 function eq(label, got, want) {
@@ -66,7 +66,7 @@ eq('the confirmation cuts at a natural break, not a character count',
   firstClause('דיברתי עם יוסי והבטחתי לשלוח לו מפרט מחר, אחרי שנסגור את המחיר'),
   'דיברתי עם יוסי והבטחתי לשלוח לו מפרט מחר');
 ok('a short note is confirmed without any echo at all',
-  /t\.length<60\?'רשמתי\. לשמור\?'/.test(src));
+  /t\.length<60\?'רשמתי\. לשמור\?[^']*'/.test(src));   // the tail now names the button, since the yes/no window is gone
 ok('the old 180-character recital is gone',
   !src.includes("'הבנתי: '+clip(t,180)"));
 
