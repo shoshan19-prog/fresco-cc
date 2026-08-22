@@ -25,6 +25,19 @@ const CASES = [
   ['תכיני תשובה ל-Davide.', 'DO'],
   ['תשלחי לו את המפרט.', 'DO'],
   ['תעני ל-Davide שאנחנו מאשרים אבל תבקשי זמן אספקה.', 'DO'],
+  // SIMPLIFY — a transformation of the answer already on the table. It must
+  // never reach the kernel: re-running the capabilities can produce a
+  // DIFFERENT answer to a question David never re-asked.
+  ['תסבירי פשוט', 'SIMPLIFY'],
+  ['תסבירי פשוט.', 'SIMPLIFY'],
+  ['במילים פשוטות', 'SIMPLIFY'],
+  ['תסבירי לי את זה פשוט', 'SIMPLIFY'],
+  ['בקצרה', 'SIMPLIFY'],
+  ['לא הבנתי', 'SIMPLIFY'],
+  // …but the same verb in front of an actual question is still a question
+  ['תסבירי לי מה ההבדל בין מרינה לאריק', 'ASK'],
+  ['תסבירי למה המכירות ירדו החודש', 'ASK'],
+  ['תסבירי לי את הפרויקט של למדא', 'ASK'],
 ];
 let bad = 0;
 for (const [t, want] of CASES) {

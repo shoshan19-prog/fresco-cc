@@ -263,6 +263,34 @@ async function speakInto(page, text, { finals = 1 } = {}) {
   ok('15d. without inventing a request', kernelCalls(calls).length === 1);
 }
 
+// ── 16 — a SPOKEN or typed "תסבירי פשוט" never reaches the model ───────────
+{
+  const { page, calls } = await session('simplify-text');
+  await page.fill('#note', 'כמה מכרנו היום?');
+  await page.click('#sendBtn');
+  await page.waitForFunction(() => window.turnState() === 'IDLE', null, { timeout: 8000 });
+  const afterAnswer = calls.length;
+
+  for (const said of ['תסבירי פשוט', 'במילים פשוטות', 'לא הבנתי']) {
+    await page.fill('#note', said);
+    await page.click('#sendBtn');
+    await page.waitForFunction(() => window.turnState() === 'IDLE', null, { timeout: 8000 });
+  }
+  ok('16. saying "תסבירי פשוט" queries nothing', calls.length === afterAnswer,
+     `${calls.length - afterAnswer} extra: ${JSON.stringify(calls.slice(afterAnswer).map(c => c.body || c.action))}`);
+  const bubbles = await page.$$eval('#thread .msg.lia .bubble', n => n.map(x => x.textContent));
+  ok('16b. and produces exactly one simplified version, not three',
+     bubbles.filter(b => /^במילים פשוטות/.test(b)).length === 1, JSON.stringify(bubbles));
+  ok('16c. the original answer is still there', bubbles.some(b => /42,180/.test(b)));
+
+  // …but a real question that merely starts with תסבירי is still a question.
+  await page.fill('#note', 'תסבירי לי מה ההבדל בין מרינה לאריק');
+  await page.click('#sendBtn');
+  await page.waitForFunction(() => window.turnState() === 'IDLE', null, { timeout: 8000 });
+  ok('16d. "תסבירי לי מה ההבדל בין…" is still a real question',
+     kernelCalls(calls).length === 2, `got ${kernelCalls(calls).length}`);
+}
+
 // ── the source itself: the edge that caused this cannot come back ───────────
 {
   const body = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

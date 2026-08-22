@@ -423,6 +423,7 @@ function sendPrimary(){
   PENDING_NOTE='';
  }
  const intent=classify(t,SESSION.turns.length>0);
+ if(intent==='SIMPLIFY'){addTurn('me',t);ta.value='';ta.rows=1;VOICE={};setMode('idle');explainLast();return;}
  if(intent==='ASK'||intent==='DO'){
   /* The turn is taken here, before the message is echoed to the thread: a
      second click of שלח (or Enter held down) gets null and returns, so it
@@ -851,8 +852,15 @@ const SYSPROJ_RE=/מטריאה|מטריה|מטריא|matriya|פרסקו\s*os|fre
    through to it — "תסבירי", "לא לזה התכוונתי", the first sentence of any new
    session — and each one came back as "לא זיהיתי פריט עסקי חדש בפתק הזה". */
 const SAVE_RE=/(?:^|\s)(?:תרשמי|תרשום|רשמי|תשמרי|תשמור|שמרי|תזכרי|תזכור)(?:[\s:,.\-–—]|$)|רשמי לי|קחי פתק|לפנקס/;
+/* A bare "תסבירי פשוט" is not a new question — it is a request to say the last
+   answer differently, and it must never reach the kernel: the kernel would
+   re-run the capabilities and can come back with a DIFFERENT answer to a
+   question David never re-asked. Anchored to the whole utterance on purpose,
+   so "תסבירי לי מה ההבדל בין A ל-B" stays a real question. */
+const SIMPLIFY_RE=/^(?:אז\s+)?(?:תסבירי|תסביר|הסבירי|תפשטי|תפשט)?\s*(?:לי\s*)?(?:את\s*זה\s*)?(?:יותר\s*)?(?:פשוט|בפשטות|במילים\s*פשוטות|פשוט\s*יותר|בקצרה|יותר\s*פשוט)[\s.!?]*$|^לא\s*הבנתי[\s.,!?]*$/;
 function classify(t,hasOpenThread){
  const s=(t||'').trim();
+ if(SIMPLIFY_RE.test(s))return 'SIMPLIFY';   // works on the answer already on the table
  /* A question stays a question even when it contains a past-tense verb:
     "מה סיכמנו עם יוסי?" is him asking, and it used to be filed as a note. */
  const asking=Q_RE.test(s)||READ_RE.test(s)||FOCUS_RE.test(s)||SELF_RE.test(s)
@@ -882,6 +890,8 @@ function afterTranscript(){
     David saw. The question has already been asked and answered; clear it now
     so the next recording starts clean. REMEMBER keeps the text — David still
     needs to review and send it. */
+ if(intent==='SIMPLIFY'){
+  document.getElementById('note').value='';VOICE={};setMode('idle');addTurn('me',t);explainLast();return;}
  if(intent==='ASK'||intent==='DO'){
   const id=beginTurn();if(!id)return;      // a duplicate final event finds the turn already taken
   document.getElementById('note').value='';VOICE={};setMode('thinking');
@@ -1217,16 +1227,19 @@ function explainTurn(i){
     the last thing she said, say that one again rather than generating a
     second copy of it — this is what made repeated taps look like she was
     re-running the whole conversation. */
- const last=SESSION.turns[SESSION.turns.length-1];
- if(last&&last.role==='lia'&&last.res&&last.res.__explains===i){
-  speakTurn(last.text,true);return;}
+ let lastLia=null;
+ for(let k=SESSION.turns.length-1;k>=0;k--)if(SESSION.turns[k].role==='lia'){lastLia=SESSION.turns[k];break;}
+ if(lastLia&&lastLia.res&&lastLia.res.__explains===i){speakTurn(lastLia.text,true);return;}
  const t=plainWords(turn.res);
  addTurn('lia',t,Object.assign({},turn.res,{__plain:t,__explains:i}));
  speakTurn(t,true);}
 function explainLast(){
- for(let i=SESSION.turns.length-1;i>=0;i--)
-  if(SESSION.turns[i].role==='lia'&&SESSION.turns[i].res)return explainTurn(i);
- speak('אין לי תשובה פתוחה להסביר.');}
+ /* Skip explanations when looking for what to explain, or a second "תסבירי"
+    would simplify the simplification and drift away from the answer. */
+ for(let i=SESSION.turns.length-1;i>=0;i--){
+  const t=SESSION.turns[i];
+  if(t.role==='lia'&&t.res&&t.res.__explains===undefined)return explainTurn(i);}
+ speakTurn('אין לי תשובה פתוחה להסביר.',true);}
 
 /* ── DO: voice never changes permissions ──────────────────────────────── */
 async function doAct(text,turnId){
