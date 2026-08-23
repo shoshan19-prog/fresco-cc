@@ -81,7 +81,7 @@ for (const [t, hasOpenThread, want] of CTX_CASES) {
 
 // The keyless road: with no model key the same sentences must still reach a real
 // capability, and the questions that genuinely need a model must say so.
-const dblock = src.slice(src.indexOf('const DIRECT='), src.indexOf('async function askDirect'));
+const dblock = src.slice(src.indexOf('const PROJ_STATE_RE='), src.indexOf('async function askDirect'));
 const DIRECT = new Function(
   dblock.replace(/,run:cap\w+/g, (m) => ',name:"' + m.slice(5) + '"') + '\nreturn DIRECT;')();
 const ROUTES = [
@@ -95,6 +95,15 @@ const ROUTES = [
   ['מה קורה בפרויקט המלון', 'capProject'],
   ['תביאי לי מפרט של פרסקוליט', 'capProduct'],
   ['מה השתנה השבוע', 'capChanges'],
+  /* Project-STATE phrasings reach the projects source, never the לא-זיהיתי
+     menu and never the which-one counterquestion (recorded miss, 23.8). */
+  ['מה את יודעת מה ריפו על הפרויקטים שנמצאים בעבודה', 'capProjectsState'], // the exact screenshot sentence
+  ['מה את יודעת מהריפו על הפרוייקטים בעבודה', 'capProjectsState'],        // double-yud voice spelling
+  ['איזה פרויקטים פתוחים', 'capProjectsState'],
+  ['מה מצב הפרויקטים', 'capProjectsState'],
+  ['איזה פרויקטים תקועים', 'capProjectsState'],
+  ['מה מתקדם עכשיו', 'capProjectsState'],
+  ['מה קורה בפרוייקט הרצל', 'capProject'],   // singular + name stays the single-project road
 ];
 for (const [t, want] of ROUTES) {
   const hit = DIRECT.find((d) => d.re.test(t));
@@ -102,7 +111,7 @@ for (const [t, want] of ROUTES) {
   if (got !== want) { console.log(`FAIL  keyless ${want} expected, got ${got}  ::  ${t}`); bad++; }
 }
 // Money is spoken by default; privacy is an explicit mode, never the default.
-const mblock = src.slice(src.indexOf('function privacyOn()'), src.indexOf('const DIRECT='));
+const mblock = src.slice(src.indexOf('function privacyOn()'), src.indexOf('const PROJ_STATE_RE='));
 let store = {};
 globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null),
                             setItem: (k, v) => { store[k] = String(v); } };

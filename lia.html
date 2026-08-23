@@ -1260,13 +1260,20 @@ function togglePrivacy(){localStorage.setItem('lia_privacy',privacyOn()?'0':'1')
 function money(n){if(privacyOn())return '—';
  const v=Math.round(Number(n)||0);
  return v>=1000?String(Math.round(v/100)/10).replace(/\.0$/,'')+' אלף ש"ח':v+' ש"ח';}
+/* The state-of-projects road (recorded miss, 23.8): "מה את יודעת מה ריפו על
+   הפרויקטים שנמצאים בעבודה" fell to the לא-זיהיתי menu — the only project
+   route demanded a NAME, and voice transcription also writes the double-yud
+   פרוייקטים which the old regex missed. Plural forms and "מה מתקדם" mean
+   "read the projects source"; singular with a name stays capProject. */
+const PROJ_STATE_RE=/פרוי{1,2}קטים|מה\s*מתקדם/;
 const DIRECT=[
  {re:/(פוקוס|מה לעשות עכשיו|במה להתמקד)/,run:capFocus},
  {re:/(מכרנו|מכירות|הזמנות|הזמנה|מכירה|כמה כסף|מחזור)/,run:capSales},
  {re:/(הכי חשוב|מה דחוף|מה לטפל|מה אני צריך)/,run:capImportant},
  {re:/(התחייבות|התחייבויות|הבטחתי|מה פתוח|מה אני חייב|הבטחות)/,run:capOpen},
  {re:/(מה השתנה|מה חדש|מה קרה)/,run:capChanges},
- {re:/(פרויקט)/,run:capProject},
+ {re:PROJ_STATE_RE,run:capProjectsState},
+ {re:/(פרוי{1,2}קט)/,run:capProject},
  {re:/(מוצר|מפרט|TDS|קטלוג|תעודה)/,run:capProduct},
  {re:/(מה קורה עם|לקוח|לקוחה)/,run:capCustomer},
  {re:/(מייל|מיילים|דואר|תגובה)/,run:capMail},
@@ -1308,8 +1315,22 @@ async function capChanges(){
    :'לא נרשמו אירועים בשבוע האחרון.',
    rows.slice(0,5).map(x=>(x.kind||'')+' · '+String(x.created_at||'').slice(0,10)),[r.source]);}
 function termAfter(text,re){const m=text.match(re);return m?m[1]:'';}
+/* "איזה פרויקטים בעבודה" is a read of the projects source, not a request to
+   name one. Empty query = the whole table (server caps at 15 rows, said
+   honestly). publish_state is the status the source actually holds — what it
+   does not hold (blockers, last activity) is named, never invented. */
+async function capProjectsState(){
+ const r=await cap('project_lookup',{query:''});
+ const rows=r.rows||[];
+ if(!rows.length)return said('אין פרויקטים רשומים במקור כרגע.',[],[r.source]);
+ const by={};rows.forEach(x=>{const s=x.publish_state||'ללא סטטוס';by[s]=(by[s]||0)+1;});
+ const head=(rows.length>=15?'לפחות 15':String(rows.length))+' פרויקטים במקור';
+ return said(head+'. לפי מצב: '+Object.keys(by).map(s=>by[s]+' '+s).join(' · ')
+   +'. חסמים ותנועה אחרונה עדיין לא נרשמים בטבלת הפרויקטים, אז אני לא קובעת מה תקוע.',
+   rows.slice(0,10).map(x=>(x.name||'')+' · '+(x.city||'')+' · '+(x.publish_state||'')),
+   [r.source]);}
 async function capProject(text){
- const n=termAfter(text,/פרויקט\s+(?:ה)?([֐-׿A-Za-z][֐-׿A-Za-z\-' ]{1,20})/);
+ const n=termAfter(text,/פרוי{1,2}קט\s+(?:ה)?([֐-׿A-Za-z][֐-׿A-Za-z\-' ]{1,20})/);
  if(!n)return said('איזה פרויקט? אמור "מה קורה בפרויקט ..."',[],[],['שם פרויקט']);
  const r=await cap('project_lookup',{query:n.trim()});
  const rows=r.rows||[];
