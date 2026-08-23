@@ -1070,9 +1070,16 @@ function money(n){if(privacyOn())return '—';
    route demanded a NAME, and voice transcription also writes the double-yud
    פרוייקטים which the old regex missed. Plural forms and "מה מתקדם" mean
    "read the projects source"; singular with a name stays capProject. */
+/* The repository road (recorded miss, 23.8): "מה הריפו" had no route at all
+   and fell to the לא-זיהיתי menu, and "מה השתנה בריפו" was swallowed by
+   capChanges. Voice writes ריפו and ריפוס; an explicit repo word wins over
+   every project reading — code state is never answered from the business
+   projects table. */
+const REPO_RE=/ריפו|\brepos?\b|repositor|\bbranch(?:es)?\b|ברנצ|מה\s*מחכה\s*לפריסה|מה\s*השתנה\s*בקוד/i;
 const PROJ_STATE_RE=/פרוי{1,2}קטים|מה\s*מתקדם/;
 const DIRECT=[
  {re:/(פוקוס|מה לעשות עכשיו|במה להתמקד)/,run:capFocus},
+ {re:REPO_RE,run:capRepoState},
  {re:/(מכרנו|מכירות|הזמנות|הזמנה|מכירה|כמה כסף|מחזור)/,run:capSales},
  {re:/(הכי חשוב|מה דחוף|מה לטפל|מה אני צריך)/,run:capImportant},
  {re:/(התחייבות|התחייבויות|הבטחתי|מה פתוח|מה אני חייב|הבטחות)/,run:capOpen},
@@ -1120,6 +1127,55 @@ async function capChanges(){
    :'לא נרשמו אירועים בשבוע האחרון.',
    rows.slice(0,5).map(x=>(x.kind||'')+' · '+String(x.created_at||'').slice(0,10)),[r.source]);}
 function termAfter(text,re){const m=text.match(re);return m?m[1]:'';}
+/* Repository state comes from GitHub itself plus the decision ledger — two
+   sources that can both be verified, and nothing else. fresco-cc is public,
+   so the browser reads it unauthenticated: branch, latest commit, branches,
+   and the gap between main and the work branch. fresco-marketing-os is
+   PRIVATE: the browser cannot read it and says so — what IS verifiable about
+   it (the last verified deployment, the bridge clone's commit) comes from
+   the ledger through company_changes. Anything neither source proves is
+   reported as unverified, never guessed. */
+const REPO_WORK_BRANCH='claude/david-local-bridge-puudnb';
+async function gh(path){
+ const r=await fetch('https://api.github.com/'+path,{headers:{Accept:'application/vnd.github+json'}});
+ if(!r.ok)throw new Error('GitHub '+r.status);
+ return r.json();}
+async function capRepoState(text){
+ const facts=[],missing=[];let head='';
+ try{
+  const meta=await gh('repos/shoshan19-prog/fresco-cc');
+  const [br,cmp,c]=await Promise.all([
+   gh('repos/shoshan19-prog/fresco-cc/branches?per_page=10').catch(()=>[]),
+   gh('repos/shoshan19-prog/fresco-cc/compare/main...'+encodeURIComponent(REPO_WORK_BRANCH)).catch(()=>null),
+   gh('repos/shoshan19-prog/fresco-cc/commits/'+meta.default_branch)]);
+  const sha=(c.sha||'').slice(0,7);
+  const msg=String((c.commit&&c.commit.message)||'').split('\n')[0];
+  const when=String((c.commit&&c.commit.author&&c.commit.author.date)||'').slice(0,16).replace('T',' ');
+  head='הפאנל (fresco-cc): ענף '+meta.default_branch+', קומיט אחרון '+sha+' — "'+msg+'" ('+when+'). '
+   +(cmp&&typeof cmp.ahead_by==='number'
+     ?(cmp.ahead_by?cmp.ahead_by+' קומיטים על ענף העבודה עדיין לא ב-main.':'ענף העבודה מיושר עם main.')
+     :'הפער מול ענף העבודה — לא מאומת.');
+  facts.push('fresco-cc · ציבורי · ענפים: '+br.map(function(b){return b.name;}).join(', '));
+  (c.files||[]).slice(0,6).forEach(function(f){facts.push('קובץ שהשתנה בקומיט האחרון: '+f.filename);});
+  facts.push('הפאנל נפרס מ-main עצמו (GitHub Pages) — מה שב-main הוא מה שרץ, עד דקות של עדכון');
+ }catch(e){
+  head='GitHub לא נגיש מהדפדפן כרגע ('+e.message+'), אז על מצב הפאנל אני לא קובעת כלום.';
+  missing.push('קריאת GitHub מהדפדפן — לא מאומת');
+ }
+ let brain=' המוח (fresco-marketing-os) פרטי — אין לי קריאה ישירה מהדפדפן.';
+ try{
+  const r=await cap('company_changes',{days:14});
+  const rows=r.rows||[];
+  const dep=rows.find(function(x){return x.kind==='deployment_gate_closed';});
+  const job=rows.find(function(x){return x.kind==='bridge_job'&&x.payload&&x.payload.commit;});
+  if(dep&&dep.payload)brain+=' לפי היומן: פריסה מאומתת אחרונה — '
+    +(dep.payload.function||'')+' v'+(dep.payload.version||'?')
+    +' ('+(dep.payload.verdict||'')+', '+String(dep.created_at||'').slice(0,16).replace('T',' ')+').';
+  else missing.push('רשומת פריסה מאומתת ביומן 14 הימים — לא נמצאה');
+  if(job)facts.push('ה-clone של הגשר על המכונה: '+String(job.payload.commit).slice(0,7)+' (מהיומן)');
+ }catch(e){missing.push('קריאת היומן ('+e.message+')');}
+ const pre=/פרוי{1,2}קט/.test(text||'')?'אלה מאגרי הקוד; הפרויקטים העסקיים הם מסלול נפרד. ':'';
+ return said(pre+head+brain,facts,['GitHub API · יומן ההחלטות'],missing);}
 /* "איזה פרויקטים בעבודה" is a read of the projects source, not a request to
    name one. Empty query = the whole table (server caps at 15 rows, said
    honestly). publish_state is the status the source actually holds — what it
