@@ -81,7 +81,7 @@ for (const [t, hasOpenThread, want] of CTX_CASES) {
 
 // The keyless road: with no model key the same sentences must still reach a real
 // capability, and the questions that genuinely need a model must say so.
-const dblock = src.slice(src.indexOf('const PROJ_STATE_RE='), src.indexOf('async function askDirect'));
+const dblock = src.slice(src.indexOf('const REPO_RE='), src.indexOf('async function askDirect'));
 const DIRECT = new Function(
   dblock.replace(/,run:cap\w+/g, (m) => ',name:"' + m.slice(5) + '"') + '\nreturn DIRECT;')();
 const ROUTES = [
@@ -97,13 +97,28 @@ const ROUTES = [
   ['מה השתנה השבוע', 'capChanges'],
   /* Project-STATE phrasings reach the projects source, never the לא-זיהיתי
      menu and never the which-one counterquestion (recorded miss, 23.8). */
-  ['מה את יודעת מה ריפו על הפרויקטים שנמצאים בעבודה', 'capProjectsState'], // the exact screenshot sentence
-  ['מה את יודעת מהריפו על הפרוייקטים בעבודה', 'capProjectsState'],        // double-yud voice spelling
+  /* David's ruling (23.8, REPO_STATE spec): an EXPLICIT repo word wins over
+     the project reading — these two carry ריפו, so they take the repo road,
+     which answers with the repo/projects split stated (asserted below). */
+  ['מה את יודעת מה ריפו על הפרויקטים שנמצאים בעבודה', 'capRepoState'], // the exact screenshot sentence
+  ['מה את יודעת מהריפו על הפרוייקטים בעבודה', 'capRepoState'],        // double-yud voice spelling
   ['איזה פרויקטים פתוחים', 'capProjectsState'],
   ['מה מצב הפרויקטים', 'capProjectsState'],
   ['איזה פרויקטים תקועים', 'capProjectsState'],
   ['מה מתקדם עכשיו', 'capProjectsState'],
   ['מה קורה בפרוייקט הרצל', 'capProject'],   // singular + name stays the single-project road
+  /* REPO_STATE — code state, never the projects table and never the menu
+     (recorded miss, 23.8: "מה הריפו" fell to לא-זיהיתי). */
+  ['מה הריפו', 'capRepoState'],
+  ['מה יש בריפו', 'capRepoState'],
+  ['מה השתנה בריפו', 'capRepoState'],        // must beat capChanges
+  ['מה מחכה לפריסה', 'capRepoState'],
+  ['איזה branch פעיל', 'capRepoState'],
+  ['ריפוס', 'capRepoState'],                  // voice spelling of repos
+  ['repo', 'capRepoState'],
+  ['מה השתנה בקוד', 'capRepoState'],
+  ['הפרויקטים בריפו', 'capRepoState'],        // explicit repo word wins; answer carries the split
+  ['מה את יודעת על הפרויקטים', 'capProjectsState'],  // no repo word — stays the projects road
 ];
 for (const [t, want] of ROUTES) {
   const hit = DIRECT.find((d) => d.re.test(t));
@@ -111,7 +126,7 @@ for (const [t, want] of ROUTES) {
   if (got !== want) { console.log(`FAIL  keyless ${want} expected, got ${got}  ::  ${t}`); bad++; }
 }
 // Money is spoken by default; privacy is an explicit mode, never the default.
-const mblock = src.slice(src.indexOf('function privacyOn()'), src.indexOf('const PROJ_STATE_RE='));
+const mblock = src.slice(src.indexOf('function privacyOn()'), src.indexOf('const REPO_RE='));
 let store = {};
 globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null),
                             setItem: (k, v) => { store[k] = String(v); } };
@@ -167,6 +182,26 @@ for (const t of ['מטריצה', 'פרסקו', 'מטרייה של גשם']) {   
     console.log(`FAIL  bare "פרסקו" must not read as the OS project :: ${t}`); bad++; }
 }
 
+/* ── repo capability honesty: no GitHub access is a PARTIAL answer, never
+   the לא-זיהיתי menu. Runs the REAL capRepoState from lia.html with fetch
+   refused and the ledger read stubbed. */
+const rblock = src.slice(src.indexOf("const REPO_WORK_BRANCH="), src.indexOf('/* "איזה פרויקטים בעבודה"'));
+const repoStubs = `
+  const fetch=()=>{throw new Error('blocked');};
+  const cap=async()=>({rows:[{kind:'deployment_gate_closed',created_at:'2026-08-23T14:51:00',
+    payload:{function:'command-center',version:39,verdict:'MATCH'}}],source:'decision_event'});
+  const said=(answer,facts,sources,missing)=>({answer,facts:facts||[],sources:sources||[],
+    missing_information:missing||[],confidence:missing&&missing.length?'INSUFFICIENT_EVIDENCE':'HIGH'});`;
+const capRepoState = new Function(repoStubs + rblock + '\nreturn capRepoState;')();
+const repoRes = await capRepoState('מה הריפו');
+if (/לא זיהיתי/.test(repoRes.answer)) { console.log('FAIL  repo no-access must not be the menu'); bad++; }
+if (!/לא נגיש/.test(repoRes.answer)) { console.log('FAIL  repo no-access must say GitHub is unreachable'); bad++; }
+if (!/v39/.test(repoRes.answer)) { console.log('FAIL  ledger deployment evidence must still be reported'); bad++; }
+if (!(repoRes.missing_information||[]).length) { console.log('FAIL  no-access must be listed as unverified'); bad++; }
+// the mixed phrasing carries the repo/projects split instead of inventing a merge
+const mixed = await capRepoState('הפרויקטים בריפו');
+if (!/מסלול נפרד/.test(mixed.answer)) { console.log('FAIL  mixed phrasing must state the repo/projects split'); bad++; }
+
 console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + CTX_CASES.length + ROUTES.length + 4
-  + ACCEPTANCE.length + 10 + 4 + 8} asserts passed`);
+  + ACCEPTANCE.length + 10 + 4 + 8 + 5} asserts passed`);
 process.exit(bad ? 1 : 0);
