@@ -88,7 +88,7 @@ ok('the voice unwraps', /function spokenAnswer\([^)]*\)\{\s*r=unwrapPayload\(r\)
 // string cannot see a runtime error. The behaviour is now proven for real in
 // test-e2e.mjs; what is still worth pinning here is the declaration.
 ok('the kernel result is declared reassignable, because it is reassigned',
-  /let res=await ccApi\(\{action:'kernel'/.test(src));
+  /let res=await ccApi\((?:Object\.assign\()?\{action:'kernel'/.test(src));
 ok('conversation memory stores the unwrapped result',
   /res=unwrapPayload\(res\);[\s\S]{0,300}LAST=\{q:text,res:res\}/.test(src));
 

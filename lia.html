@@ -38,6 +38,20 @@ h1{font-size:20px;margin-bottom:2px}.dim{color:var(--dim);font-size:13px}
 #composer .line{display:flex;gap:8px;align-items:flex-end}
 #composer #note{flex:1;resize:none;max-height:34vh;border-radius:16px;padding:11px 14px}
 #composer .line button{border-radius:16px;padding:11px 16px;flex:0 0 auto}
+/* evidence chips: what David is about to show LIA, removable until he sends */
+#attachBar{display:none;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+#attachBar.on{display:flex}
+.att{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);
+ border-radius:10px;padding:4px 8px;max-width:100%;font-size:13px}
+.att img{width:34px;height:34px;object-fit:cover;border-radius:6px}
+.att .nm{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att .x{border:none;background:none;color:var(--txt);cursor:pointer;padding:2px 4px}
+.att.err{border-color:#a33}
+.bubble .shots{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.bubble .shots img{max-width:120px;max-height:120px;border-radius:8px;display:block}
+.bubble .shots .fchip{background:rgba(255,255,255,.06);border:1px solid var(--line);
+ border-radius:8px;padding:4px 8px;font-size:12px}
+#composer.drag{outline:2px dashed var(--acc);outline-offset:-6px}
 #panel{position:fixed;inset:0;background:var(--bg);z-index:20;overflow-y:auto;padding:16px;display:none}
 #panel.on{display:block}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
@@ -87,11 +101,14 @@ button#mic.on{background:#ff4d4f}
  <div class="row" id="recBar" style="margin-top:0"><span class="rec"></span><b id="recTime">00:00</b>
  <span class="dim" id="recLabel">מקליט — לחץ ⏹ כשסיימת</span></div>
  <p class="dim" id="capHint" style="display:none"></p>
+ <div id="attachBar"></div>
  <div class="line">
-  <textarea id="note" rows="1" placeholder="שאל, ספר, או דבר…"></textarea>
+  <textarea id="note" rows="1" placeholder="שאל, ספר, הראה, או דבר…"></textarea>
+  <button class="ghost" id="clip" onclick="clipTap()" title="צרף תמונה או קובץ">📎</button>
   <button class="ghost" id="mic" onclick="micTap()" style="display:none">🎤</button>
   <button id="sendBtn" onclick="sendPrimary()">שלח</button>
  </div>
+ <input type="file" id="filePick" multiple style="display:none">
  <div class="row" id="capActions" style="margin-top:8px"></div>
  <p class="dim" id="noteStat" style="margin-top:6px"></p>
 </footer>
@@ -220,6 +237,7 @@ function openSession(id){
  const found=want?jget('lia_s_'+want,null):null;
  SESSION=found||{id:uuid(),title:'',ctx:'פרסקו',at:Date.now(),turns:[],retracted:[]};
  if(!Array.isArray(SESSION.retracted))SESSION.retracted=[];   // sessions saved before this existed
+ if(!Array.isArray(SESSION.sources))SESSION.sources=[];       // the evidence registry of this conversation
  localStorage.setItem(SCUR,SESSION.id);
  if(!idx.some(s=>s.id===SESSION.id))saveSession();
  renderThread();setCtx(SESSION.ctx);}
@@ -245,9 +263,12 @@ const CTX_RE=/(?:לקוח(?:ה)?|פרויקט|מוצר)\s+(?:ה)?([\u0590-\u05FF
 function updateCtx(text){
  const m=String(text||'').match(CTX_RE);
  if(m&&m[1])setCtx('פרסקו · '+m[1].trim());}
-function addTurn(role,text,res){
+function addTurn(role,text,res,atts){
  if(role==='me')updateCtx(text);
- SESSION.turns.push({role,text:String(text||''),at:Date.now(),res:res||null});
+ /* atts = descriptors only, never bytes — localStorage holds a conversation,
+    not a file system. The bytes live in ATT_BYTES for this tab only. */
+ SESSION.turns.push({role,text:String(text||''),at:Date.now(),res:res||null,
+                     atts:(atts&&atts.length)?atts:undefined});
  if(SESSION.turns.length>60)SESSION.turns=SESSION.turns.slice(-60);
  saveSession();renderThread();}
 /* The kernel gets the same conversation, paired into the {q,a} shape it expects
@@ -290,8 +311,16 @@ function renderThread(){
  const stick=nearBottom();
  let h='';
  SESSION.turns.forEach((t,i)=>{
-  if(t.role==='me'){h+='<div class="msg me"><div class="who">אתה</div><div class="bubble">'
-    +esc(t.text)+'</div></div>';return;}
+  if(t.role==='me'){
+   let shots='';
+   if(t.atts&&t.atts.length){
+    shots='<div class="shots">'+t.atts.map(a=>{
+     const b=ATT_BYTES.get(a.source_id);
+     return (b&&b.preview)?'<img src="'+b.preview+'" alt="'+esc(a.filename)+'">'
+      :'<span class="fchip">'+(a.kind==='image'?'🖼️':a.kind==='sheet'?'📊':'📄')+' '+esc(a.filename)+'</span>';
+    }).join('')+'</div>';}
+   h+='<div class="msg me"><div class="who">אתה</div><div class="bubble">'
+    +esc(t.text)+shots+'</div></div>';return;}
   h+='<div class="msg lia"><div class="who">LIA</div><div class="bubble">'+esc(heb(t.text));
   const r=t.res;
   if(r&&!r.__plain){
@@ -379,10 +408,150 @@ function shutUp(){
  TTS=false;
  if(TURN==='SPEAKING')endTurn();}
 
-/* ── composer states ─────────────────────────────────────────────────────
-   idle    type or speak — the router decides ask / remember / do
-   review  a spoken note read back before it is sent
-   failed  nothing was transcribed; speak again                            */
+/* ── LIA's eyes, phase 1: the composer accepts evidence ──────────────────
+   One conversation that can see — not a file manager. David attaches a
+   screenshot, a PDF, an Excel — by 📎, by drag, or by Ctrl+V — and it becomes
+   a typed source on HIS turn. The bytes travel with the request; the
+   conversation keeps only descriptors, so localStorage never holds a file.
+
+   HONESTY GATE (rule 15 — never invent): the kernel currently deployed has no
+   vision. Until a response proves it saw the sources (sources_seen), the panel
+   answers about attachments itself, truthfully — it never lets a text-only
+   model answer stand as if the image was seen.                              */
+/*ATT-PURE-BEGIN*/
+const ATT_KINDS={
+ image:{exts:['png','jpg','jpeg','webp'],mimes:['image/png','image/jpeg','image/webp'],cap:10*1024*1024},
+ doc:{exts:['pdf','docx','pptx','txt','md'],cap:15*1024*1024,
+      mimes:['application/pdf','text/plain','text/markdown',
+             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+             'application/vnd.openxmlformats-officedocument.presentationml.presentation']},
+ sheet:{exts:['xlsx','csv'],cap:10*1024*1024,
+        mimes:['text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']}};
+const ATT_ACCEPT=Object.values(ATT_KINDS).map(k=>k.exts.map(e=>'.'+e).join(',')).join(',');
+function sanitizeName(n){
+ return String(n||'').split(/[\\/]/).pop().replace(/[\x00-\x1f<>:"|?*]/g,'').trim().slice(0,120)||'קובץ';}
+function attKind(mime,name){
+ const base=String(name||'').toLowerCase(),dot=base.lastIndexOf('.');
+ const ext=dot>0?base.slice(dot+1):'';        // "blob" (a paste) has no extension at all
+ for(const k in ATT_KINDS)if(ATT_KINDS[k].exts.indexOf(ext)>=0)return k;
+ /* An extension that exists but is not whitelisted loses even against a
+    friendly mime — "not-really.exe" with image/png stays out. The mime road
+    is only for extension-less blobs, e.g. a screenshot pasted from clipboard. */
+ if(ext)return null;
+ for(const k in ATT_KINDS)
+  if(mime&&ATT_KINDS[k].mimes.indexOf(String(mime).toLowerCase())>=0)return k;
+ return null;}                        // not on the whitelist = rejected, incl. exe/svg/html
+function attValidate(name,mime,size){
+ const kind=attKind(mime,name);
+ if(!kind)return {ok:false,reason:'סוג הקובץ לא נתמך'};
+ if(size>ATT_KINDS[kind].cap)
+  return {ok:false,reason:'גדול מדי ('+Math.round(size/1048576)+'MB, המקסימום '
+    +Math.round(ATT_KINDS[kind].cap/1048576)+'MB)'};
+ return {ok:true,kind:kind};}
+function sourceTypeOf(kind){return kind==='image'?'CHAT_IMAGE':'CHAT_FILE';}
+let ATT_SEQ=0;
+function newSourceId(){return 's_'+Date.now().toString(36)+'_'+(++ATT_SEQ);}
+/* A descriptor is everything the conversation remembers about a source — and
+   never the bytes. It survives turns, so "התמונה הראשונה" keeps meaning. */
+function sourceDescriptor(a){
+ return {source_id:a.source_id,source_type:a.source_type,kind:a.kind,
+         filename:a.filename,mime:a.mime,size:a.size,created_at:a.created_at};}
+/* "התמונה השנייה", "ה-PDF של 4.56", "שתי התמונות" — resolve David's words to
+   source ids from the conversation registry. Deterministic, precision-first:
+   no type word → no match (better to miss than to grab the wrong file). */
+function resolveSourceRef(text,sources){
+ const t=String(text||'');const all=sources||[];
+ let pool=null;
+ if(/תמונ|צילום|סקרינשוט|צילומי/.test(t))pool=all.filter(s=>s.kind==='image');
+ else if(/PDF|פי.די.אף|מסמך/i.test(t))pool=all.filter(s=>s.kind==='doc');
+ else if(/אקסל|גיליון|טבלת נתונים|CSV/i.test(t))pool=all.filter(s=>s.kind==='sheet');
+ else if(/קובץ|קבצים/.test(t))pool=all.slice();
+ if(!pool||!pool.length)return [];
+ if(/שתי|שני ה|ההבדל בין|תשווי/.test(t))return pool.slice(-2).map(s=>s.source_id);
+ let idx=-1;
+ if(/ראשונ|הראשון/.test(t))idx=0;
+ else if(/שני(?:יה|י)?(?:\s|$|,|\.)/.test(t)&&!/שתי/.test(t))idx=1;
+ else if(/שלישי/.test(t))idx=2;
+ else if(/רביעי/.test(t))idx=3;
+ else if(/אחרונ|קודמ|ששלחתי קודם/.test(t))idx=pool.length-1;
+ if(idx<0)idx=pool.length-1;          // a type word alone means the latest of that type
+ return idx<pool.length?[pool[idx].source_id]:[];}
+/* The kernel payload: this turn's attachments travel with bytes; sources David
+   referred to from earlier turns travel as descriptors (bytes re-attached from
+   the in-memory store when still present). */
+function sourcesForKernel(pending,refIds,bytesOf){
+ const out=[];const seen={};
+ for(const a of (pending||[])){
+  seen[a.source_id]=1;
+  out.push(Object.assign(sourceDescriptor(a),{data_b64:a.data_b64||null}));}
+ for(const r of (refIds||[])){
+  if(seen[r])continue;
+  const d=(bytesOf&&bytesOf(r))||null;
+  out.push(Object.assign({},d?d.desc:{source_id:r},
+    {data_b64:d?d.b64:null,resolved_from:'conversation'}));}
+ return out;}
+function kernelSawSources(res){return !!(res&&Array.isArray(res.sources_seen));}
+/*ATT-PURE-END*/
+let ATTACH=[];                        // pending for the NEXT turn only
+const ATT_BYTES=new Map();            // source_id → {b64,mime,desc,preview} — this tab only
+function attBytes(id){const v=ATT_BYTES.get(id);return v?{b64:v.b64,desc:v.desc}:null;}
+function clipTap(){document.getElementById('filePick').click();}
+async function addFiles(files){
+ for(const f of Array.from(files||[])){
+  const name=sanitizeName(f.name);
+  const v=attValidate(name,f.type,f.size);
+  if(!v.ok){ATTACH.push({source_id:newSourceId(),filename:name,status:'ERROR',error:v.reason});continue;}
+  const a={source_id:newSourceId(),source_type:sourceTypeOf(v.kind),kind:v.kind,
+           filename:name,mime:f.type||'',size:f.size,created_at:Date.now(),status:'READING'};
+  ATTACH.push(a);renderAttachBar();
+  try{
+   if(v.kind==='image'){const r=await shrinkImage(f);a.data_b64=r.b64;a.mime=r.mime;a.preview=r.preview;a.size=r.size;}
+   else{a.data_b64=await fileB64(f);}
+   a.status='READY';
+   ATT_BYTES.set(a.source_id,{b64:a.data_b64,mime:a.mime,desc:sourceDescriptor(a),preview:a.preview||null});
+  }catch(e){a.status='ERROR';a.error='לא הצלחתי לקרוא את הקובץ';}
+  renderAttachBar();}
+ renderAttachBar();}
+/* `fr`, not `r` — test-speech slices the page source between the recognizer's
+   result handler and its error handler (matched by variable name); a FileReader
+   named `r` here would move that slice's endpoint and blind the suite. */
+function fileB64(f){return new Promise((res,rej)=>{const rd=new FileReader();
+ rd.onload=()=>res(String(rd.result).split(',')[1]||'');rd.onerror=rej;rd.readAsDataURL(f);});}
+/* Screenshots come in huge; vision does not need 4K. Longest edge 1600px,
+   JPEG — enough to read a dialog or a lab display, small enough to travel. */
+function shrinkImage(f){return new Promise((res,rej)=>{
+ const img=new Image();const url=URL.createObjectURL(f);
+ img.onload=()=>{URL.revokeObjectURL(url);
+  const mx=Math.max(img.width,img.height),sc=mx>1600?1600/mx:1;
+  const c=document.createElement('canvas');
+  c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  const durl=c.toDataURL('image/jpeg',0.85);
+  const b64=durl.split(',')[1]||'';
+  res({b64:b64,mime:'image/jpeg',preview:durl,size:Math.round(b64.length*0.75)});};
+ img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('bad image'));};
+ img.src=url;});}
+function removeAtt(id){ATTACH=ATTACH.filter(a=>a.source_id!==id);ATT_BYTES.delete(id);renderAttachBar();}
+function renderAttachBar(){
+ const el=document.getElementById('attachBar');if(!el)return;
+ el.classList.toggle('on',ATTACH.length>0);
+ el.innerHTML=ATTACH.map(a=>{
+  if(a.status==='ERROR')return '<span class="att err"><span class="nm">'+esc(a.filename)+'</span>'
+   +'<span class="dim">'+esc(a.error||'')+'</span>'
+   +'<button class="x" onclick="removeAtt(\''+a.source_id+'\')">✕</button></span>';
+  const face=a.preview?'<img src="'+a.preview+'" alt="">':'<span>'+(a.kind==='sheet'?'📊':'📄')+'</span>';
+  return '<span class="att">'+face+'<span class="nm">'+esc(a.filename)+'</span>'
+   +(a.status==='READING'?'<span class="dim">קוראת…</span>':'')
+   +'<button class="x" onclick="removeAtt(\''+a.source_id+'\')">✕</button></span>';}).join('');}
+/* What she says while the server side has no eyes yet — prepared, not faked. */
+function eyesNotLiveAnswer(atts){
+ const names=atts.map(a=>a.filename).join(', ');
+ return said('קיבלתי את '+(atts.length>1?'הקבצים':'הקובץ')+' ('+names+'), אבל אני עדיין לא יכולה '
+  +'לראות אותם — צד השרת של העיניים מוכן בקוד וטרם נפרס. שמרתי אותם לשיחה הזאת, '
+  +'וברגע שהיכולת תעלה אקרא אותם מיד.',
+  atts.map(a=>(a.kind==='image'?'תמונה':'קובץ')+': '+a.filename),
+  ['הפאנל — הקבצים לא נשלחו לניתוח'],
+  ['פריסת יכולת הראייה בקרנל (אחרי אימות v38)']);}
 let MODE='idle';
 let PENDING_NOTE='';   // the note awaiting "לשמור?", so nothing else is filed as one
 function setMode(m){
@@ -408,10 +577,22 @@ function applyMicVisibility(){const b=document.getElementById('mic');if(b)b.styl
 /* One send button, and the same router the microphone uses: a question is asked,
    a report of something that happened is filed as a note. David never picks. */
 function sendPrimary(){
- const ta=document.getElementById('note'),t=ta.value.trim();
- if(!t)return;
+ const ta=document.getElementById('note');let t=ta.value.trim();
+ const atts=ATTACH.filter(a=>a.status==='READY');
+ if(ATTACH.some(a=>a.status==='READING')){stat('רגע — עוד קוראת את הקובץ…');return;}
+ if(!t&&!atts.length)return;
+ if(!t)t='תסתכלי על זה';           // a file with no words is still a request to look
  if(TURN==='PROCESSING')return;    // a request is in flight — this would be a second turn
  if(TURN==='SPEAKING'||TTS)shutUp();  // he moved on mid-sentence: stop talking and listen to him
+ /* Evidence attached = a question about the evidence. It never files as a note,
+    whatever the words look like — the paperclip already did the router's job. */
+ if(atts.length){
+  const id=beginTurn();if(!id)return;
+  ATTACH=[];renderAttachBar();
+  SESSION.sources=(SESSION.sources||[]).concat(atts.map(sourceDescriptor)).slice(-12);
+  addTurn('me',t,null,atts.map(sourceDescriptor));
+  ta.value='';ta.rows=1;VOICE={};setMode('thinking');
+  doAsk(t,id,atts);return;}
  /* While she is waiting for "לשמור?", the send button used to file WHATEVER was
     in the box as a note — so a question typed at that moment, or a plain "כן",
     became a note and came back "לא זיהיתי פריט עסקי חדש בפתק הזה". Only the
@@ -1014,13 +1195,20 @@ function showAnswer(r,title){
  const text=r.__plain?heb(r.__plain):heb(r.answer||'');
  addTurn('lia',(title&&title!=='ליה'?title+' ':'')+text,r);}
 
-async function doAsk(text,turnId){
+async function doAsk(text,turnId,atts){
  /* One live turn. A second press, a duplicate speech-final event and a
     re-render all land here, and all three get null and stop. */
  const id=turnId||beginTurn();
  if(!id)return;
  const reqId=id+':ask';
  if(!issue(reqId))return;          // the same request never goes out twice
+ /* Sources for this request: attachments on THIS turn (with bytes), plus
+    anything David referred back to — "התמונה הראשונה", "ה-PDF" — resolved
+    from the conversation registry. */
+ const pend=atts||[];
+ const refs=resolveSourceRef(text,SESSION.sources||[])
+   .filter(rid=>!pend.some(a=>a.source_id===rid));
+ const srcs=sourcesForKernel(pend,refs,attBytes);
  speak(filler());
  try{
   /* `let`, not `const`. This binding is genuinely REPLACED below — unwrapPayload
@@ -1029,8 +1217,15 @@ async function doAsk(text,turnId){
      question David asked, and the catch below reported it as "could not reach
      the system". doAct's identical-looking line stays const: there res is only
      ever mutated (res.__plain=...), which const permits. */
-  let res=await ccApi({action:'kernel',body:text,history:historyForKernel(),
-    retracted:retractedForKernel(),request_id:reqId});
+  let res=await ccApi(Object.assign({action:'kernel',body:text,history:historyForKernel(),
+    retracted:retractedForKernel(),request_id:reqId},
+    srcs.length?{sources:srcs}:{}));
+  /* THE HONESTY GATE. Files went out; unless the kernel proves it saw them
+     (sources_seen), a text-only answer about an image is an invention — rule
+     15. She says what she has and what is missing, and never fakes sight. */
+  if(srcs.length&&!kernelSawSources(res)){
+   const r=eyesNotLiveAnswer(pend.length?pend:srcs);
+   LAST={q:text,res:r};showAnswer(r);deliverText(r.answer);return;}
   /* No model key configured → the kernel says so instead of guessing. The
      capabilities themselves need no model, so take the deterministic road
      rather than telling David "I can't". It upgrades itself the moment a
@@ -1274,7 +1469,22 @@ async function doAct(text,turnId){
  const grow=()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,window.innerHeight*0.34)+'px';};
  ta.addEventListener('input',grow);
  ta.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendPrimary();}});})();
+  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendPrimary();}});
+ /* LIA's eyes — three ways in, one pipeline: the picker, Ctrl+V, and drop.
+    A pasted screenshot needs no save-to-disk detour; that is the whole point. */
+ const fp=document.getElementById('filePick');
+ fp.setAttribute('accept',ATT_ACCEPT);
+ fp.addEventListener('change',()=>{addFiles(fp.files);fp.value='';});
+ document.addEventListener('paste',e=>{
+  const items=(e.clipboardData&&e.clipboardData.files)||[];
+  if(items.length){e.preventDefault();addFiles(items);}});
+ const comp=document.getElementById('composer');
+ for(const ev of ['dragover','dragenter'])
+  document.addEventListener(ev,e=>{e.preventDefault();comp.classList.add('drag');});
+ for(const ev of ['dragleave','dragend'])
+  document.addEventListener(ev,e=>{if(!e.relatedTarget)comp.classList.remove('drag');});
+ document.addEventListener('drop',e=>{e.preventDefault();comp.classList.remove('drag');
+  if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});})();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopRec('hidden');});
 window.addEventListener('pagehide',()=>stopRec('hidden'));
 /* A silent catch here is how a boot failure becomes "LIA can't connect" with
