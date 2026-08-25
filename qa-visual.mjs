@@ -181,6 +181,39 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   await ctx.close();
 }
 
+// ── phone chrome: the things only a real handset shows ──────────────────────
+// David reported LIA "משובשת בנייד". Headless layout was clean; the breakage was
+// in the phone chrome — an iOS status bar left translucent over a now-LIGHT
+// page (white text on white, content sliding under the notch), a dark PWA
+// splash, an oversized orb and 30px tap targets left over from the dark design.
+{
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(fileURLToPath(new URL('./lia.html', import.meta.url)), 'utf8');
+  const mani = JSON.parse(readFileSync(fileURLToPath(new URL('./lia.webmanifest', import.meta.url)), 'utf8'));
+  ok('phone: the iOS status bar is not translucent over a light page',
+    /apple-mobile-web-app-status-bar-style" content="default"/.test(html));
+  ok('phone: theme-color matches the light ground', /theme-color" content="#f7f8fa"/.test(html));
+  ok('phone: the PWA splash is light, not a dark flash',
+    mani.background_color === '#f7f8fa' && mani.theme_color === '#f7f8fa',
+    JSON.stringify({ bg: mani.background_color, th: mani.theme_color }));
+
+  const { page, ctx } = await open({ width: 390, height: 844 }, 'phone-chrome');
+  await page.waitForTimeout(300);
+  const orb = await page.evaluate(() => {
+    const e = document.querySelector('.orb.lg'); const r = e.getBoundingClientRect();
+    return Math.round(r.width); });
+  ok('phone: the orb is a mark, not a mascot', orb <= 60, `orb ${orb}px`);
+  const bar = await page.evaluate(() => getComputedStyle(document.querySelector('#topbar')).paddingTop);
+  ok('phone: the top bar pays for the notch', /calc|px/.test(bar), bar);
+  await page.fill('#note', 'כמה מכרנו היום?');
+  await page.click('#sendBtn');
+  await page.waitForSelector('#thread .msg.lia .acts .det', { timeout: 6000 });
+  const tap = await page.$$eval('#thread .msg.lia .acts .det',
+    n => n.map(b => Math.round(b.getBoundingClientRect().width)));
+  ok('phone: the icon controls are thumb-sized', tap.every(w => w >= 36), JSON.stringify(tap));
+  await ctx.close();
+}
+
 // ── the phone stays a single-column assistant ───────────────────────────────
 {
   const { page, ctx } = await open({ width: 390, height: 844 }, 'phone-shape');
