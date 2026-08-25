@@ -234,9 +234,11 @@ const seen = (page) => page.evaluate(() => {
   const shown = await page.$$eval('#thread .msg.lia', n => n[n.length - 1].innerText);
   ok('the unfounded claim never reaches the screen as an answer',
     !/שונה מהותית|לא מקומט/.test(shown || ''), `got: ${JSON.stringify(shown)}`);
-  // innerText still returns text for a display:none node, so ask the layout.
-  ok('...and פרטים is closed until he opens it',
-    await page.$$eval('#thread .deep', n => getComputedStyle(n[n.length - 1]).display === 'none'));
+  // Evidence moved out of the conversation (David, 25.8): it is a drawer now,
+  // not thirty lines folded into the reply. Same guarantee, new surface —
+  // nothing is shown until he opens it.
+  ok('...and the evidence drawer is closed until he opens it',
+    !(await page.isVisible('#evDrawer.on')) && !(await page.textContent('#evBody')).trim());
 
   await seen(page); await ask(page, 'למה בחרת דווקא בזה?');
   await seen(page); await ask(page, 'יש משהו חשוב שלא שאלתי?');
@@ -299,7 +301,7 @@ const seen = (page) => page.evaluate(() => {
     !/לקוח שחוזר שווה/.test(bubble), `got: ${JSON.stringify(bubble.slice(0, 220))}`);
   await page.click('#thread .msg.lia .acts .det');       // פרטים
   await page.waitForTimeout(120);
-  const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
+  const deep = await page.textContent('#evBody');   // the drawer, not the reply
   ok('the recommendation is there when he asks for it', /להתקשר למשאב שיקום השבוע/.test(deep));
   ok('so is the opportunity', /לקוח שחוזר שווה/.test(deep));
   ok('and the sources behind it', /לקוחות|ORDERS|orders/.test(deep));
