@@ -25,7 +25,8 @@ ok('pure block markers exist', begin > 0 && end > begin);
 const pure = SRC.slice(begin + '/*ATT-PURE-BEGIN*/'.length, end);
 const api = new Function(pure + `
   return {ATT_KINDS,ATT_ACCEPT,sanitizeName,attKind,attValidate,sourceTypeOf,
-          newSourceId,sourceDescriptor,resolveSourceRef,sourcesForKernel,kernelSawSources};`)();
+          newSourceId,sourceDescriptor,resolveSourceRef,sourcesForKernel,kernelSawSources,
+          answerWords,isRepeatAnswer};`)();
 
 // ── 1. the whitelist ────────────────────────────────────────────────────
 ok('png is an image', api.attKind('image/png', 'צילום מסך.png') === 'image');
@@ -120,6 +121,14 @@ ok('an entity question never drags old files in', R('מה הסיפור עם בן
 ok('an entity question with an explicit ask still can', R('מה הסיפור עם בן זיו? תסתכלי בתמונה ששלחתי').length === 1);
 ok('a bare type word with no question re-attaches nothing', R('התמונה').length === 0);
 ok('a real content question about the file still resolves', R('מה כתוב בתמונה?').length === 1);
+
+// ── the loop brake: the Orna repeats must trip it, real answers must not ──
+const A1='בתמונה מופיעה חתימת מייל של Fresco לוגו אדום משמאל ולצדו פרטי אורנה שלם מנהלת כספים הטלפון והכתובת ברקע גרפיקה אפורה בהירה של מניפת גוונים';
+const A2='בתמונה נראית חתימת מייל של Fresco על רקע לבן אפור לוגו אדום גדול משמאל ולצדו הפרטים של אורנה שלם מנהלת כספים טלפון וכתובת ברקע מופיעה גרפיקה אפורה בהירה דמוית מניפת גוונים';
+ok('the two live Orna paraphrases are detected as a repeat', api.isRepeatAnswer(A2, [A1]) === true);
+ok('a genuinely different answer passes', api.isRepeatAnswer('בן זיו סיים את הפרויקט לפני חודשיים ואין פעילות פתוחה מולו', [A1]) === false);
+ok('short answers never trip the brake', api.isRepeatAnswer('כן', ['כן']) === false);
+ok('no history — no brake', api.isRepeatAnswer(A1, []) === false);
 
 ok('registry is capped so localStorage cannot grow without bound', /\.slice\(-12\)/.test(SRC));
 ok('me-bubbles render the evidence', /class="shots"/.test(SRC));
