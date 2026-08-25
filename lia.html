@@ -991,8 +991,18 @@ function sendPrimary(){
     note actually under review, or a yes to it, may be filed. Anything else
     means David moved on, and falls through to normal routing. */
  if(MODE==='review'){
+  const a=norm(t);
   if(t===PENDING_NOTE){sendNote(t);return;}
-  if(PENDING_NOTE&&YES.indexOf(norm(t))>=0){ta.value=PENDING_NOTE;sendNote(PENDING_NOTE);return;}
+  if(PENDING_NOTE&&YES.indexOf(a)>=0){ta.value=PENDING_NOTE;sendNote(PENDING_NOTE);return;}
+  /* "לא" is an answer to the question on the table, not a new request. It used
+     to fall through to routing, so a rejection became a fresh note or query —
+     the pending note stayed armed and the next "כן" could file it. Now it
+     cancels: nothing is sent, the pending note is dropped, the box is cleared
+     and she returns to idle. */
+  if(PENDING_NOTE&&NO.indexOf(a)>=0){
+   PENDING_NOTE='';ta.value='';ta.rows=1;VOICE={};
+   addTurn('me',t);addTurn('lia','בסדר, ביטלתי. לא שמרתי כלום.');
+   setMode('idle');return;}
   PENDING_NOTE='';
  }
  const intent=classify(t,SESSION.turns.length>0);
