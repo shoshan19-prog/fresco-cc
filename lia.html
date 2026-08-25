@@ -5,7 +5,7 @@
 <link rel="apple-touch-icon" href="lia-icon-180.png">
 <meta name="theme-color" content="#f7f8fa">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="LIA"><style>
 /* ── LIA — Executive AI Operating System ─────────────────────────────────────
    Shell only. Every id, class and handler the logic touches is preserved; what
@@ -287,16 +287,19 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 .masked{-webkit-text-security:disc}
 @media(max-width:430px){
  h1{font-size:23px}
- .orb.lg{width:82px;height:82px}
+ .orb.lg{width:52px;height:52px}
  .ansCard{padding:16px 15px 12px;border-radius:18px}
  #thread{padding:12px 12px 8px;gap:15px}
- #topbar{padding:10px 13px 9px;gap:6px}
+ /* Installed to the home screen the page owns the whole window, so the bar
+    pays for the notch itself. On a normal tab the inset is 0 and nothing moves. */
+ #topbar{padding:calc(10px + env(safe-area-inset-top)) 13px 9px;gap:6px}
  /* on a phone the context line truncates to a single letter and earns nothing —
-    the bar keeps identity, the two controls and the wordmark */
+    the bar keeps identity and the two controls */
  #ctxLine{display:none}
- #topbar button{padding:6px 5px}
- .msg .acts{padding:5px 12px}
- .msg .acts .det{font-size:13px}
+ #topbar button{padding:8px 7px;font-size:16px}
+ /* thumbs, not cursors: the two icon controls get a real tap target */
+ .msg .acts{gap:10px;margin-top:14px}
+ .msg .acts .det{width:38px;height:38px;font-size:16px}
 }
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
