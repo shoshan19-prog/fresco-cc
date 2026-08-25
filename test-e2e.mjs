@@ -93,8 +93,12 @@ const seen = (page) => page.evaluate(() => {
   const left = await page.evaluate(() => SESSION.turns.length);
   const shown = await page.textContent('#thread');
   ok('6. a new conversation starts empty', left === 0, `turns left: ${left}`);
-  ok('   and shows the opening line, not a blank panel',
-    /שאל אותי משהו על פרסקו/.test(shown || ''), `got: ${JSON.stringify((shown || '').slice(0, 80))}`);
+  // The opening line became the home screen of David's 25.8 mockup: a greeting
+  // and the one question LIA is there to answer. Same property as before — an
+  // empty thread must never be a blank panel — asserted against what now fills it.
+  ok('   and shows the home screen, not a blank panel',
+    /טוב, דוד/.test(shown || '') && /מה דורש תשומת לב עכשיו/.test(shown || ''),
+    `got: ${JSON.stringify((shown || '').slice(0, 80))}`);
 
   // The property the old regex assert in test-render.mjs claimed to cover and
   // did not: what lands in memory must be prose. Drive it with the failure that
@@ -276,8 +280,16 @@ const seen = (page) => page.evaluate(() => {
   await ask(page, 'תסתכלי על הלקוחות ותמצאי לי משהו חריג שלא הייתי רואה לבד.');
   const bubble = await page.$$eval('#thread .msg.lia', n => n[n.length - 1].innerText);
   ok('the analysis reads as one person talking', /משאב שיקום/.test(bubble));
-  ok('nothing is stapled underneath it',
-    !/להתקשר למשאב שיקום השבוע|לקוח שחוזר שווה/.test(bubble), `got: ${JSON.stringify(bubble.slice(0, 220))}`);
+  // David's 25.8 UI directive and mockup reverse exactly one half of this: the
+  // next action IS on the card now, under its own "הפעולה הבאה" heading. What
+  // the assert still guards is the thing he actually objected to — a form being
+  // filled in under every reply. Risks, facts and sources stay folded away, and
+  // the recommendation is a labelled section, never a line stapled to the prose.
+  ok('the next action is its own section, not stapled prose',
+    /הפעולה הבאה/.test(bubble) && /להתקשר למשאב שיקום השבוע/.test(bubble),
+    `got: ${JSON.stringify(bubble.slice(0, 220))}`);
+  ok('the rest is still not stapled underneath',
+    !/לקוח שחוזר שווה|31 הזמנות/.test(bubble), `got: ${JSON.stringify(bubble.slice(0, 220))}`);
   await page.click('#thread .msg.lia .acts .det');       // פרטים
   await page.waitForTimeout(120);
   const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
