@@ -50,7 +50,22 @@ async function open(viewport, tag, hold) {
       if (hold) await new Promise(r => setTimeout(r, 4000));
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
     }
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, items: [], objects: [], model: true }) });
+    // The rails read the SAME endpoints the panel already used — state, sales,
+    // next_decision, company_changes. Stub them the way production answers.
+    const j = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    if (body.action === 'sales') return j({ today_orders: 14, today_amount: 42687, today_amount_incl_vat: 50370.66,
+      biggest_order: { customer: 'מרינה', amount: 12400 }, top_customers: [], source: 'ORDERS' });
+    if (body.action === 'cap' && body.name === 'next_decision')
+      return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
+    if (body.action === 'cap' && body.name === 'company_changes')
+      return j({ rows: [{ at: '2026-08-25T11:48:00Z', summary: 'הזמנה חדשה SO26001464' },
+                        { at: '2026-08-25T11:42:00Z', summary: 'תעודת משלוח יצאה' }], source: 'decision_event' });
+    j({ ok: true, items: [], objects: [], model: true,
+        queue: [{ id: 'a1b2c3d4-0000', object_type: 'COMMITMENT', verification_state: 'CANONICAL',
+                  payload: { quote: 'הבטחנו דוגמאות', speaker: 'דוד', fields: { what: 'לשלוח דוגמאות לאשרף', deadline: '2026-08-20' } } },
+                { id: 'b2c3d4e5-0000', object_type: 'TASK', verification_state: 'CANONICAL',
+                  payload: { quote: 'לבדוק מלאי', speaker: 'דוד', fields: { what: 'לבדוק מלאי אלוטקס', deadline: '2026-08-28' } } }],
+        counts: { active: 2, canonical: 2, pending_notes: 0, expired: 0 } });
   });
   await page.addInitScript(() => { localStorage.setItem('lia_code', 'qa'); localStorage.setItem('lia_privacy', '1'); });
   await page.goto(PAGE);
@@ -86,13 +101,90 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
     !/דבר עם LIA/.test(await page.textContent('#composer')));
   ok(`${tag}: answer does not spill sideways`, (await overflow(page)) <= 1, `overflow ${await overflow(page)}px`);
 
+  ok(`${tag}: evidence is NOT dumped inside the reply`, !/לקוח שחוזר שווה יותר/.test(card));
+  // "Maximum 5-7 visible lines before expansion" — enforced structurally, not
+  // by eyeballing: at most 3 findings and 2 interpretation lines reach the
+  // card; everything beyond that is in the drawer.
+  const shape = await page.evaluate(() => {
+    const c = [...document.querySelectorAll('#thread .msg.lia .ansCard')].pop();
+    const means = [...c.querySelectorAll('.sec .secBody')].filter(e => !e.classList.contains('facts'));
+    return { facts: c.querySelectorAll('.fact').length,
+             meanLines: means.reduce((a, e) => a + e.innerText.split('\n').filter(Boolean).length, 0),
+             next: c.querySelectorAll('.nextPill').length };
+  });
+  ok(`${tag}: the card stays short — findings capped at 3`, shape.facts <= 3, JSON.stringify(shape));
+  ok(`${tag}: interpretation capped at 2 lines on the card`, shape.meanLines <= 2, JSON.stringify(shape));
+  ok(`${tag}: the next action is on the card as its own control`, shape.next === 1);
+
   await page.click('#thread .msg.lia .acts .det');
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(300);
   await shot(page, `${tag}-4-evidence`);
-  const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
-  ok(`${tag}: evidence opens with sources and interpretation`,
-    /ORDERS/.test(deep) && /לקוח שחוזר שווה יותר/.test(deep));
-  ok(`${tag}: expanded does not spill sideways`, (await overflow(page)) <= 1);
+  ok(`${tag}: evidence opens in its own surface`, await page.isVisible('#evDrawer.on'));
+  const deep = await page.textContent('#evBody');
+  ok(`${tag}: the drawer holds sources, facts and interpretation`,
+    /ORDERS/.test(deep) && /7 תעודות משלוח/.test(deep) && /לקוח שחוזר שווה יותר/.test(deep));
+  ok(`${tag}: open drawer does not spill sideways`, (await overflow(page)) <= 1);
+  await page.click('#evHead .ghost');
+  await page.waitForTimeout(200);
+  ok(`${tag}: the drawer closes again`, !(await page.isVisible('#evDrawer.on')));
+  await ctx.close();
+}
+
+// ── David's acceptance, desktop (25.8): without scrolling a wall of text he
+// must see (1) what happened today, (2) what needs him, (3) what LIA
+// recommends, (4) which systems are live.
+{
+  const { page, ctx } = await open({ width: 1440, height: 900 }, 'command-center');
+  await page.waitForTimeout(700);
+  await shot(page, 'desktop-0-command-center');
+  ok('CC: three zones are laid out, not one stretched column',
+    await page.isVisible('#railL') && await page.isVisible('#center') && await page.isVisible('#railR'));
+  const today = await page.textContent('#today');
+  ok('CC: 1. what happened today — orders, from the sales endpoint',
+    /14/.test(today) && /הזמנות היום/.test(today), JSON.stringify(today));
+  ok('CC: 2. what needs attention — overdue is counted and called out',
+    /באיחור/.test(today));
+  const prios = await page.textContent('#prios');
+  ok('CC: 3. what LIA recommends — ranked priorities from the open queue',
+    /דוגמאות לאשרף/.test(prios) && /לאשר את מחיר/.test(prios), JSON.stringify(prios));
+  const sys = await page.textContent('#systems');
+  ok('CC: 4. which systems are live — only ones that actually answered',
+    /Marketing OS/.test(sys) && /Priority/.test(sys), JSON.stringify(sys));
+  ok('CC: a system that never answered is not advertised', !/Matriya/.test(sys));
+  ok('CC: activity shows the system pulse', /SO26001464|תעודת משלוח/.test(await page.textContent('#activity')));
+  ok('CC: identity is present at desktop size', await page.isVisible('#osName'));
+  ok('CC: no horizontal spill on the wide canvas', (await overflow(page)) <= 1);
+  // the acceptance itself: all four without scrolling
+  const seenAbove = await page.evaluate(() => {
+    const vh = window.innerHeight;
+    const vis = (sel) => { const e = document.querySelector(sel); if (!e) return false;
+      const r = e.getBoundingClientRect(); return r.top < vh && r.bottom > 0 && r.height > 0; };
+    return vis('#today') && vis('#prios') && vis('#systems') && vis('#thread');
+  });
+  ok('CC: all four are visible without scrolling', seenAbove);
+  await ctx.close();
+}
+
+// ── the phone stays a single-column assistant ───────────────────────────────
+{
+  const { page, ctx } = await open({ width: 390, height: 844 }, 'phone-shape');
+  await page.waitForTimeout(500);
+  ok('phone: the rails do not stretch onto the phone',
+    !(await page.isVisible('#railL')) && !(await page.isVisible('#railR')));
+  ok('phone: the composer is present and sticky at the bottom',
+    await page.isVisible('#composer'));
+  await page.fill('#note', 'מה מצב ההזמנות היום');
+  await page.click('#sendBtn');
+  await page.waitForSelector('#thread .msg.lia .ansCard', { timeout: 6000 });
+  await page.click('#thread .msg.lia .acts .det');
+  await page.waitForTimeout(300);
+  await shot(page, 'mobile-9-sheet');
+  const sheet = await page.evaluate(() => {
+    const d = document.getElementById('evDrawer'); const r = d.getBoundingClientRect();
+    return { bottom: Math.round(window.innerHeight - r.bottom), h: Math.round(r.height), vh: window.innerHeight };
+  });
+  ok('phone: evidence arrives as a bottom sheet, not a full page',
+    sheet.bottom <= 2 && sheet.h < sheet.vh * 0.85, JSON.stringify(sheet));
   await ctx.close();
 }
 
@@ -128,8 +220,8 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok('P0: the card does not claim it never checked', !/בלי לבדוק/.test(card), JSON.stringify(card.slice(0, 200)));
   await page.click('#thread .msg.lia .acts .det');
   await page.waitForTimeout(200);
-  const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
-  ok('P0: the rejected wording is preserved in the drawer', /בלי לבדוק/.test(deep));
+  ok('P0: the rejected wording is preserved in the drawer',
+    /בלי לבדוק/.test(await page.textContent('#evBody')));
   ok('P0: no horizontal spill in the corrected card', (await overflow(page)) <= 1);
   await ctx.close();
 }

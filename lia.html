@@ -9,10 +9,14 @@
 <meta name="apple-mobile-web-app-title" content="LIA"><style>
 /* ── LIA — Executive AI Operating System ─────────────────────────────────────
    Shell only. Every id, class and handler the logic touches is preserved; what
-   changed is colour, depth, rhythm and motion. Deep dark ground, one blue→
-   purple accent, glass panels, and an orb that makes LIA a presence instead of
-   a text box. Mobile-first: the phone layout is the design, the desktop is the
-   same thing with more air. */
+   changed is structure, colour, depth and rhythm.
+
+   TWO PRODUCTS, ONE FILE (David, 25.8): the desktop is a COMMAND CENTER —
+   three zones, today on the right-lead, the conversation in the middle, live
+   systems and activity on the far side — and the phone is an EXECUTIVE
+   ASSISTANT: one column, compact answer, sticky composer, evidence in a bottom
+   sheet. The previous pass stretched the phone layout across the desktop and it
+   read as a log viewer. It no longer does. */
 :root{
  --bg:#05060c;--bg2:#0a0d18;
  --card:rgba(21,25,40,.72);--card2:rgba(30,35,56,.5);
@@ -26,7 +30,7 @@
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
 body{background:var(--bg);color:var(--txt);
- font:16px/1.6 system-ui,'Segoe UI',Arial,sans-serif;margin:auto;max-width:860px;
+ font:16px/1.6 system-ui,'Segoe UI',Arial,sans-serif;margin:0;width:100%;
  display:flex;flex-direction:column;height:100dvh;overflow:hidden;
  -webkit-tap-highlight-color:transparent}
 /* the ground glow — fixed, behind everything, never scrolls or spills */
@@ -54,11 +58,85 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px}
  50%{box-shadow:0 0 40px rgba(112,92,255,.8),inset 0 0 18px rgba(255,255,255,.36)}}
 @keyframes orbSpin{to{transform:rotate(360deg)}}
 
-/* ── the conversation IS the screen: header, chips, thread, composer ────── */
+/* ── the shell: identity bar, three zones, one composer ─────────────────── */
 #app{flex:1;min-height:0;display:flex;flex-direction:column}
-#topbar{display:flex;align-items:center;gap:10px;padding:12px 16px 10px;flex:0 0 auto;
+#topbar{display:flex;align-items:center;gap:12px;padding:12px 16px 11px;flex:0 0 auto;
  border-bottom:1px solid var(--line)}
-#topbar .brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:19px;letter-spacing:1.5px}
+#topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:21px;letter-spacing:1.6px}
+#osName{display:none;color:var(--dim);font-size:12.5px;letter-spacing:2.4px;font-weight:600}
+#clock{color:var(--dim);font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* Three zones on a real desktop canvas; one column on a phone. The rails are
+   display:none below the breakpoint, so the DOM order never fights the phone. */
+#shell{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);
+ grid-template-rows:minmax(0,1fr) auto}
+#center{grid-area:c;min-height:0;display:flex;flex-direction:column}
+.rail{display:none;min-height:0;flex-direction:column;gap:14px;overflow-y:auto;
+ overscroll-behavior:contain;padding:16px 2px 10px;scrollbar-width:thin}
+.rail::-webkit-scrollbar{width:6px}
+.rail::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px}
+.railCard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+ padding:15px 16px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.railHead{display:flex;align-items:center;justify-content:space-between;
+ font-size:10.5px;letter-spacing:2.2px;font-weight:700;color:var(--dim);margin-bottom:12px}
+/* TODAY — three numbers, read in one glance, from data already on screen */
+.todayGrid{display:flex;flex-direction:column;gap:11px}
+.tStat{display:flex;align-items:baseline;gap:10px}
+.tStat b{font-size:27px;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+.tStat span{font-size:13px;color:var(--dim)}
+.tStat.hot b{color:var(--warn)}
+.tStat.stop b{color:#ff6b6b}
+.tSum{margin-top:12px;padding-top:11px;border-top:1px solid var(--line);
+ font-size:13px;color:var(--dim)}
+/* PRIORITIES — ranked, compact, never a wall */
+.prio{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13.5px;
+ line-height:1.5;cursor:pointer;transition:opacity .2s}
+.prio:first-of-type{border-top:0}
+.prio:hover{opacity:.75}
+.prio .n{flex:0 0 auto;width:19px;height:19px;border-radius:6px;font-size:11px;font-weight:700;
+ display:flex;align-items:center;justify-content:center;background:var(--card2);color:var(--dim)}
+.prio.late .n{background:rgba(255,107,107,.16);color:#ff8f8f}
+.prio.dec .n{background:var(--accSoft);color:#b3a2ff}
+.prio .t{flex:1;min-width:0}
+.prio .w{display:block;font-size:11.5px;color:var(--dim);margin-top:1px}
+/* SYSTEMS — only what actually answered this session */
+.sys{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13.5px}
+.sys i{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--ok);
+ box-shadow:0 0 8px var(--ok)}
+.sys.off i{background:var(--dim);box-shadow:none;opacity:.45}
+.sys .nm{flex:1;min-width:0}
+.sys .st{font-size:11px;color:var(--dim);letter-spacing:.4px}
+/* ACTIVITY — the system's own pulse, newest first */
+.act{display:flex;gap:9px;padding:8px 0;border-top:1px solid var(--line);font-size:12.5px;
+ line-height:1.5;color:var(--dim)}
+.act:first-of-type{border-top:0}
+.act .tm{flex:0 0 auto;color:var(--txt);opacity:.62;font-variant-numeric:tabular-nums}
+.railEmpty{font-size:12.5px;color:var(--dim);opacity:.75;padding:2px 0}
+
+@media(min-width:1100px){
+ #topbar{padding:14px 26px 13px;gap:16px}
+ #topbar .brand{font-size:23px}
+ #osName{display:inline}
+ #shell{grid-template-columns:300px minmax(0,1fr) 310px;
+  grid-template-areas:"l c r" "f f f";
+  column-gap:22px;width:100%;max-width:1680px;margin:0 auto;padding:0 26px}
+ #railL{grid-area:l;display:flex}
+ #railR{grid-area:r;display:flex}
+ #composer{grid-area:f}
+ /* A conversation is still a column of text: it gets air around it, not a
+    2000px measure. The rails own the width; the centre owns the reading. */
+ #thread{padding:26px 6px 14px;gap:22px}
+ #thread>*{width:100%;max-width:840px;margin-inline:auto}
+ .hero{padding:54px 2px 10px;justify-content:center;gap:26px}
+ .hero h1{font-size:34px}
+ .hero p{font-size:16.5px}
+ #composer{padding:10px 0 16px}
+ #composer .line,#composer .row,#composer #attachBar,#composer #noteStat{
+  max-width:1060px;margin-inline:auto}
+}
+@media(min-width:1500px){
+ #shell{grid-template-columns:330px minmax(0,1fr) 340px}
+}
 .live{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
  letter-spacing:1.2px;color:var(--ok)}
 .live i{width:7px;height:7px;border-radius:50%;background:var(--ok);
@@ -123,9 +201,36 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px}
 .msg .acts:hover{border-color:var(--line2)}
 .msg .acts .det{font-size:14px}
 .msg .acts .det:first-child{font-weight:600;color:var(--txt)}
-.msg .deep{margin-top:12px;border-top:1px solid var(--line);padding-top:12px;
- animation:rise .28s ease both}
-.msg .deep ul{margin:4px 12px 0;padding:0}
+/* Evidence left the conversation card (David, 25.8): thirty lines unfolding
+   inside a reply is what made this read as a log viewer. It opens in its own
+   surface now — a side drawer on the desktop, a bottom sheet on the phone —
+   and detailsHtml() is unchanged, so the evidence logic is exactly the one
+   that was already trusted. */
+#evDrawer{position:fixed;z-index:24;background:var(--bg2);border:1px solid var(--line);
+ display:none;flex-direction:column;box-shadow:0 -20px 60px -20px rgba(0,0,0,.95)}
+#evDrawer.on{display:flex}
+#evHead{display:flex;align-items:center;justify-content:space-between;gap:10px;
+ padding:14px 18px;border-bottom:1px solid var(--line);flex:0 0 auto}
+#evHead b{font-size:14px;letter-spacing:.4px}
+#evBody{flex:1;min-height:0;overflow-y:auto;padding:14px 18px 22px}
+#evBody ul{margin:4px 12px 0;padding:0}
+#evBody .deep{animation:rise .25s ease both}
+#evScrim{position:fixed;inset:0;z-index:23;background:rgba(3,4,9,.6);display:none;
+ backdrop-filter:blur(2px)}
+#evScrim.on{display:block;animation:fadein .25s ease both}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+/* phone: bottom sheet */
+#evDrawer{inset:auto 0 0 0;max-height:76dvh;border-radius:22px 22px 0 0;
+ padding-bottom:env(safe-area-inset-bottom);animation:sheet .3s cubic-bezier(.2,.8,.2,1) both}
+@keyframes sheet{from{transform:translateY(100%)}to{transform:none}}
+/* desktop: side drawer on the inline-start edge, next to the conversation */
+@media(min-width:1100px){
+ #evDrawer{inset:0 auto 0 0;width:min(460px,38vw);max-height:none;border-radius:0 22px 22px 0;
+  animation:slidein .3s cubic-bezier(.2,.8,.2,1) both}
+ @keyframes slidein{from{transform:translateX(-100%)}to{transform:none}}
+}
+/* what stays in the card when there is more underneath */
+.moreLine{margin-top:12px;font-size:13px;color:var(--dim)}
 .thinking .bubble{color:var(--dim)}
 /* thinking: a signal line that actually moves, plus a skeleton of the card */
 .wave{display:inline-flex;align-items:flex-end;gap:3px;height:16px;vertical-align:-3px;margin-left:8px}
@@ -244,13 +349,41 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 <div id="app" style="display:none">
 <header id="topbar">
  <span class="brand">LIA<span class="live"><i></i>LIVE</span><span class="orb sm"></span></span>
+ <span id="osName">FRESCO EXECUTIVE OS</span>
  <span id="ctxLine">פרסקו</span>
+ <span id="clock"></span>
  <button onclick="newSession()" title="שיחה חדשה">✎</button>
  <button onclick="openPanel()" title="עוד">⋯</button>
- <span class="wordmark">FRESCO</span>
 </header>
 
+<div id="shell">
+<!-- LEFT: the day itself — built only from state/sales/decisions already fetched -->
+<aside id="railL" class="rail" aria-label="היום">
+ <section class="railCard">
+  <div class="railHead"><span>TODAY</span><span id="tDate"></span></div>
+  <div class="todayGrid" id="today"></div>
+ </section>
+ <section class="railCard">
+  <div class="railHead"><span>PRIORITIES</span></div>
+  <div id="prios"></div>
+ </section>
+</aside>
+
+<div id="center">
 <main id="thread"></main>
+</div>
+
+<!-- RIGHT: what is actually live, and what the systems did -->
+<aside id="railR" class="rail" aria-label="מערכות ופעילות">
+ <section class="railCard">
+  <div class="railHead"><span>SYSTEMS</span></div>
+  <div id="systems"></div>
+ </section>
+ <section class="railCard">
+  <div class="railHead"><span>ACTIVITY</span></div>
+  <div id="activity"></div>
+ </section>
+</aside>
 
 <footer id="composer">
  <div class="row" id="recBar" style="margin-top:0"><span class="rec"></span><b id="recTime">00:00</b>
@@ -267,7 +400,15 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
  <div class="row" id="capActions" style="margin-top:8px"></div>
  <p class="dim" id="noteStat" style="margin-top:6px"></p>
 </footer>
+</div><!-- /shell -->
 <div id="seal">🔒 מאובטח ברמת ארגון</div>
+</div>
+
+<!-- evidence, out of the conversation: side drawer on desktop, sheet on phone -->
+<div id="evScrim" onclick="closeEv()"></div>
+<div id="evDrawer" role="dialog" aria-label="ראיות ופרטים">
+ <div id="evHead"><b>ראיות ופרטים</b><button class="ghost" onclick="closeEv()">סגור</button></div>
+ <div id="evBody"></div>
 </div>
 
 <!-- everything that is not the conversation lives behind ⋯ -->
@@ -363,7 +504,12 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
- if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}}
+ tickClock();loadRails().catch(()=>{});
+ if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
+ /* The rails run on their own, slower beat: the queue rides the 8s state poll
+    that already existed, and the three read-only calls behind TODAY refresh
+    once a minute instead of riding it. */
+ if(!window._liaRails){window._liaRails=setInterval(()=>{tickClock();loadRails().catch(()=>{});},60000);}}
 let MODEL_ON=false;
 /* One source of truth for connection wording, in David's terms: Fresco LIA runs
    on GPT, so that is what the panel says. The provider adapter underneath still
@@ -464,6 +610,88 @@ function scrollThread(force){const el=document.getElementById('thread');
  if(force||nearBottom())el.scrollTop=el.scrollHeight;}
 function greet(){const hh=new Date().getHours();
  return hh<12?'בוקר טוב, דוד':hh<17?'צהריים טובים, דוד':'ערב טוב, דוד';}
+
+/* ── the command centre rails ────────────────────────────────────────────────
+   Everything here comes from calls THIS PANEL ALREADY MAKES — state (the open
+   queue), sales (today's orders) and next_decision / company_changes, the same
+   ones capFocus and capImportant have always used. No new endpoint, no new
+   table, nothing invented: if a number is not in a response, the row is not
+   drawn. The rails are desktop-only; the phone stays one column. */
+let RAILS={sales:null,decisions:[],changes:[],queue:[]};
+const SYS_LIVE={};                                  // system → proven live this session
+function markSys(k,on){SYS_LIVE[k]=!!on;}
+function railsOn(){return window.matchMedia('(min-width:1100px)').matches;}
+function pad2(n){return (n<10?'0':'')+n;}
+function tickClock(){const el=document.getElementById('clock');if(!el)return;
+ const d=new Date();
+ el.textContent=d.getDate()+'.'+(d.getMonth()+1)+' · '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+ const t=document.getElementById('tDate');if(t)t.textContent=d.getDate()+'.'+(d.getMonth()+1);}
+/* One ranking, one place. Overdue first, then what waits for David's decision,
+   then the nearest deadline — the same order capFocus speaks out loud. */
+function rankPriorities(queue,decisions,todayStr){
+ const dated=(queue||[]).map(o=>({o:o,d:(o.payload&&o.payload.fields||{}).deadline||(o.payload&&o.payload.fields||{}).due||''}))
+   .filter(x=>x.d).sort((a,b)=>a.d.localeCompare(b.d));
+ const late=dated.filter(x=>x.d<todayStr),soon=dated.filter(x=>x.d>=todayStr);
+ const out=late.map(x=>({kind:'late',text:subject(x.o),when:'באיחור · '+heDate(x.d)}));
+ for(const d of (decisions||[]))out.push({kind:'dec',text:d.claim||'',when:'מחכה להחלטה שלך'});
+ for(const x of soon)out.push({kind:'due',text:subject(x.o),when:'עד '+heDate(x.d)});
+ return out.filter(x=>x.text).slice(0,5);}
+function countAttention(queue,decisions,todayStr){
+ const dated=(queue||[]).map(o=>(o.payload&&o.payload.fields||{}).deadline||(o.payload&&o.payload.fields||{}).due||'').filter(Boolean);
+ const late=dated.filter(d=>d<todayStr).length;
+ return {late:late,attention:dated.filter(d=>d<=todayStr).length+(decisions||[]).length};}
+function renderRails(){
+ if(!railsOn())return;
+ const t=todayISO(),c=countAttention(RAILS.queue,RAILS.decisions,t);
+ const s=RAILS.sales||{};
+ const T=document.getElementById('today');
+ if(T){
+  const orders=(s&&!s.error&&typeof s.today_orders==='number')?s.today_orders:null;
+  T.innerHTML=
+   (orders===null?'<p class="railEmpty">פריוריטי לא ענה — אין מספר הזמנות להיום.</p>'
+    :'<div class="tStat"><b>'+orders+'</b><span>הזמנות היום</span></div>')
+   +'<div class="tStat'+(c.attention?' hot':'')+'"><b>'+c.attention+'</b><span>דורש תשומת לב</span></div>'
+   +'<div class="tStat'+(c.late?' stop':'')+'"><b>'+c.late+'</b><span>באיחור</span></div>'
+   +(orders&&s.today_amount?'<div class="tSum">'+money(s.today_amount)+' לפני מע"מ'
+      +(s.biggest_order?' · הגדולה: '+esc(clip(s.biggest_order.customer||'',18)):'')+'</div>':'');}
+ const P=document.getElementById('prios');
+ if(P){
+  const list=rankPriorities(RAILS.queue,RAILS.decisions,t);
+  P.innerHTML=list.length?list.map((x,i)=>
+    '<div class="prio '+x.kind+'" onclick="askAbout('+JSON.stringify(x.text).replace(/"/g,'&quot;')+')">'
+    +'<span class="n">'+(i+1)+'</span><span class="t">'+esc(clip(x.text,74))
+    +'<span class="w">'+esc(x.when)+'</span></span></div>').join('')
+   :'<p class="railEmpty">אין באיחור ואין החלטות תלויות.</p>';}
+ const S=document.getElementById('systems');
+ if(S){
+  const rows=[['marketing','Marketing OS'],['priority','Priority'],['mail','Mail'],['project','Project State']]
+    .filter(([k])=>k in SYS_LIVE)                  // never advertise what did not answer
+    .map(([k,nm])=>'<div class="sys'+(SYS_LIVE[k]?'':' off')+'"><i></i><span class="nm">'+nm+'</span>'
+      +'<span class="st">'+(SYS_LIVE[k]?'LIVE':'לא ענה')+'</span></div>').join('');
+  S.innerHTML=rows||'<p class="railEmpty">עוד לא פניתי לאף מערכת בסשן הזה.</p>';}
+ const A=document.getElementById('activity');
+ if(A){
+  A.innerHTML=RAILS.changes.length?RAILS.changes.slice(0,7).map(x=>
+    '<div class="act"><span class="tm">'+esc(x.tm)+'</span><span>'+esc(clip(x.text,64))+'</span></div>').join('')
+   :'<p class="railEmpty">אין תנועה חדשה במערכות.</p>';}}
+/* A priority is a question, not a link: tapping it asks LIA about that item —
+   the existing ask path, nothing new. */
+function askAbout(text){
+ const el=document.getElementById('note');
+ if(!el)return;el.value='מה הסטטוס של: '+text;el.focus();}
+function hhmm(iso){const d=new Date(iso);return isNaN(d)?'':pad2(d.getHours())+':'+pad2(d.getMinutes());}
+async function loadRails(){
+ if(!railsOn()||!CODE)return;
+ const [sales,dec,ch]=await Promise.all([
+  api({action:'sales'}).catch(()=>({error:'unreachable'})),
+  cap('next_decision').catch(()=>({rows:[]})),
+  cap('company_changes',{days:3}).catch(()=>({rows:[]}))]);
+ RAILS.sales=sales; markSys('priority',!!(sales&&!sales.error));
+ RAILS.decisions=(dec&&dec.rows)||[];
+ RAILS.changes=((ch&&ch.rows)||[]).map(r=>({
+   tm:hhmm(r.at||r.created_at||r.ts||''),
+   text:r.summary||r.claim||r.title||r.kind||r.event||''})).filter(x=>x.text);
+ renderRails();}
 function renderThread(){
  const el=document.getElementById('thread');if(!el)return;
  const stick=nearBottom();
@@ -506,15 +734,16 @@ function renderThread(){
   h+='<div class="bubble">'+esc(denied?DATA_LEAD:heb(t.text))+'</div>';
   if(structured){
    if(facts.length)h+='<div class="secBody facts">'
-    +facts.map(x=>'<span class="fact">'+esc(heb(String(x)))+'</span>').join('')+'</div>';
+    +facts.slice(0,FACTS_ON_CARD).map(x=>'<span class="fact">'+esc(heb(String(x)))+'</span>').join('')+'</div>';
    const mean=(r.inferences||[]).filter(Boolean);
    if(mean.length)h+='<div class="sec"><div class="secHead"><span class="ic">◈</span>מה המשמעות</div>'
-    +'<div class="secBody">'+mean.slice(0,3).map(x=>esc(heb(String(x)))).join('<br>')+'</div></div>';
+    +'<div class="secBody">'+mean.slice(0,2).map(x=>esc(heb(String(x)))).join('<br>')+'</div></div>';
    const next=(r.recommended_next_action||'').trim();
    if(next)h+='<div class="sec"><div class="secHead"><span class="ic">◎</span>הפעולה הבאה</div>'
     +'<div class="nextPill"><span class="mark">▶</span><span class="txt">'+esc(heb(next))+'</span></div></div>';
   }
-  if(r)h+='<div class="deep" id="deep_'+i+'" style="display:none">'+detailsHtml(r,t.text)+'</div>';
+  if(r&&(facts.length>FACTS_ON_CARD||(r.risks_opportunities||[]).length||(r.missing_information||[]).length))
+   h+='<div class="moreLine">'+(facts.length>FACTS_ON_CARD?'עוד '+(facts.length-FACTS_ON_CARD)+' ממצאים':'יש עוד פירוט')+' — ב״ראיות ופרטים״</div>';
   if(r)h+='<div class="acts"><button class="det" onclick="toggleDeep('+i+')">▾ ראיות ופרטים</button>'
    +'<button class="det" onclick="explainTurn('+i+')">תסבירי פשוט</button></div>';
   if(structured)h+='</div>';
@@ -545,8 +774,21 @@ function detailsHtml(r,txt){
    +list('הניסוח שנפסל (סתר את הנתונים)',contradicts(txt,r)?[txt]:null)
    +list('מה שמעתי',r.__heard?[r.__heard]:null)+list('מקורות',r.sources))
    ||'<p class="dim">אין פירוט נוסף.</p>';}
-function toggleDeep(i){const e=document.getElementById('deep_'+i);
- if(e)e.style.display=e.style.display==='none'?'block':'none';}
+/* Same control, same name, same call sites — it just opens the drawer instead
+   of unfolding thirty lines inside the reply. The drawer is where the FULL
+   evidence lives: every fact, not the first three the card shows. */
+const FACTS_ON_CARD=3;
+function toggleDeep(i){
+ const t=SESSION.turns[i];if(!t||!t.res)return;
+ const r=t.res,facts=(r.facts||[]).filter(Boolean);
+ const extra=facts.length?'<p class="dim" style="margin-top:2px"><b>עובדות (מהמערכות)</b></p><ul>'
+   +facts.map(x=>'<li class="dim">'+esc(heb(String(x)))+'</li>').join('')+'</ul>':'';
+ document.getElementById('evBody').innerHTML=
+   '<div class="deep" id="deep_'+i+'">'+extra+detailsHtml(r,t.text)+'</div>';
+ document.getElementById('evDrawer').classList.add('on');
+ document.getElementById('evScrim').classList.add('on');}
+function closeEv(){document.getElementById('evDrawer').classList.remove('on');
+ document.getElementById('evScrim').classList.remove('on');}
 
 /* ── the turn state machine ──────────────────────────────────────────────
    IDLE → LISTENING → PROCESSING → SPEAKING → IDLE
@@ -850,6 +1092,10 @@ function showCaught(objs){
 /* ── main render ─────────────────────────────────────────────────────── */
 let LAST_IDS=[],WAITING=null;
 function render(st){
+ /* The state call answering at all IS the proof that the notebook is live —
+    the rails say nothing they cannot show a response for. */
+ markSys('marketing',true);
+ RAILS.queue=st.queue||[];renderRails();
  SERVER_VOICE=!!(st.voice&&st.voice.available);applyMicVisibility();
  MODEL_ON=!!(st.model&&st.model.connected);subLine();
  const ids=st.queue.map(o=>o.id);
@@ -1410,7 +1656,19 @@ function unwrapPayload(r){
 function showAnswer(r,title){
  r=unwrapPayload(r);
  const text=r.__plain?heb(r.__plain):heb(r.answer||'');
+ noteSystems(r);
  addTurn('lia',(title&&title!=='ליה'?title+' ':'')+text,r);}
+/* SYSTEMS lights up from what the answer ALREADY reported using — the same
+   sources the evidence drawer shows. A system that never answered is never
+   drawn, which is the whole difference from the pills David had me remove. */
+function noteSystems(r){
+ if(!r||r.__plain)return;
+ const blob=[].concat(r.sources||[],r.capabilities_used||[]).join(' ').toLowerCase();
+ if(!blob)return;
+ if(/mail|graph|inbox|thread/.test(blob))markSys('mail',true);
+ if(/project_state|project state|repo/.test(blob))markSys('project',true);
+ if(/priority|orders|ainvoices|logpart|documents_d|cprof|business_query|sales/.test(blob))markSys('priority',true);
+ renderRails();}
 
 async function doAsk(text,turnId,atts){
  /* One live turn. A second press, a duplicate speech-final event and a
