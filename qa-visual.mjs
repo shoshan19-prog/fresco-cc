@@ -50,16 +50,13 @@ async function open(viewport, tag, hold) {
       if (hold) await new Promise(r => setTimeout(r, 4000));
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
     }
-    // The rails read the SAME endpoints the panel already used — state, sales,
-    // next_decision, company_changes. Stub them the way production answers.
+    // The rail reads the SAME endpoints the panel already used — state, sales,
+    // next_decision. Stub them the way production answers.
     const j = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     if (body.action === 'sales') return j({ today_orders: 14, today_amount: 42687, today_amount_incl_vat: 50370.66,
       biggest_order: { customer: 'מרינה', amount: 12400 }, top_customers: [], source: 'ORDERS' });
     if (body.action === 'cap' && body.name === 'next_decision')
       return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
-    if (body.action === 'cap' && body.name === 'company_changes')
-      return j({ rows: [{ at: '2026-08-25T11:48:00Z', summary: 'הזמנה חדשה SO26001464' },
-                        { at: '2026-08-25T11:42:00Z', summary: 'תעודת משלוח יצאה' }], source: 'decision_event' });
     j({ ok: true, items: [], objects: [], model: true,
         queue: [{ id: 'a1b2c3d4-0000', object_type: 'COMMITMENT', verification_state: 'CANONICAL',
                   payload: { quote: 'הבטחנו דוגמאות', speaker: 'דוד', fields: { what: 'לשלוח דוגמאות לאשרף', deadline: '2026-08-20' } } },
@@ -84,7 +81,22 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok(`${tag}: no dead expert-system controls`, (await page.$$('#chips, .chip')).length === 0);
   ok(`${tag}: LIVE indicator present`, await page.isVisible('.live'));
   ok(`${tag}: orb present`, await page.isVisible('.orb.lg'));
+  // Light theme (David, 25.8): a bright ground and dark text, everywhere.
+  const skin = await page.evaluate(() => {
+    const rgb = (c) => c.match(/\d+/g).map(Number);
+    const lum = (c) => { const [r, g, b] = rgb(c); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
+    return { bg: lum(getComputedStyle(document.body).backgroundColor),
+             txt: lum(getComputedStyle(document.body).color) };
+  });
+  ok(`${tag}: the ground is light`, skin.bg > 0.9, JSON.stringify(skin));
+  ok(`${tag}: the text is dark on it`, skin.txt < 0.3, JSON.stringify(skin));
   ok(`${tag}: idle does not spill sideways`, (await overflow(page)) <= 1, `overflow ${await overflow(page)}px`);
+  // Caught live: a grid-area name declared outside the desktop query generated
+  // phantom rows and put the composer ABOVE the conversation on narrow windows.
+  const stack = await page.evaluate(() => ({
+    thread: Math.round(document.querySelector('#thread').getBoundingClientRect().top),
+    composer: Math.round(document.querySelector('#composer').getBoundingClientRect().top) }));
+  ok(`${tag}: the composer sits below the conversation`, stack.composer > stack.thread, JSON.stringify(stack));
 
   await page.fill('#note', 'כמה מכרנו היום?');
   await shot(page, `${tag}-2-typed`);
@@ -116,6 +128,11 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok(`${tag}: interpretation capped at 2 lines on the card`, shape.meanLines <= 2, JSON.stringify(shape));
   ok(`${tag}: the next action is on the card as its own control`, shape.next === 1);
 
+  const acts = await page.$$eval('#thread .msg.lia .acts .det',
+    n => n.map(b => ({ text: b.textContent.trim(), label: b.getAttribute('aria-label') || '' })));
+  ok(`${tag}: both controls are icons, not labels`,
+    acts.length === 2 && acts.every(a => a.text.length <= 2 && a.label.length > 2), JSON.stringify(acts));
+
   await page.click('#thread .msg.lia .acts .det');
   await page.waitForTimeout(300);
   await shot(page, `${tag}-4-evidence`);
@@ -137,8 +154,8 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   const { page, ctx } = await open({ width: 1440, height: 900 }, 'command-center');
   await page.waitForTimeout(700);
   await shot(page, 'desktop-0-command-center');
-  ok('CC: three zones are laid out, not one stretched column',
-    await page.isVisible('#railL') && await page.isVisible('#center') && await page.isVisible('#railR'));
+  ok('CC: today rail beside the conversation, not one stretched column',
+    await page.isVisible('#railL') && await page.isVisible('#center'));
   const today = await page.textContent('#today');
   ok('CC: 1. what happened today — orders, from the sales endpoint',
     /14/.test(today) && /הזמנות היום/.test(today), JSON.stringify(today));
@@ -147,11 +164,10 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   const prios = await page.textContent('#prios');
   ok('CC: 3. what LIA recommends — ranked priorities from the open queue',
     /דוגמאות לאשרף/.test(prios) && /לאשר את מחיר/.test(prios), JSON.stringify(prios));
-  const sys = await page.textContent('#systems');
-  ok('CC: 4. which systems are live — only ones that actually answered',
-    /Marketing OS/.test(sys) && /Priority/.test(sys), JSON.stringify(sys));
-  ok('CC: a system that never answered is not advertised', !/Matriya/.test(sys));
-  ok('CC: activity shows the system pulse', /SO26001464|תעודת משלוח/.test(await page.textContent('#activity')));
+  // David, 25.8: system status and the activity feed are gone — only the
+  // conversation, TODAY and PRIORITIES remain.
+  ok('CC: system status and activity feed are gone',
+    (await page.$$('#systems, #activity, #railR, .sys, .act')).length === 0);
   ok('CC: identity is present at desktop size', await page.isVisible('#osName'));
   ok('CC: no horizontal spill on the wide canvas', (await overflow(page)) <= 1);
   // the acceptance itself: all four without scrolling
@@ -159,7 +175,7 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
     const vh = window.innerHeight;
     const vis = (sel) => { const e = document.querySelector(sel); if (!e) return false;
       const r = e.getBoundingClientRect(); return r.top < vh && r.bottom > 0 && r.height > 0; };
-    return vis('#today') && vis('#prios') && vis('#systems') && vis('#thread');
+    return vis('#today') && vis('#prios') && vis('#thread');
   });
   ok('CC: all four are visible without scrolling', seenAbove);
   await ctx.close();
@@ -169,8 +185,7 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
 {
   const { page, ctx } = await open({ width: 390, height: 844 }, 'phone-shape');
   await page.waitForTimeout(500);
-  ok('phone: the rails do not stretch onto the phone',
-    !(await page.isVisible('#railL')) && !(await page.isVisible('#railR')));
+  ok('phone: the rail does not stretch onto the phone', !(await page.isVisible('#railL')));
   ok('phone: the composer is present and sticky at the bottom',
     await page.isVisible('#composer'));
   await page.fill('#note', 'מה מצב ההזמנות היום');
