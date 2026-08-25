@@ -105,5 +105,35 @@ ok('the recommendation is still reachable, under פרטים',
 ok('a withdrawn claim is visible there too',
   /list\('משכתי בחזרה',r\.retracted_claims\)/.test(src));
 
+// ── one truth object (P0, David 25.8) ────────────────────────────────────────
+// The live failure: the card said "עניתי על זה בלי לבדוק בפועל" while the drawer
+// already held 14 orders, ₪42,687 and SO26001464. Summary and details must be
+// rendered from the SAME object, and when the prose denies what the data shows,
+// the data wins — with the denial preserved, not deleted.
+const guard = new Function(slice('const NO_CHECK', '\nfunction detailsHtml') + '\nreturn {contradicts,hasData};')();
+const withData = { facts: ['ORDERS: 14 הזמנות היום', '₪42,687 לפני מע"מ'], sources: ['ORDERS'] };
+ok('a denial on top of real data is caught',
+  guard.contradicts('עניתי על זה בלי לבדוק בפועל את מצב ההזמנות', withData) === true);
+ok('"לא בדקתי" over data is caught too',
+  guard.contradicts('לא בדקתי את זה מול פריוריטי', withData) === true);
+ok('an honest "no data" answer is NOT rewritten',
+  guard.contradicts('לא בדקתי כי אין לי גישה', { facts: [], sources: [] }) === false);
+ok('a normal answer is never flagged',
+  guard.contradicts('מכרנו היום 42,180 ש"ח', withData) === false);
+ok('empty facts do not count as data', guard.hasData({ facts: [null, ''], sources: [] }) === false);
+ok('the card renders the same facts array the drawer reads',
+  /const facts=structured\?\(r\.facts\|\|\[\]\)/.test(src) && /class="secBody facts"/.test(src));
+ok('facts are not printed twice — the drawer no longer repeats them',
+  !/list\('עובדות \(מהמערכות\)',r\.facts\)/.test(src));
+ok('the rejected wording is kept, in the drawer',
+  /list\('הניסוח שנפסל \(סתר את הנתונים\)',contradicts\(txt,r\)/.test(src));
+ok('the voice obeys the same rule as the screen',
+  /contradicts\(r\.answer,r\)\s*\?\s*DATA_LEAD/.test(src));
+
+// The dead expert-system pills are gone (David 25.8): no markup, no code path.
+ok('no dead chip controls remain', !/id="chips"/.test(html) && !/renderChips/.test(src));
+ok('the duplicate "דבר עם LIA" control is gone',
+  !/textContent='🎤 דבר עם LIA'/.test(src) && !/>🎤 דבר עם LIA</.test(html));
+
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);
