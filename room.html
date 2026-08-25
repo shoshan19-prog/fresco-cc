@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>החדר של דוד</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800&display=swap">
+
+<style>
+:root{
+  --ground:#F1F3F0; --card:#FFFFFF; --sunk:#E8EBE7; --line:#DCE0DB;
+  --ink:#171B19; --dim:#5F6763; --faint:#8B938E;
+  --petrol:#0B6265; --petrol-soft:#E2EEEE; --on-petrol:#FFFFFF;
+  --ok:#2C6E45; --warn:#96610A; --bad:#96382A;
+  --shadow:0 1px 2px rgba(20,30,25,.05),0 10px 30px -16px rgba(20,30,25,.18);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#131816; --card:#1B211F; --sunk:#222926; --line:#2B322F;
+  --ink:#E9ECE8; --dim:#A0A9A3; --faint:#7B857F;
+  --petrol:#63C0C0; --petrol-soft:#16302F; --on-petrol:#0D1A1A;
+  --ok:#78C596; --warn:#DDA44A; --bad:#DE8875;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -16px rgba(0,0,0,.7);
+}}
+:root[data-theme="dark"]{
+  --ground:#131816; --card:#1B211F; --sunk:#222926; --line:#2B322F;
+  --ink:#E9ECE8; --dim:#A0A9A3; --faint:#7B857F;
+  --petrol:#63C0C0; --petrol-soft:#16302F; --on-petrol:#0D1A1A;
+  --ok:#78C596; --warn:#DDA44A; --bad:#DE8875;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -16px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{margin:0;direction:rtl;background:var(--ground);color:var(--ink);
+  font-family:"Heebo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  padding-bottom:96px}
+.wrap{max-width:820px;margin:0 auto;padding:40px 20px 40px;
+  display:flex;flex-direction:column;gap:40px}
+
+/* ---------- header: the 10-second answer ---------- */
+.hello{display:flex;flex-direction:column;gap:14px}
+.hi{margin:0;font-size:clamp(30px,6vw,42px);font-weight:800;letter-spacing:-.02em}
+.oneline{margin:0;font-size:clamp(19px,3.4vw,24px);font-weight:500;
+  line-height:1.45;color:var(--ink);text-wrap:balance}
+.asof{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--faint)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.dot.live{background:var(--ok)}
+
+/* ---------- sections ---------- */
+.sec{display:flex;flex-direction:column;gap:16px}
+.sec > h2{margin:0;font-size:15px;font-weight:700;color:var(--faint);
+  letter-spacing:.04em}
+
+/* ---------- primary cards ---------- */
+.item{background:var(--card);border-radius:16px;box-shadow:var(--shadow);
+  padding:24px;display:flex;flex-direction:column;gap:12px;
+  border-top:3px solid var(--line)}
+.item.DECISION{border-top-color:var(--petrol)}
+.item.BLOCKER{border-top-color:var(--warn)}
+.item.DISCOVERY{border-top-color:var(--ok)}
+.kind{font-size:12px;font-weight:700;letter-spacing:.09em;color:var(--faint)}
+.item h3{margin:0;font-size:clamp(21px,3.6vw,26px);font-weight:700;
+  line-height:1.3;text-wrap:balance}
+.happened{margin:0;font-size:17px;color:var(--ink)}
+.matters{margin:0;font-size:16px;color:var(--dim)}
+.rec{margin:0;font-size:17px;font-weight:600;background:var(--petrol-soft);
+  color:var(--ink);border-radius:10px;padding:13px 16px;line-height:1.5}
+
+.btns{display:flex;flex-wrap:wrap;gap:9px;margin-top:2px}
+button{font:inherit;font-size:15.5px;font-weight:600;cursor:pointer;
+  border-radius:999px;padding:9px 20px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);transition:background .12s}
+/* the accent is light in dark mode, so the label on it must flip too */
+button.primary{background:var(--petrol);border-color:var(--petrol);
+  color:var(--on-petrol)}
+button:hover{background:var(--sunk)}
+button.primary:hover{filter:brightness(1.08);background:var(--petrol)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible{outline:2px solid var(--petrol);outline-offset:2px}
+button.quiet{border:none;color:var(--dim);padding:9px 8px;font-weight:500}
+
+.panel{background:var(--sunk);border-radius:12px;padding:15px 17px;
+  font-size:15.5px;white-space:pre-wrap;line-height:1.65}
+.panel ol{margin:0;padding-inline-start:20px}
+.panel li{margin-bottom:7px}
+details.more{margin-top:2px}
+details.more > summary{cursor:pointer;font-size:14px;color:var(--dim);
+  list-style:none;padding:4px 0}
+details.more > summary::-webkit-details-marker{display:none}
+details.more > summary::before{content:"פרטים ▾";}
+details.more[open] > summary::before{content:"פרטים ▴";}
+details.more .panel{margin-top:9px;font-size:14px;color:var(--dim);
+  direction:ltr;text-align:right}
+.evline{display:block;margin-bottom:5px}
+
+/* ---------- secondary lists ---------- */
+.row{background:var(--card);border-radius:12px;box-shadow:var(--shadow);
+  padding:15px 18px;display:flex;flex-direction:column;gap:7px}
+.row .t{font-size:17px;font-weight:600}
+.row .w{font-size:15px;color:var(--dim)}
+.rows{display:flex;flex-direction:column;gap:9px}
+details.fold > summary{cursor:pointer;font-size:15px;font-weight:600;
+  color:var(--petrol);list-style:none;padding:6px 0}
+details.fold > summary::-webkit-details-marker{display:none}
+details.fold[open] > summary{margin-bottom:12px}
+.watch{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;
+  padding:6px 14px;font-size:14.5px;color:var(--dim)}
+.done{opacity:.45}
+.toast{position:fixed;inset-inline:0;bottom:92px;margin:0 auto;width:max-content;
+  max-width:90vw;background:var(--ink);color:var(--ground);border-radius:999px;
+  padding:10px 22px;font-size:15px;box-shadow:var(--shadow);z-index:20}
+
+/* ---------- LIA ---------- */
+.lia{position:fixed;inset-inline:0;bottom:0;background:var(--card);
+  border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  z-index:15}
+.lia .in{max-width:820px;margin:0 auto;display:flex;gap:9px;align-items:center}
+.lia input{flex:1;font:inherit;font-size:16px;background:var(--sunk);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:12px 18px}
+.lia input:focus-visible{outline:2px solid var(--petrol);outline-offset:1px}
+.answer{max-width:820px;margin:0 auto 11px;background:var(--petrol-soft);
+  border-radius:14px;padding:15px 18px;font-size:16.5px;line-height:1.6}
+.answer .who{font-size:12px;font-weight:700;color:var(--petrol);
+  letter-spacing:.07em;margin-bottom:5px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.gatebox{background:var(--card);border-radius:18px;box-shadow:var(--shadow);
+  padding:32px 28px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px}
+.gatebox input{font:inherit;font-size:17px;background:var(--sunk);color:var(--ink);
+  border:1px solid var(--line);border-radius:12px;padding:13px 16px}
+.gerr{margin:0;color:var(--bad);font-size:14.5px;min-height:20px}
+.stale{background:var(--card);border-inline-start:4px solid var(--warn);
+  border-radius:12px;padding:14px 17px;font-size:15.5px;box-shadow:var(--shadow)}
+</style>
+
+</head>
+<body>
+<div class="gate" id="gate" hidden>
+  <div class="gatebox">
+    <h1 class="hi">החדר של דוד</h1>
+    <p class="oneline">הכנס את הקוד כדי להיכנס.</p>
+    <input id="code" type="password" autocomplete="current-password" aria-label="קוד כניסה">
+    <button class="primary" id="enter">כניסה</button>
+    <p class="gerr" id="gerr"></p>
+  </div>
+</div>
+
+<div class="wrap" id="room" hidden>
+  <div class="hello">
+    <h1 class="hi">בוקר טוב דוד</h1>
+    <p class="oneline" id="oneline"></p>
+    <div class="asof"><span class="dot" id="dot"></span><span id="asof"></span></div>
+  </div>
+
+  <section class="sec"><h2>מה דורש אותי היום</h2><div id="today"></div></section>
+  <section class="sec" id="discSec" hidden><h2>מה מצאתי בשבילך</h2><div id="disc"></div></section>
+  <section class="sec" id="restSec" hidden>
+    <details class="fold"><summary id="restSum"></summary><div class="rows" id="rest"></div></details>
+  </section>
+  <section class="sec" id="watchSec" hidden>
+    <details class="fold"><summary id="watchSum"></summary><div class="watch" id="watch"></div></details>
+  </section>
+</div>
+
+<div class="lia">
+  <div id="answer"></div>
+  <div class="in">
+    <span aria-hidden="true">🎤</span>
+    <input id="ask" type="text" placeholder="דבר עם LIA — שאל אותי..."
+           aria-label="שאל את LIA">
+    <button class="primary" id="askBtn">שאל</button>
+  </div>
+</div>
+
+<script>
+// The page is served from GitHub Pages; the API is the Edge Function.
+// Supabase forces text/plain and a sandbox CSP on function responses, so
+// HTML cannot be rendered from the function URL — the UI lives here and
+// the function stays the API, exactly as command-center already works.
+var API = 'https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/executive-room?api=1';
+var CODE = null;
+var FEED = {summary:"", today:[], rest:[], watchlist:[], built_at:null};
+var AGE = null;
+var KIND = {DECISION:"דורש אותך", BLOCKER:"חסם", DISCOVERY:"גילוי"};
+var LABEL = {prepare_call:"תכיני לי שיחה", show_how:"הראה לי איך",
+             recheck:"בדקי שוב", defer:"לא עכשיו", act:"טיפלתי", outcome:"מה יצא מזה"};
+var busy = {};
+
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;")
+  .replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function el(id){return document.getElementById(id);}
+function toast(m){var t=document.createElement("div");t.className="toast";
+  t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.remove();},3600);}
+
+function call(payload){
+  return fetch(API,{method:"POST",
+    headers:{"Content-Type":"application/json","x-fresco-code":CODE||""},
+    body:JSON.stringify(payload)})
+    .then(function(r){
+      if(r.status===401){throw new Error("unauthorized");}
+      return r.json();
+    });
+}
+
+/* ---------- the gate ---------- */
+function enter(){
+  var c=el("code").value.trim();
+  if(!c){el("gerr").textContent="צריך קוד.";return;}
+  CODE=c;
+  call({action:"feed"}).then(function(d){
+    try{localStorage.setItem("fresco_code",c);}catch(e){}
+    el("gate").hidden=true; el("room").hidden=false;
+    apply(d); 
+  }).catch(function(){el("gerr").textContent="הקוד לא מתאים.";CODE=null;});
+}
+
+/* ---------- actions ---------- */
+function mutate(item,action,extra,btn,out){
+  var k=item.id+"|"+action;
+  if(busy[k]) return;                       /* double click guard, client side */
+  busy[k]=true; if(btn) btn.disabled=true;
+  call(Object.assign({action:"do",op:action,item_id:item.id,
+                      subject:item.subject,title:item.title,
+                      priority:item.priority,type:item.type},extra||{}))
+    .then(function(d){
+      if(d.error){toast(d.error);return;}
+      toast(d.recorded===false ? "כבר רשום — לא רשמתי פעמיים." : (d.message||"נרשם."));
+      return refresh();
+    })
+    .catch(function(){toast("לא הצלחתי לשמור. נסה שוב.");})
+    .then(function(){busy[k]=false; if(btn) btn.disabled=false;});
+}
+
+function actPrepareCall(item,out){
+  var lines=["שיחה · "+item.subject,"","מה אני יודעת:"];
+  (item.evidence||[]).forEach(function(e){lines.push("· "+e);});
+  if(!(item.evidence||[]).length) lines.push("· "+item.what_happened);
+  lines.push("","מה לשאול:",
+    "· מה קרה — פרויקט שנגמר, מחיר, שירות, או משהו אחר",
+    "· האם יש עבודה פתוחה שאנחנו יכולים לתפוס עכשיו",
+    "· מי מחליט אצלם היום",
+    "","מה שאסור להניח:",
+    "· אנחנו לא יודעים למה הם נעצרו. אל תציע מחיר לפני שתדע.",
+    "","אחרי השיחה: 'טיפלתי'. את התוצאה אשאל בהמשך — שיחה היא פעולה, לא תוצאה.");
+  out.textContent=lines.join("\n"); out.hidden=false;
+}
+
+function actShowHow(item,out){
+  var steps;
+  if(item.id.indexOf("integrity:trial-balance")===0){
+    steps=["לשאול את איש הקשר בפריוריטי איזה מסך מחזיק את יתרות התקופה לכל חשבון — פתיחה, חובה, זכות, סגירה.",
+           "השדות שיש לנו היום לא נסגרים חשבונאית, ולכן הם לא יתרות תקופה.",
+           "ברגע שיש שם של מסך — לפתוח אותו לרשיון API, ואז 'בדקי שוב'."];
+  } else if(item.id.indexOf("blocker:")===0){
+    steps=["להיכנס לפריוריטי עם משתמש שיש לו הרשאת מנהל.",
+           "לפתוח את מסך הגדרות ה-API — אותו מסך שבו נפתח DOCUMENTS_D.",
+           'לסמן "פתוח לרשיון API" עבור: '+item.id.slice(8)+".",
+           "לשמור, ואז 'בדקי שוב'."];
+  } else { steps=[item.recommended_action]; }
+  out.innerHTML="<ol>"+steps.map(function(s){return "<li>"+esc(s)+"</li>";}).join("")+"</ol>";
+  out.hidden=false;
+}
+
+function actRecheck(item,out,btn){
+  out.textContent="בודקת מול הנתונים החיים…"; out.hidden=false; btn.disabled=true;
+  call({action:"recheck",item_id:item.id,subject:item.subject})
+    .then(function(d){
+      out.textContent=d.message||"בדקתי.";
+      if(d.evidence&&d.evidence.length)
+        out.textContent+="\n\n"+d.evidence.map(function(e){return "· "+e;}).join("\n");
+      return refresh();
+    })
+    .catch(function(){out.textContent="לא הצלחתי לבדוק עכשיו.";})
+    .then(function(){btn.disabled=false;});
+}
+
+function actAct(item,out,btn){
+  var what=prompt("מה עשית? (זו פעולה, לא תוצאה — על התוצאה אשאל בהמשך)");
+  if(what===null) return;
+  mutate(item,"act",{what_i_did:what||"טיפלתי"},btn,out);
+}
+
+function actOutcome(item,out,btn){
+  var r=prompt("מה יצא מזה?\n1 = חזר / הצליח\n2 = חלקית\n3 = לא הצליח\n4 = כבר לא רלוונטי");
+  if(r===null) return;
+  var map={"1":"WORKED","2":"PARTIAL","3":"FAILED","4":"OBSOLETE"};
+  var result=map[String(r).trim()];
+  if(!result){toast("לא הבנתי. 1 עד 4.");return;}
+  var note=prompt("במשפט אחד — מה קרה בפועל?")||"";
+  mutate(item,"outcome",{result:result,note:note},btn,out);
+}
+
+function actDefer(item,out,btn){ mutate(item,"defer",{},btn,out); }
+
+var ACTIONS={prepare_call:actPrepareCall,show_how:actShowHow,recheck:actRecheck,
+             defer:actDefer,act:actAct,outcome:actOutcome};
+
+/* ---------- rendering ---------- */
+function card(item){
+  var d=document.createElement("div");
+  d.className="item "+item.type; d.setAttribute("data-item",item.id);
+  var acts=(item.actions||[]).filter(function(a){return LABEL[a];});
+  d.innerHTML=
+    '<div class="kind">'+esc(KIND[item.type]||item.type)+'</div>'+
+    '<h3>'+esc(item.title)+'</h3>'+
+    '<p class="happened">'+esc(item.what_happened)+'</p>'+
+    (item.why_it_matters?'<p class="matters">'+esc(item.why_it_matters)+'</p>':'')+
+    '<p class="rec">'+esc(item.recommended_action)+'</p>'+
+    '<div class="btns"></div><div class="panel" hidden></div>'+
+    '<details class="more"><summary></summary><div class="panel">'+
+      (item.evidence||[]).map(function(e){return '<span class="evline">· '+esc(e)+'</span>';}).join('')+
+      '<span class="evline">· source: '+esc(item.source)+'</span>'+
+      '<span class="evline">· evidence_state: '+esc(item.evidence_state)+
+      ' · confidence: '+esc(item.confidence)+' · priority: '+esc(item.priority)+'</span>'+
+      (item.merged?'<span class="evline">· איחדתי לתוך זה עוד '+item.merged+' כרטיסים על אותו נושא</span>':'')+
+    '</div></details>';
+  var btns=d.querySelector(".btns"), out=d.querySelector(".panel");
+  acts.slice(0,4).forEach(function(a,i){
+    var b=document.createElement("button");
+    b.textContent=LABEL[a];
+    if(i===0) b.className="primary";
+    if(a==="defer") b.className="quiet";
+    b.addEventListener("click",function(){ACTIONS[a](item,out,b);});
+    btns.appendChild(b);
+  });
+  return d;
+}
+
+function row(item){
+  var d=document.createElement("div"); d.className="row";
+  d.innerHTML='<span class="t">'+esc(item.title)+'</span>'+
+              '<span class="w">'+esc(item.recommended_action||item.what_happened||"")+'</span>';
+  return d;
+}
+
+function apply(d){
+  if(d&&d.feed){FEED=d.feed; AGE=d.age_minutes;}
+  render();
+}
+
+function render(){
+  el("oneline").textContent = FEED.summary || "אין כרגע פיד. הרץ רענון.";
+  var today=el("today"); today.innerHTML="";
+  (FEED.today||[]).forEach(function(i){today.appendChild(card(i));});
+
+  var disc=(FEED.watchlist||[]).filter(function(w){return w.type==="DISCOVERY";});
+  el("discSec").hidden = !disc.length;
+  if(disc.length){
+    var host=el("disc"); host.className="rows"; host.innerHTML="";
+    disc.slice(0,4).forEach(function(w){
+      var x=document.createElement("div"); x.className="row";
+      x.innerHTML='<span class="t">שוק '+esc(w.subject)+'</span><span class="w">'+esc(w.why)+'</span>';
+      host.appendChild(x);
+    });
+  }
+  el("restSec").hidden = !(FEED.rest||[]).length;
+  if((FEED.rest||[]).length){
+    el("restSum").textContent="עוד "+FEED.rest.length+" דברים שראיתי";
+    var r=el("rest"); r.innerHTML="";
+    FEED.rest.forEach(function(i){r.appendChild(row(i));});
+  }
+  var w=(FEED.watchlist||[]).filter(function(x){return x.type!=="DISCOVERY";});
+  el("watchSec").hidden = !w.length;
+  if(w.length){
+    el("watchSum").textContent="אני עוקבת אחרי עוד "+w.length+" דברים";
+    var wh=el("watch"); wh.innerHTML="";
+    w.forEach(function(x){var c=document.createElement("span");c.className="chip";
+      c.textContent=x.subject;c.title=x.why;wh.appendChild(c);});
+  }
+  var stamp = FEED.built_at ? ("עודכן לפני "+(AGE==null?"?":AGE)+" דקות") : "";
+  el("asof").textContent = stamp;
+  el("dot").className = "dot" + ((AGE!=null && AGE<=90) ? " live" : "");
+}
+
+function refresh(){
+  return call({action:"feed"}).then(apply).catch(function(){});
+}
+
+/* ---------- LIA: same feed, same order ---------- */
+function speak(item,lead){
+  if(!item) return "היום אין משהו שדורש אותך. אני ממשיכה לעקוב.";
+  var s;
+  if(item.type==="BLOCKER") s=(lead?"מה שחוסם אותנו עכשיו: ":"עוד חסם: ")+item.title+". "+item.what_happened+".";
+  else if(item.type==="DISCOVERY") s=(lead?"מצאתי משהו שלא ביקשת: ":"עוד משהו שראיתי: ")+item.subject+". "+item.what_happened+".";
+  else s=(lead?"הייתי מטפלת קודם ב":"שווה גם להסתכל על ")+item.subject+". "+item.what_happened+".";
+  if(item.recommended_action) s+=" "+item.recommended_action;
+  if(item.evidence_state&&item.evidence_state!=="VERIFIED")
+    s+=" — שים לב שזה מבוסס על דפוס ולא על מסמך, אז אני לא בטוחה בזה במאה אחוז.";
+  return s.replace(/\.\./g,".");
+}
+
+function answer(q){
+  q=(q||"").trim();
+  var out;
+  if(/לא שאלתי|משהו חשוב|מצאת/.test(q)){
+    var disc=(FEED.watchlist||[]).filter(function(w){return w.type==="DISCOVERY";});
+    out=disc.length?("מצאתי משהו שלא ביקשת: "+disc[0].subject+". "+disc[0].why+".")
+      :"לא. אין לי כרגע גילוי שאני יכולה לגבות בראיות, ואני לא הולכת להמציא אחד.";
+  } else if(/עוקבת/.test(q)){
+    out="אני עוקבת אחרי "+(FEED.watchlist||[]).length+" דברים שעדיין לא דורשים אותך.";
+  } else if(/חסם|חסום/.test(q)){
+    var b=(FEED.today||[]).filter(function(i){return i.type==="BLOCKER";});
+    out=b.length?speak(b[0],true):"אין כרגע חסם שעוצר אותנו.";
+  } else {
+    out=speak((FEED.today||[])[0],true);
+  }
+  el("answer").innerHTML='<div class="answer"><div class="who">LIA</div>'+esc(out)+'</div>';
+}
+
+el("askBtn").addEventListener("click",function(){answer(el("ask").value);});
+el("ask").addEventListener("keydown",function(e){if(e.key==="Enter")answer(el("ask").value);});
+el("enter").addEventListener("click",enter);
+el("code").addEventListener("keydown",function(e){if(e.key==="Enter")enter();});
+
+(function boot(){
+  var saved=null; try{saved=localStorage.getItem("fresco_code");}catch(e){}
+  if(saved){
+    CODE=saved;
+    call({action:"feed"}).then(function(d){
+      el("room").hidden=false; apply(d);
+    }).catch(function(){CODE=null;el("gate").hidden=false;});
+  } else { el("gate").hidden=false; }
+  setInterval(function(){ if(CODE && !document.hidden) refresh(); }, 300000);
+  document.addEventListener("visibilitychange",function(){
+    if(!document.hidden && CODE) refresh();
+  });
+})();
+</script>
+
+</body>
+</html>
