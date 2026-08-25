@@ -885,6 +885,21 @@ function sourcesForKernel(pending,refIds,bytesOf){
   out.push(Object.assign({},d?d.desc:{source_id:r},
     {data_b64:d?d.b64:null,resolved_from:'conversation'}));}
  return out;}
+/* THE LOOP BRAKE (25.8, after the Orna hour): when an answer is essentially
+   the same as one of the last two, something upstream is stuck — and every
+   silent repeat costs David real money (each round re-ran the model, image
+   included). Detect it by word overlap, not exact text: the repeats tonight
+   were paraphrases of each other. */
+function answerWords(t){
+ return new Set(String(t||'').replace(/[^\p{L}\p{N}\s]/gu,' ').split(/\s+/).filter(w=>w.length>2));}
+function isRepeatAnswer(next,prevList){
+ const a=answerWords(next);if(a.size<8)return false;   // short answers repeat legitimately
+ for(const prev of (prevList||[])){
+  const b=answerWords(prev);if(b.size<8)continue;
+  let hit=0;for(const w of a)if(b.has(w))hit++;
+  const j=hit/(a.size+b.size-hit);
+  if(j>=0.6)return true;}
+ return false;}
 function kernelSawSources(res){return !!(res&&Array.isArray(res.sources_seen));}
 /*ATT-PURE-END*/
 let ATTACH=[];                        // pending for the NEXT turn only
@@ -1657,6 +1672,15 @@ async function doAsk(text,turnId,atts){
   if(srcs.length&&!kernelSawSources(res)){
    const r=eyesNotLiveAnswer(pend.length?pend:srcs);
    LAST={q:text,res:r};showAnswer(r);deliverText(r.answer);return;}
+  /* The loop brake: a repeated answer is stopped and SAID, not delivered as
+     if it were new. David hears it on the first repeat, not after an hour. */
+  {const prevAnswers=SESSION.turns.filter(t=>t.role==='lia').slice(-2).map(t=>t.text);
+   if(isRepeatAnswer(res.answer,prevAnswers)){
+    res=Object.assign({},res,{answer:'עצרתי: זו בפעם השנייה אותה תשובה בערך — משהו תקוע, ולא אשרוף לך עוד סיבוב עליה. '
+      +'אם זה שוב על תמונה ישנה — פתח שיחה חדשה (✎ למעלה) או כתוב "עזבי את התמונה". '
+      +'התשובה החוזרת שמורה בפרטים.',
+      __repeat_of:res.answer,confidence:'LOW',
+      missing_information:['הסיבה שהמערכת חוזרת על עצמה — כנראה הקשר ישן שנגרר']});}}
   /* No model key configured → the kernel says so instead of guessing. The
      capabilities themselves need no model, so take the deterministic road
      rather than telling David "I can't". It upgrades itself the moment a
