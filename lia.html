@@ -545,11 +545,19 @@ function rememberRetracted(res){
  SESSION.retracted=have.slice(-8);
  saveSession();}
 function retractedForKernel(){return (SESSION.retracted||[]).slice(-8);}
-function historyForKernel(){
+function historyForKernel(currentText){
  const out=[];let q=null;
  for(const t of SESSION.turns){
   if(t.role==='me')q=t.text;
   else if(q!=null&&t.text){out.push({q,a:t.text});q=null;}}
+ /* An entity question that does not mention pictures gets a history with the
+    image-description turns removed: on the old backend those turns pulled
+    every answer back to the picture (the Orna loop's second carrier). The
+    turns stay in the conversation — only this request's context is filtered. */
+ const cur=String(currentText||'');
+ const EQ=(typeof ENTITY_Q!=='undefined')?ENTITY_Q:null;   // declared with the attachment rules below
+ if(EQ&&EQ.test(cur)&&!/תמונ|צילום|קובץ|מסמך/.test(cur)){
+  return out.filter(p=>!/^בתמונה|בתמונה נרא|בתמונה מופיע/.test(String(p.a||'').trim())).slice(-4);}
  return out.slice(-4);}
 function setCtx(s){SESSION.ctx=s||'פרסקו';
  const el=document.getElementById('ctxLine');if(el)el.textContent=SESSION.ctx;
@@ -833,8 +841,20 @@ function sourceDescriptor(a){
 /* "התמונה השנייה", "ה-PDF של 4.56", "שתי התמונות" — resolve David's words to
    source ids from the conversation registry. Deterministic, precision-first:
    no type word → no match (better to miss than to grab the wrong file). */
+/* THE ORNA LOOP (live, 25.8): "a type word alone means the latest of that
+   type" re-attached the last image on ANY sentence containing תמונה/קובץ —
+   including David's complaints ABOUT the image. Each complaint re-sent the
+   bytes, the model described them again, David complained again. An hour.
+   A reference now needs an actual ASK about the source (or an ordinal), a
+   dismissal always wins, and a question that names a business entity never
+   drags old pictures in at all — the current turn outranks stale context. */
+const SRC_DISMISS=/(?:עזבי|תעזבי|עזוב|תעזוב|בלי|די עם|מספיק עם|תפסיקי|תשכחי מ|לא\s+(?:על\s+)?ה?תמונה|(?:שוב|עוד\s+פעם|כל\s+פעם)\s+(?:עם\s+)?ה?תמונה)/;
+const SRC_ASK=/(?:מה\s+(?:יש|רואים|כתוב|מופיע)|תסתכלי|תסתכל|תראי\s+(?:לי\s+)?(?:מה|את)|תנתחי|תקראי|נתחי|קראי|מי\s+חתום|תשווי|השווי|תתארי|מה\s+זה\s+ה?(?:תמונה|קובץ|מסמך))/;
+const ENTITY_Q=/(?:מה\s+(?:קורה|המצב|הסטטוס|הסיפור)\s+(?:עם|של|ב)|איפה\s+עומד|סטטוס\s+|למה\s+|מה\s+כדאי\s+לעשות\s+עם)/;
 function resolveSourceRef(text,sources){
  const t=String(text||'');const all=sources||[];
+ if(SRC_DISMISS.test(t))return [];                       // "leave the picture" leaves it
+ if(ENTITY_Q.test(t)&&!SRC_ASK.test(t))return [];        // an entity question is not about old files
  let pool=null;
  if(/תמונ|צילום|סקרינשוט|צילומי/.test(t))pool=all.filter(s=>s.kind==='image');
  else if(/PDF|פי.די.אף|מסמך/i.test(t))pool=all.filter(s=>s.kind==='doc');
@@ -848,7 +868,8 @@ function resolveSourceRef(text,sources){
  else if(/שלישי/.test(t))idx=2;
  else if(/רביעי/.test(t))idx=3;
  else if(/אחרונ|קודמ|ששלחתי קודם/.test(t))idx=pool.length-1;
- if(idx<0)idx=pool.length-1;          // a type word alone means the latest of that type
+ else if(!SRC_ASK.test(t)&&!/(?:מה|איזה|איזו|מי|כמה|מתי|איפה|האם)\s/.test(t))return [];  // a bare type word, with no question and no ask-verb, is not a request to look again
+ if(idx<0)idx=pool.length-1;
  return idx<pool.length?[pool[idx].source_id]:[];}
 /* The kernel payload: this turn's attachments travel with bytes; sources David
    referred to from earlier turns travel as descriptors (bytes re-attached from
@@ -1627,7 +1648,7 @@ async function doAsk(text,turnId,atts){
      question David asked, and the catch below reported it as "could not reach
      the system". doAct's identical-looking line stays const: there res is only
      ever mutated (res.__plain=...), which const permits. */
-  let res=await ccApi(Object.assign({action:'kernel',body:text,history:historyForKernel(),
+  let res=await ccApi(Object.assign({action:'kernel',body:text,history:historyForKernel(text),
     retracted:retractedForKernel(),request_id:reqId},
     srcs.length?{sources:srcs}:{}));
   /* THE HONESTY GATE. Files went out; unless the kernel proves it saw them
@@ -1931,7 +1952,7 @@ async function doAct(text,turnId){
  if(!issue(reqId))return;
  const outward=OUTWARD_RE.test(text);
  try{
-  const res=await ccApi({action:'kernel',body:text,history:historyForKernel(),
+  const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
     retracted:retractedForKernel(),request_id:reqId});
   rememberRetracted(res);
   if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft

@@ -16,7 +16,8 @@ const store = {};
 globalThis.localStorage = { getItem: k => (k in store ? store[k] : null),
   setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
 globalThis.document = { getElementById: () => null };
-const block = cut("const SKEY='lia_sessions'", 'function nearBottom')
+const entityQ = src.match(/const ENTITY_Q=[^\n]+/)[0] + '\n';
+const block = entityQ + cut("const SKEY='lia_sessions'", 'function nearBottom')
   // one counter across module instances, so a "fresh page" cannot re-mint an old id
   + 'function uuid(){return "id-"+(globalThis.__n=(globalThis.__n||0)+1);}'
   + 'function clip(s,n){s=(s||"").trim();return s.length>n?s.slice(0,n)+"…":s;}'
@@ -61,7 +62,22 @@ check('the previous conversation body survives', !!store['lia_s_' + first]);
 
 // one canonical source: nothing else may hold a parallel history
 check('no separate HISTORY array remains', !/\blet\s+HISTORY\b/.test(src));
-check('kernel calls send the derived history', (src.match(/history:historyForKernel\(\)/g) || []).length === 2);
+check('kernel calls send the derived history, with the current turn for context filtering',
+  (src.match(/history:historyForKernel\(text\)/g) || []).length === 2);
+
+
+// ── the Orna loop, second carrier: image-description turns leave the context
+// of an entity question (and ONLY that request's context — the turns stay).
+M.addTurn('me', 'מה יש בתמונה?');
+M.addTurn('lia', 'בתמונה נראית חתימת מייל של אורנה שלם');
+M.addTurn('me', 'מה הסיפור עם בן זיו?');
+M.addTurn('lia', 'בן זיו: הפרויקט הסתיים');
+check('entity question: image-description pairs are filtered from ITS history',
+  !M.historyForKernel('מה קורה עם בן זיו?').some(p => /בתמונה/.test(p.a)));
+check('an ordinary question keeps the full history',
+  M.historyForKernel('מה עוד היה?').some(p => /בתמונה/.test(p.a)));
+check('an entity question that mentions the picture keeps it',
+  M.historyForKernel('מה הסיפור עם בן זיו בתמונה?').some(p => /בתמונה/.test(p.a)));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);

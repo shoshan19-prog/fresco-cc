@@ -113,6 +113,14 @@ ok('the conversation stores descriptors, not bytes',
 ok('paste goes straight into the pipeline', /addEventListener\('paste'/.test(SRC));
 ok('drop goes straight into the pipeline', /addEventListener\('drop'/.test(SRC));
 ok('the picker only offers whitelisted kinds', /setAttribute\('accept',ATT_ACCEPT\)/.test(SRC));
+// ── the Orna loop (live, 25.8): what may NEVER re-attach ──────────────────
+ok('a dismissal never re-attaches — "עזבי את התמונה"', R('עזבי את התמונה, מה עם בן זיו?').length === 0);
+ok('a complaint never re-attaches — "שוב עם התמונה"', R('שוב עם התמונה?!').length === 0);
+ok('an entity question never drags old files in', R('מה הסיפור עם בן זיו?').length === 0);
+ok('an entity question with an explicit ask still can', R('מה הסיפור עם בן זיו? תסתכלי בתמונה ששלחתי').length === 1);
+ok('a bare type word with no question re-attaches nothing', R('התמונה').length === 0);
+ok('a real content question about the file still resolves', R('מה כתוב בתמונה?').length === 1);
+
 ok('registry is capped so localStorage cannot grow without bound', /\.slice\(-12\)/.test(SRC));
 ok('me-bubbles render the evidence', /class="shots"/.test(SRC));
 ok('a send while a file is still reading waits instead of losing it',
