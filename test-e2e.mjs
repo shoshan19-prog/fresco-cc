@@ -288,14 +288,21 @@ const seen = (page) => page.evaluate(() => {
   ok('the next action is its own section, not stapled prose',
     /הפעולה הבאה/.test(bubble) && /להתקשר למשאב שיקום השבוע/.test(bubble),
     `got: ${JSON.stringify(bubble.slice(0, 220))}`);
-  ok('the rest is still not stapled underneath',
-    !/לקוח שחוזר שווה|31 הזמנות/.test(bubble), `got: ${JSON.stringify(bubble.slice(0, 220))}`);
+  // Second reversal, 25.8 (P0): the FACT is on the card too, because the card
+  // and the drawer must be rendered from one object — a summary that disagrees
+  // with its own evidence is the bug this replaced. What the assert still
+  // guards is the original objection: interpretation and risk are not stapled
+  // under every reply.
+  ok('the finding is on the card, read from the same object',
+    /31 הזמנות/.test(bubble), `got: ${JSON.stringify(bubble.slice(0, 220))}`);
+  ok('interpretation is still not stapled underneath',
+    !/לקוח שחוזר שווה/.test(bubble), `got: ${JSON.stringify(bubble.slice(0, 220))}`);
   await page.click('#thread .msg.lia .acts .det');       // פרטים
   await page.waitForTimeout(120);
   const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
   ok('the recommendation is there when he asks for it', /להתקשר למשאב שיקום השבוע/.test(deep));
   ok('so is the opportunity', /לקוח שחוזר שווה/.test(deep));
-  ok('and the evidence', /31 הזמנות/.test(deep));
+  ok('and the sources behind it', /לקוחות|ORDERS|orders/.test(deep));
 }
 
 // ── the same flow on a phone, which is where David actually uses it ─────────

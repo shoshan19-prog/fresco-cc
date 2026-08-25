@@ -28,6 +28,12 @@ const RICH = {
 const EMPTY = { ...RICH, answer: 'אין לי נתון מאומת לשאלה הזו — משתמש ה-API לא רואה חשבוניות עדכניות בפריוריטי.',
   facts: [], inferences: [], recommended_next_action: '', sources: [], confidence: 'INSUFFICIENT_EVIDENCE',
   capabilities_used: [] };
+// The live P0, reproduced: prose denies it looked, the object already holds the
+// data. The card must show the data and must not print the denial as the finding.
+const DENIAL = { ...RICH,
+  answer: 'עניתי על זה בלי לבדוק בפועל את מצב ההזמנות היום.',
+  facts: ['ORDERS: 14 הזמנות היום', '₪42,687 לפני מע"מ · ₪50,370.66 כולל', 'הזמנה SO26001464'],
+  inferences: [], recommended_next_action: '' };
 
 const browser = await chromium.launch();
 const errors = [];
@@ -59,7 +65,8 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   await page.waitForTimeout(400);
   await shot(page, `${tag}-1-idle`);
   ok(`${tag}: home screen greets and asks`, /טוב, דוד/.test(await page.textContent('#thread')));
-  ok(`${tag}: expert chips are on screen`, (await page.$$('#chips .chip')).length === 5);
+  // David, 25.8: a control that looks live but does nothing is worse than none.
+  ok(`${tag}: no dead expert-system controls`, (await page.$$('#chips, .chip')).length === 0);
   ok(`${tag}: LIVE indicator present`, await page.isVisible('.live'));
   ok(`${tag}: orb present`, await page.isVisible('.orb.lg'));
   ok(`${tag}: idle does not spill sideways`, (await overflow(page)) <= 1, `overflow ${await overflow(page)}px`);
@@ -72,15 +79,19 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   await shot(page, `${tag}-3-answer`);
   const card = await page.$$eval('#thread .msg.lia', n => n[n.length - 1].innerText);
   ok(`${tag}: answer is sectioned`, /מה מצאתי/.test(card) && /הפעולה הבאה/.test(card), JSON.stringify(card.slice(0, 160)));
-  ok(`${tag}: evidence stays folded`, !/7 תעודות משלוח/.test(card));
-  ok(`${tag}: a used system lights up`, (await page.$$('#chips .chip.on')).length >= 1);
+  // The card is built from r.facts — the same array the drawer reads.
+  ok(`${tag}: the finding is on the card`, /7 תעודות משלוח/.test(card));
+  ok(`${tag}: interpretation stays folded`, !/לקוח שחוזר שווה יותר/.test(card));
+  ok(`${tag}: one composer only — mic is the icon, no second voice control`,
+    !/דבר עם LIA/.test(await page.textContent('#composer')));
   ok(`${tag}: answer does not spill sideways`, (await overflow(page)) <= 1, `overflow ${await overflow(page)}px`);
 
   await page.click('#thread .msg.lia .acts .det');
   await page.waitForTimeout(250);
   await shot(page, `${tag}-4-evidence`);
   const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
-  ok(`${tag}: evidence opens with facts and sources`, /7 תעודות משלוח/.test(deep) && /ORDERS/.test(deep));
+  ok(`${tag}: evidence opens with sources and interpretation`,
+    /ORDERS/.test(deep) && /לקוח שחוזר שווה יותר/.test(deep));
   ok(`${tag}: expanded does not spill sideways`, (await overflow(page)) <= 1);
   await ctx.close();
 }
@@ -97,7 +108,29 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   const card = await page.$$eval('#thread .msg.lia', n => n[n.length - 1].innerText);
   ok('no-data: empty sections are not drawn', !/הפעולה הבאה|מה המשמעות/.test(card), JSON.stringify(card.slice(0, 160)));
   ok('no-data: the answer itself is shown', /לא רואה חשבוניות עדכניות/.test(card));
-  ok('no-data: no chip is lit when nothing was used', (await page.$$('#chips .chip.on')).length === 0);
+  ok('no-data: an honest zero is not dressed up as a finding', !/•/.test(card));
+  await ctx.close();
+}
+
+// P0 — summary and details cannot disagree. The prose denies the check; the
+// object carries the numbers. The numbers win, and the denial is kept, not
+// deleted: it moves into the drawer verbatim so nothing is hidden from David.
+{
+  const { page, ctx, set } = await open({ width: 390, height: 844 }, 'denial');
+  set(DENIAL);
+  await page.fill('#note', 'אני רוצה לדעת מה מצב ההזמנות היום');
+  await page.click('#sendBtn');
+  await page.waitForSelector('#thread .msg.lia .ansCard', { timeout: 6000 });
+  await page.waitForTimeout(300);
+  await shot(page, 'mobile-8-denial');
+  const card = await page.$$eval('#thread .msg.lia', n => n[n.length - 1].innerText);
+  ok('P0: the card shows the data it already had', /14 הזמנות/.test(card) && /42,687/.test(card));
+  ok('P0: the card does not claim it never checked', !/בלי לבדוק/.test(card), JSON.stringify(card.slice(0, 200)));
+  await page.click('#thread .msg.lia .acts .det');
+  await page.waitForTimeout(200);
+  const deep = await page.$$eval('#thread .deep', n => n[n.length - 1].innerText);
+  ok('P0: the rejected wording is preserved in the drawer', /בלי לבדוק/.test(deep));
+  ok('P0: no horizontal spill in the corrected card', (await overflow(page)) <= 1);
   await ctx.close();
 }
 
