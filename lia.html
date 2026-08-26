@@ -1470,10 +1470,18 @@ const CORRECT_RE=/לא לזה התכוונתי|לא התכוונתי|לא לזה
    spellings, and requiring the exact one would make her look like she does not
    know her own name. Routing only — the kernel does the understanding. */
 const SYSPROJ_RE=/מטריאה|מטריה|מטריא|matriya|פרסקו\s*os|fresco\s*os/i;
+/* An explicit CORRECTION / STATE ASSERTION outranks the note road (David's
+   ruling, 26.8). The live failure: "תיקון לגבי בן זיו… שמרי את זה כמצב
+   הנוכחי" — the word "שמרי" won SAVE_RE, the turn was filed as a note, and
+   the pattern extractor (which has no correction type and is negation-blind)
+   returned the middle sentence as "סיכון". A correction must reach the
+   kernel, where retract+assert lives — even when it says שמרי/רשמי/תזכרי.
+   No \b here: JS word boundaries do not work against Hebrew letters. */
+const STATE_RE=/^\s*תיקון(?:[\s:,.\-–—]|$)|תיקון\s+לגבי|המצב\s+הנוכחי\s+של|(?:^|\s)(?:שמרי|תשמרי|שמור|תשמור|רשמי|תרשמי|רשום|תרשום|זכרי|תזכרי)\s+(?:את\s+זה\s+)?כמצב|מכאן\s+המצב\s+הוא/;
 /* REMEMBER is now a road he has to ASK for. Everything below used to fall
    through to it — "תסבירי", "לא לזה התכוונתי", the first sentence of any new
    session — and each one came back as "לא זיהיתי פריט עסקי חדש בפתק הזה". */
-const SAVE_RE=/(?:^|\s)(?:תרשמי|תרשום|רשמי|תשמרי|תשמור|שמרי|תזכרי|תזכור)(?:[\s:,.\-–—]|$)|רשמי לי|קחי פתק|לפנקס/;
+const SAVE_RE=/(?:^|\s)(?:תרשמי|תרשום|רשמי|תשמרי|תשמור|שמרי|תזכרי|תזכור|זכרי|זכור)(?:[\s:,.\-–—]|$)|רשמי לי|קחי פתק|לפנקס/;
 /* A bare "תסבירי פשוט" is not a new question — it is a request to say the last
    answer differently, and it must never reach the kernel: the kernel would
    re-run the capabilities and can come back with a DIFFERENT answer to a
@@ -1488,6 +1496,7 @@ function classify(t,hasOpenThread){
  const asking=Q_RE.test(s)||READ_RE.test(s)||FOCUS_RE.test(s)||SELF_RE.test(s)
    ||KNOW_RE.test(s)||EXPLAIN_RE.test(s)||CORRECT_RE.test(s)||SYSPROJ_RE.test(s)
    ||/[?？]\s*$/.test(s);
+ if(STATE_RE.test(s))return 'ASK';             // a correction outranks its own "שמרי" — kernel does retract+assert
  if(SAVE_RE.test(s))return 'REMEMBER';         // he asked for it in so many words
  if(ACT_RE.test(s))return 'DO';                // before the ASK signals: "תבדקי ותעני" is a DO
  if(asking)return 'ASK';

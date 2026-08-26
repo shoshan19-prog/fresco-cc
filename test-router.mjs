@@ -168,9 +168,35 @@ for (const t of ['את מבינה את הקונטקסט?', 'את מכירה את
 for (const [t, want] of [['תרשמי שמורן צריכה מפרט עד חמישי', 'REMEMBER'],
                          ['תשמרי: פגישה עם אריק ביום ג', 'REMEMBER'],
                          ['דיברתי עם יוסי והבטחתי לשלוח לו מפרט מחר', 'REMEMBER'],
+                         ['זכרי להתקשר ליוסי מחר', 'REMEMBER'],   // David's regression sample, 26.8
                          ['מה סיכמנו עם יוסי?', 'ASK']]) {   // a question, despite the past-tense verb
   const got = classify(t, false);
   if (got !== want) { console.log(`FAIL  ${want} expected, got ${got}  ::  ${t}`); bad++; }
+}
+
+/* ── CORRECTION / STATE ASSERTION outranks the note road (David, 26.8).
+   The live failure: his Ben Ziv correction ended "שמרי את זה כמצב הנוכחי" —
+   SAVE_RE won on "שמרי", the turn was filed as a note, and the extractor
+   (no correction type, negation-blind) returned "סיכון" for the sentence
+   that DENIES a problem. A correction goes to the kernel, where
+   retract+assert lives — whatever save verbs it contains. */
+const BEN_ZIV = 'תיקון לגבי בן זיו:\n'
+  + 'בן זיו הוא קבלן/יזם שביצע פרויקט שימור.\n'
+  + 'העובדה שלא היו אחר כך הזמנות אינה מעידה על לקוח רדום, נטישה או בעיה ביחסים.\n'
+  + 'אין כרגע פעולה שנדרשת ממני בנושא.\n'
+  + 'שמרי את זה כמצב הנוכחי של בן זיו.';
+for (const [t, why] of [[BEN_ZIV, 'the exact live failure'],
+                        ['תיקון: יוסי לא ספק שלנו', 'starts with תיקון'],
+                        ['תיקון לגבי שבזי 11 — הפרויקט הסתיים', 'תיקון לגבי'],
+                        ['המצב הנוכחי של שבזי 11 הוא המתנה לעירייה', 'המצב הנוכחי של'],
+                        ['שמרי את זה כמצב', 'שמרי את זה כמצב'],
+                        ['שמרי את זה כמצב הנוכחי של בן זיו', 'שמרי את זה כמצב הנוכחי'],
+                        ['רשמי כמצב: הפרויקט הסתיים', 'רשמי כמצב'],
+                        ['מכאן המצב הוא שאין חוב פתוח', 'מכאן המצב הוא']]) {
+  for (const open of [false, true]) {
+    const got = classify(t, open);
+    if (got !== 'ASK') { console.log(`FAIL  correction must be ASK (${why}, open=${open}), got ${got}`); bad++; }
+  }
 }
 // He spells his own systems every way dictation produces them.
 const SYSPROJ = new Function(block + '\nreturn SYSPROJ_RE;')();
@@ -203,5 +229,5 @@ const mixed = await capRepoState('הפרויקטים בריפו');
 if (!/מסלול נפרד/.test(mixed.answer)) { console.log('FAIL  mixed phrasing must state the repo/projects split'); bad++; }
 
 console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + CTX_CASES.length + ROUTES.length + 4
-  + ACCEPTANCE.length + 10 + 4 + 8 + 5} asserts passed`);
+  + ACCEPTANCE.length + 10 + 5 + 16 + 8 + 5} asserts passed`);
 process.exit(bad ? 1 : 0);
