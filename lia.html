@@ -420,15 +420,33 @@ let CODE=localStorage.getItem('lia_code')||'';
    So: retry a transient 5xx once, never parse a body that is not JSON, and keep
    "wrong code" (401) strictly separate from "server had a moment" (5xx). */
 const TRANSIENT=[502,503,504,522,524];
+/* WHICH DEVICE THIS IS (David, 27.8: "כשאני נכנס לנייד אני לא רואה את הפעולות
+   שהיו על המחשב"). Declared here, above the network layer that uses it. */
+const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)?'phone':'desktop';
 async function post(url,body,tries){
  tries=tries||2;
+ /* The surface travels in the BODY, never as a custom header — and this is not
+    a style choice, it is a scar. A new request header must be named in each
+    function's Access-Control-Allow-Headers, and the panel redeploys itself on
+    merge while the edge functions are deployed by hand. In the gap between the
+    two, the browser preflights, the older function does not list the header,
+    and EVERY request is blocked before it is sent — including login. That is
+    exactly what locked David out on 27.8. The body is already JSON and already
+    allowed, so it carries the same information at zero risk, and an older
+    function simply ignores a field it does not read. */
+ let payload;
+ try{
+  const o=(typeof body==='string')?JSON.parse(body):Object.assign({},body||{});
+  o.surface=SURFACE;
+  payload=JSON.stringify(o);
+ }catch(e){ payload=(typeof body==='string')?body:JSON.stringify(body); }
  let last=null;
  for(let i=0;i<tries;i++){
   let r;
   try{
    r=await fetch(url,{method:'POST',
-    headers:{'Content-Type':'application/json','x-fresco-code':CODE,'x-lia-surface':SURFACE},
-    body:typeof body==='string'?body:JSON.stringify(body)});
+    headers:{'Content-Type':'application/json','x-fresco-code':CODE},
+    body:payload});
   }catch(e){ last={net:e}; await wait(600); continue; }        // dropped connection
   if(r.status===401)return {status:401,r:r};
   if(TRANSIENT.indexOf(r.status)>=0&&i<tries-1){ last={status:r.status}; await wait(600); continue; }
@@ -494,14 +512,13 @@ function closePanel(){document.getElementById('panel').classList.remove('on');}
    in localStorage, which is what makes "refresh and it is still there" true —
    this is the working memory of the conversation, not decoration. */
 const SKEY='lia_sessions', SCUR='lia_session_cur';
-/* WHICH DEVICE THIS IS (David, 27.8: "כשאני נכנס לנייד אני לא רואה את הפעולות
-   שהיו על המחשב"). The conversations above are per-browser on purpose — that is
-   working memory, and there is a privacy switch over it. What David was missing
-   is the ACTIONS, which were always server-side; they simply had no shared view.
-   The panel now tells the server which device is acting, so the timeline can say
-   "במחשב" rather than leaving him to guess, and remembers when THIS device was
-   last here so "מאז שהיית כאן" means the right thing on each one. */
-const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)?'phone':'desktop';
+/* The conversations above are per-browser on purpose — that is working memory,
+   and there is a privacy switch over it. What David was missing is the ACTIONS,
+   which were always server-side; they simply had no shared view. SURFACE (sent
+   in the request body, declared with the network layer) tells the server which
+   device is acting so the timeline can say "במחשב" rather than leaving him to
+   guess; lia_seen_at remembers when THIS device was last here, so "מאז שהיית
+   כאן" means the right thing on each one. */
 const SEEN='lia_seen_at';
 function lastSeen(){try{return localStorage.getItem(SEEN)||'';}catch(e){return '';}}
 function markSeen(){try{localStorage.setItem(SEEN,new Date().toISOString());}catch(e){}}
