@@ -169,6 +169,14 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
  display:flex;align-items:center;justify-content:center;font-size:14px;
  background:var(--acc);color:#fff}
 .nextPill .txt{flex:1;min-width:0;font-size:15px;line-height:1.5}
+/* Pressable when there is genuinely something to press. It stays the same pill
+   — David should not have to learn a new control, only notice it responds. */
+.nextPill.act{width:100%;text-align:start;border:0;cursor:pointer;font:inherit;color:inherit}
+.nextPill.act:hover{filter:brightness(1.08)}
+.nextPill.act:active{transform:scale(.995)}
+.nextPill.act[disabled]{opacity:.6;cursor:default}
+.nextPill .go{flex:0 0 auto;font-size:13px;opacity:.8;white-space:nowrap}
+.nextNote{font-size:12.5px;color:var(--dim);opacity:.8;margin:6px 2px 0}
 /* two small round icon buttons, nothing that looks like a toolbar */
 .msg .acts{display:flex;gap:6px;align-items:center;margin-top:12px}
 .msg .acts .det{width:30px;height:30px;padding:0;border-radius:50%;font-size:15px;line-height:1;
@@ -699,8 +707,14 @@ function devHe(s){return s==='phone'?'בנייד':s==='desktop'?'במחשב':s==
 function dismissSince(){markSeen();const el=document.getElementById('sinceHere');if(el)el.style.display='none';}
 /* "מה בדיוק קרה" asks LIA in David's own words rather than dumping the raw
    feed — the strip is the headline, the answer is the conversation. */
-function askSince(){dismissSince();const ta=document.getElementById('note');
- if(ta){ta.value='מה קרה מאז שהייתי כאן — כולל מה שקרה במכשיר השני';send();}}
+function askSince(){dismissSince();askLia('מה קרה מאז שהייתי כאן — כולל מה שקרה במכשיר השני');}
+/* One way to put words in the composer and send them. Everything that acts on
+   David's behalf goes through here, so a rename like send()→sendPrimary() can
+   never leave a button silently throwing. */
+function askLia(text){
+ if(busy())return false;
+ const ta=document.getElementById('note');if(!ta)return false;
+ ta.value=text;sendPrimary();return true;}
 async function loadRails(){
  if(!railsOn()||!CODE)return;
  /* Two read-only calls, the ones TODAY and PRIORITIES actually need. The
@@ -757,9 +771,27 @@ function renderThread(){
    const mean=(r.inferences||[]).filter(Boolean);
    if(mean.length)h+='<div class="sec"><div class="secHead"><span class="ic">◈</span>מה המשמעות</div>'
     +'<div class="secBody">'+mean.slice(0,2).map(x=>esc(heb(String(x)))).join('<br>')+'</div></div>';
+   /* THE NEXT ACTION IS A BUTTON (David, 27.8): "ע״י לחיצה על האייקון היא
+      תעבור לפעולה". The ▶ used to be decoration and David retyped the
+      sentence. Now it acts.
+
+      na = the typed plan from the server, which knows the real capability list
+      and the real authority model. When the deployed function is older and
+      sends no plan, the sentence itself still becomes a working button (mode
+      ASK) — this feature must not wait for a deploy, and the panel must never
+      assume the server is as new as it is. */
    const next=(r.recommended_next_action||'').trim();
-   if(next)h+='<div class="sec"><div class="secHead"><span class="ic">◎</span>הפעולה הבאה</div>'
-    +'<div class="nextPill"><span class="mark">▶</span><span class="txt">'+esc(heb(next))+'</span></div></div>';
+   const na=r.next_action&&r.next_action.label?r.next_action:(next?{label:next,mode:'ASK',button:'קדימה'}:null);
+   if(na){
+    const dead=na.mode==='NONE'||!na.button;
+    h+='<div class="sec"><div class="secHead"><span class="ic">◎</span>הפעולה הבאה</div>'
+     +(dead
+       ?'<div class="nextPill"><span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span></div>'
+       :'<button class="nextPill act" onclick="runNext('+i+')" title="'+esc(na.button)+'" aria-label="'+esc(na.button)+'">'
+        +'<span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span>'
+        +'<span class="go">'+esc(na.button)+'</span></button>')
+     +(na.note?'<div class="nextNote">'+esc(heb(na.note))+'</div>':'')
+     +'</div>';}
   }
   /* Icons, not labels (David, 25.8): two quiet controls under the answer —
      a chevron that opens the evidence, and one that asks her to say it simply.
@@ -2026,6 +2058,32 @@ function plainWords(r){
  return t;}
 /* "תסבירי פשוט" answers as a NEW turn, so the original answer stays visible
    above it in the thread instead of being overwritten by its own explanation. */
+/* THE NEXT ACTION, PRESSED (David, 27.8).
+   The click hands the action back to LIA as an instruction rather than calling
+   the capability behind her back. That is deliberate: she runs it through the
+   same authority gate as any other call, narrates what came back, and the
+   evidence and sources land on the answer exactly as they always do. Calling
+   the capability directly from here would produce a naked table and a second,
+   unaudited path to the same effect.
+
+   The mode decides the WORDS, and the words are honest about who is acting:
+   she does it, she prepares it for approval, or she writes the ask to whoever
+   actually can. Mirrors clickIntent() in _shared/nextAction.ts. */
+function nextActionText(na){
+ const L=String(na.label||'').trim();
+ if(na.mode==='RUN')  return 'בצעי: '+L+(na.cap?' (השתמשי ב-'+na.cap+')':'');
+ if(na.mode==='QUEUE')return na.cap?'הכיני לאישור: '+L:'הוסיפי להחלטות שלי: '+L;
+ if(na.mode==='DRAFT')return 'נסחי בקשה ל'+String(na.to||'')+': '+L;
+ return 'בצעי: '+L;}
+function runNext(i){
+ if(busy())return;
+ const turn=SESSION.turns[i];if(!turn||!turn.res)return;
+ const na=turn.res.next_action;if(!na||!na.label||na.mode==='NONE'||!na.button)return;
+ /* Pressed once. A second tap on a slow connection must not file the same
+    action twice — the button goes dead the moment the turn starts. */
+ const btns=document.querySelectorAll('.nextPill.act');
+ btns.forEach(b=>{b.setAttribute('disabled','disabled');});
+ if(!askLia(nextActionText(na)))btns.forEach(b=>{b.removeAttribute('disabled');});}
 function explainTurn(i){
  /* Not a new question, so it must not act like one: it reads the answer that
     is already on the table (plainWords is pure — no capability call, no model
