@@ -780,14 +780,13 @@ function renderThread(){
       sends no plan, the sentence itself still becomes a working button (mode
       ASK) — this feature must not wait for a deploy, and the panel must never
       assume the server is as new as it is. */
-   const next=(r.recommended_next_action||'').trim();
-   const na=r.next_action&&r.next_action.label?r.next_action:(next?{label:next,mode:'ASK',button:'קדימה'}:null);
+   const na=nextActionOf(r);
    if(na){
     const dead=na.mode==='NONE'||!na.button;
     h+='<div class="sec"><div class="secHead"><span class="ic">◎</span>הפעולה הבאה</div>'
      +(dead
        ?'<div class="nextPill"><span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span></div>'
-       :'<button class="nextPill act" onclick="runNext('+i+')" title="'+esc(na.button)+'" aria-label="'+esc(na.button)+'">'
+       :'<button type="button" class="nextPill act" onclick="runNext('+i+',this)" title="'+esc(na.button)+'" aria-label="'+esc(na.button)+'">'
         +'<span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span>'
         +'<span class="go">'+esc(na.button)+'</span></button>')
      +(na.note?'<div class="nextNote">'+esc(heb(na.note))+'</div>':'')
@@ -2069,21 +2068,40 @@ function plainWords(r){
    The mode decides the WORDS, and the words are honest about who is acting:
    she does it, she prepares it for approval, or she writes the ask to whoever
    actually can. Mirrors clickIntent() in _shared/nextAction.ts. */
+/* THE PLAN FOR ONE ANSWER — computed in ONE place, and this is a scar.
+   The render path and the click path each had their own idea of what the next
+   action was: rendering fell back to the plain sentence when the server sent no
+   typed plan, and the click read res.next_action with no fallback at all. So
+   against the currently deployed build the pill drew itself, David pressed it,
+   and nothing happened — a dead ▶, which is the exact bug the button was built
+   to remove. One function now, used by both. */
+function nextActionOf(res){
+ if(!res)return null;
+ const na=res.next_action;
+ if(na&&na.label)return na;
+ const s=String(res.recommended_next_action||'').trim();
+ if(!s)return null;
+ /* "אין כרגע פעולה…" is an answer, not an action — it must not sprout a button. */
+ if(/^אין(\s|$)/.test(s))return {label:s,mode:'NONE',button:''};
+ return {label:s,mode:'ASK',button:'קדימה'};}
 function nextActionText(na){
  const L=String(na.label||'').trim();
  if(na.mode==='RUN')  return 'בצעי: '+L+(na.cap?' (השתמשי ב-'+na.cap+')':'');
  if(na.mode==='QUEUE')return na.cap?'הכיני לאישור: '+L:'הוסיפי להחלטות שלי: '+L;
  if(na.mode==='DRAFT')return 'נסחי בקשה ל'+String(na.to||'')+': '+L;
  return 'בצעי: '+L;}
-function runNext(i){
- if(busy())return;
+function runNext(i,el){
  const turn=SESSION.turns[i];if(!turn||!turn.res)return;
- const na=turn.res.next_action;if(!na||!na.label||na.mode==='NONE'||!na.button)return;
+ const na=nextActionOf(turn.res);
+ if(!na||!na.label||na.mode==='NONE'||!na.button)return;
+ /* A tap that does nothing and says nothing is the same failure as a dead
+    button. While she is mid-turn, say so instead of swallowing it. */
+ if(busy()){stat('רגע — אני באמצע. תלחץ שוב כשאסיים.');return;}
  /* Pressed once. A second tap on a slow connection must not file the same
-    action twice — the button goes dead the moment the turn starts. */
- const btns=document.querySelectorAll('.nextPill.act');
- btns.forEach(b=>{b.setAttribute('disabled','disabled');});
- if(!askLia(nextActionText(na)))btns.forEach(b=>{b.removeAttribute('disabled');});}
+    action twice — only THIS button goes dead, so older answers keep theirs. */
+ const btn=el||null;
+ if(btn)btn.setAttribute('disabled','disabled');
+ if(!askLia(nextActionText(na))&&btn)btn.removeAttribute('disabled');}
 function explainTurn(i){
  /* Not a new question, so it must not act like one: it reads the answer that
     is already on the table (plainWords is pure — no capability call, no model
