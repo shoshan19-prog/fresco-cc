@@ -87,11 +87,14 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .railEmpty{font-size:12.5px;color:var(--dim);opacity:.75;padding:2px 0}
 /* מאז שהיית כאן — a strip above the thread, not a modal: David reads it on the
    way in and it never stands between him and the composer. */
-#sinceHere{margin:10px 12px 0;padding:10px 12px;border-radius:12px;
+#sinceHere,#notifBox{margin:10px 12px 0;padding:10px 12px;border-radius:12px;
  background:var(--card,#141821);border:1px solid var(--line,#242a36);font-size:13.5px}
-#sinceHere .sinceHead{font-weight:600;margin-bottom:6px}
-#sinceHere .sinceList{margin:4px 0 6px;padding-inline-start:18px;line-height:1.55}
+#sinceHere .sinceHead,#notifBox .sinceHead{font-weight:600;margin-bottom:6px}
+#sinceHere .sinceList,#notifBox .sinceList{margin:4px 0 6px;padding-inline-start:18px;line-height:1.55}
 #sinceHere .sinceList.dim{opacity:.72}
+/* The notification strip is the same object as the push card — this is where a
+   knock David missed, or never allowed, is still waiting for him. */
+#notifBox a{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor}
 
 @media(min-width:1100px){
  #topbar{padding:14px 26px 13px;gap:16px}
@@ -353,6 +356,7 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 <!-- מאז שהיית כאן: the shared action ledger, so the phone sees the computer's
      work. Hidden until it has something true to say. -->
 <div id="sinceHere" style="display:none"></div>
+<div id="notifBox" style="display:none"></div>
 <main id="thread"></main>
 </div>
 
@@ -400,6 +404,8 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
  <div class="row"><button class="ghost" onclick="runExpire()">נקה פגי-תוקף</button>
  <button class="ghost" onclick="load()">רענן</button>
  <button class="ghost" id="privBtn" onclick="togglePrivacy()">מצב פרטיות: כבוי</button>
+ <button class="ghost" id="notifBtn" onclick="enableNotifications(true)">אפשר התראות במכשיר הזה</button>
+ <span class="dim" id="notifStat"></span>
  <button class="ghost" onclick="getInstaller()">הורד את המתקין למחשב</button>
  <span class="dim" id="instStat"></span></div>
  <p style="margin-top:14px"><b>חיבור GPT ל-LIA Fresco</b></p>
@@ -494,7 +500,7 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
- tickClock();loadRails().catch(()=>{});loadSinceLastHere().catch(()=>{});
+ tickClock();loadRails().catch(()=>{});loadSinceLastHere().catch(()=>{});initNotifications();
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
     that already existed, and the three read-only calls behind TODAY refresh
@@ -708,6 +714,143 @@ function dismissSince(){markSeen();const el=document.getElementById('sinceHere')
 /* "מה בדיוק קרה" asks LIA in David's own words rather than dumping the raw
    feed — the strip is the headline, the answer is the conversation. */
 function askSince(){dismissSince();askLia('מה קרה מאז שהייתי כאן — כולל מה שקרה במכשיר השני');}
+
+/* ── THE KNOCK ON THE DOOR (28.8) ──────────────────────────────────────────
+   A task that finishes on the server while this window is closed has to reach
+   David. Web Push does that through the browser itself — his only step is
+   allowing notifications once, per device.
+
+   TWO LAYERS, ON PURPOSE. The push is the knock; the strip below is the
+   RECORD, read from the server on every open. So a denied permission, a phone
+   that was off, or a push service having a bad minute delays the message —
+   it never loses it. Read state lives on the server too: opening it on the
+   phone clears it on the computer. */
+let NOTIFS=[];
+function pushSupported(){
+ return ('serviceWorker' in navigator)&&('PushManager' in window)&&('Notification' in window);}
+function b64ToBytes(s){
+ const t=String(s||'').replace(/-/g,'+').replace(/_/g,'/');
+ const bin=atob(t+'='.repeat((4-t.length%4)%4));
+ const u=new Uint8Array(bin.length);
+ for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+ return u;}
+function bytesToB64(b){
+ const u=new Uint8Array(b||new ArrayBuffer(0));let s='';
+ for(let i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);
+ return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function notifSay(m){const el=document.getElementById('notifStat');if(el)el.textContent=m;}
+function notifBtn(t){const b=document.getElementById('notifBtn');if(b)b.textContent=t;}
+
+async function enableNotifications(explicit){
+ if(!pushSupported()){
+  notifSay('הדפדפן הזה לא תומך בהתראות — ההודעות ימתינו כאן ב-LIA.');return false;}
+ let reg=null;
+ try{reg=await navigator.serviceWorker.register('sw.js',{scope:'./'});}catch(e){reg=null;}
+ if(!reg){notifSay('לא הצלחתי להתקין את שירות ההתראות — ההודעות ימתינו כאן ב-LIA.');return false;}
+ let perm=Notification.permission;
+ /* The prompt is only ever raised by a real click. A permission asked for on
+    page load is the request browsers now refuse outright. */
+ if(perm==='default'&&explicit)perm=await Notification.requestPermission();
+ if(perm!=='granted'){
+  notifSay(perm==='denied'
+   ?'התראות חסומות בדפדפן — ההודעות ימתינו כאן ב-LIA.'
+   :'התראות עדיין לא אושרו — ההודעות ימתינו כאן ב-LIA.');
+  return false;}
+ try{
+  const k=await cap('push_key',{});
+  const pub=k&&k.rows&&k.rows[0]&&k.rows[0].public_key;
+  if(!pub){notifSay('השרת לא החזיר מפתח התראות — ההודעות ימתינו כאן.');return false;}
+  await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  /* A subscription made against a different application key can never be
+     pushed to again — it must be replaced, not kept and hoped for. */
+  if(sub&&sub.options&&bytesToB64(sub.options.applicationServerKey)!==pub){
+   try{await sub.unsubscribe();}catch(e){}
+   sub=null;}
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(pub)});
+  const j=sub.toJSON()||{};
+  await cap('push_subscribe',{endpoint:j.endpoint,p256dh:j.keys&&j.keys.p256dh,
+   auth:j.keys&&j.keys.auth,surface:SURFACE});
+  notifBtn('התראות פעילות');
+  notifSay('המכשיר הזה ('+(SURFACE==='phone'?'נייד':'מחשב')+') יקבל התראה כשמשימה מסתיימת.');
+  return true;
+ }catch(e){
+  notifSay('לא הצלחתי לרשום את המכשיר להתראות ('+(e&&e.message||'')+') — ההודעות ימתינו כאן ב-LIA.');
+  return false;}}
+
+async function loadNotifications(){
+ if(!CODE)return;
+ let r=null;
+ try{r=await cap('notifications',{unread_only:true,limit:10});}catch(e){return;}
+ NOTIFS=(r&&r.rows)||[];
+ renderNotifications();}
+function renderNotifications(){
+ const el=document.getElementById('notifBox');if(!el)return;
+ if(!NOTIFS.length){el.style.display='none';el.innerHTML='';return;}
+ el.innerHTML='<div class="sinceHead">'
+  +esc(NOTIFS.length===1?'התראה אחת ממתינה':NOTIFS.length+' התראות ממתינות')+'</div>'
+  +'<ul class="sinceList">'+NOTIFS.map(function(n,i){
+    return '<li><a href="#" onclick="openNotification('+i+');return false;"><b>'+esc(n.title||'')+'</b></a>'
+     +(n.line?' <span class="dim">· '+esc(n.line)+'</span>':'')+'</li>';}).join('')+'</ul>'
+  +'<button class="det" onclick="clearNotifications()">הבנתי</button>';
+ el.style.display='block';}
+async function openNotification(i){
+ const n=NOTIFS[i];if(!n)return;
+ await markNotificationRead(n.id);
+ await showTask(n.work_id);}
+async function markNotificationRead(id){
+ if(!id)return;
+ try{await cap('notification_read',{notification_id:id});}catch(e){}
+ NOTIFS=NOTIFS.filter(function(n){return n.id!==id;});
+ renderNotifications();}
+async function clearNotifications(){
+ try{await cap('notification_read',{all:true});}catch(e){}
+ NOTIFS=[];renderNotifications();}
+
+/* The tap has to land on THE TASK, not on the app in general — the answer is
+   read from the stored package, the same row every device reads. */
+async function showTask(id){
+ if(!id)return;
+ let r=null;
+ try{r=await cap('work_status',{work_id:id});}catch(e){}
+ const w=r&&r.rows&&r.rows[0];
+ if(!w){showAnswer(said('לא מצאתי את המשימה הזאת.',[],[],['work_id '+String(id).slice(0,8)]));return;}
+ const lines=[w.status_line||'',
+  w.outcome?('שורה תחתונה: '+w.outcome):'',
+  w.result?('תוצאה: '+w.result):'',
+  w.progress&&w.progress.text?('התקדמות: '+w.progress.text):'',
+  w.waiting_on?('ממתין ל: '+w.waiting_on):'',
+  w.blocker?('חסם: '+w.blocker):''].filter(Boolean);
+ showAnswer(said((w.objective||'משימה')+'\n'+lines.join('\n'),[],[],[]));}
+
+function openTaskFromUrl(){
+ let task='',n='';
+ try{const u=new URL(location.href);task=u.searchParams.get('task')||'';n=u.searchParams.get('n')||'';}catch(e){}
+ if(!task)return;
+ if(n)markNotificationRead(n);
+ showTask(task);
+ /* Clean the address bar: a refresh should not reopen the same task forever. */
+ try{history.replaceState({},'',location.pathname);}catch(e){}}
+
+if('serviceWorker' in navigator){
+ navigator.serviceWorker.addEventListener('message',function(ev){
+  const d=(ev&&ev.data)||{};
+  if(d.type!=='lia-open-task')return;
+  if(d.notification_id)markNotificationRead(d.notification_id);
+  if(d.task_id)showTask(d.task_id);});}
+
+function initNotifications(){
+ /* Already allowed on this device → re-register silently. A subscription the
+    browser rotated is a knock that never comes, and nothing else would notice. */
+ if(pushSupported()&&Notification.permission==='granted'){
+  notifBtn('התראות פעילות');
+  enableNotifications(false).catch(function(){});
+ }else if(pushSupported()&&Notification.permission==='denied'){
+  notifSay('התראות חסומות בדפדפן — ההודעות ימתינו כאן ב-LIA.');}
+ loadNotifications().catch(function(){});
+ openTaskFromUrl();
+ if(!window._liaNotifPoll){
+  window._liaNotifPoll=setInterval(function(){if(CODE)loadNotifications().catch(function(){});},20000);}}
 /* One way to put words in the composer and send them. Everything that acts on
    David's behalf goes through here, so a rename like send()→sendPrimary() can
    never leave a button silently throwing. */
