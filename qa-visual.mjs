@@ -57,6 +57,12 @@ async function open(viewport, tag, hold) {
       biggest_order: { customer: 'מרינה', amount: 12400 }, top_customers: [], source: 'ORDERS' });
     if (body.action === 'cap' && body.name === 'next_decision')
       return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
+    /* A waiting notification, in the shape the server sends it: a Hebrew title
+       ending in a Latin/number run, which is exactly what the bidi algorithm
+       reorders on a narrow screen. */
+    if (body.action === 'cap' && body.name === 'notifications')
+      return j({ rows: [{ id: 'n1', work_id: 'w1', unread: true,
+        title: 'LIA · סיימתי: בדיקת חשבוניות אוגוסט', line: '205 חשבוניות, 744,042 ₪' }] });
     j({ ok: true, items: [], objects: [], model: true,
         queue: [{ id: 'a1b2c3d4-0000', object_type: 'COMMITMENT', verification_state: 'CANONICAL',
                   payload: { quote: 'הבטחנו דוגמאות', speaker: 'דוד', fields: { what: 'לשלוח דוגמאות לאשרף', deadline: '2026-08-20' } } },
@@ -76,7 +82,9 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   const { page, ctx } = await open(vp, tag);
   await page.waitForTimeout(400);
   await shot(page, `${tag}-1-idle`);
-  ok(`${tag}: home screen greets and asks`, /טוב, דוד/.test(await page.textContent('#thread')));
+  // The greeting is time-of-day aware (בוקר טוב / צהריים טובים / ערב טוב),
+  // so pinning one wording made this red at every hour but the morning.
+  ok(`${tag}: home screen greets and asks`, /(טוב|טובים), דוד/.test(await page.textContent('#thread')));
   // David, 25.8: a control that looks live but does nothing is worse than none.
   ok(`${tag}: no dead expert-system controls`, (await page.$$('#chips, .chip')).length === 0);
   ok(`${tag}: LIVE indicator present`, await page.isVisible('.live'));
@@ -233,6 +241,50 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   });
   ok('phone: evidence arrives as a bottom sheet, not a full page',
     sheet.bottom <= 2 && sheet.h < sheet.vh * 0.85, JSON.stringify(sheet));
+  await ctx.close();
+}
+
+/* ── what a waiting notification looks like, and where the switch is ─────────
+   Both failures this covers were real on the phone: the notification line was
+   reordered by bidi so the result read before the title, and the permission
+   control — the one thing David has to press himself — sat inside a collapsed
+   "פרטים" block he had no reason to open. */
+{
+  const { page, ctx } = await open({ width: 390, height: 844 }, 'phone-notify');
+  await page.waitForTimeout(600);
+  await shot(page, 'mobile-10-notification');
+  const strip = await page.evaluate(() => {
+    const box = document.getElementById('notifBox');
+    if (!box || getComputedStyle(box).display === 'none') return null;
+    const row = box.querySelector('.nRow'), t = box.querySelector('.nTitle'), l = box.querySelector('.nLine');
+    if (!row || !t || !l) return { rowless: true };
+    const rt = t.getBoundingClientRect(), rl = l.getBoundingClientRect();
+    return { h: Math.round(row.getBoundingClientRect().height),
+             titleBottom: Math.round(rt.bottom), lineTop: Math.round(rl.top),
+             titleIsolated: getComputedStyle(t).unicodeBidi.includes('isolate'),
+             lineIsolated: getComputedStyle(l).unicodeBidi.includes('isolate') };
+  });
+  ok('phone: a waiting notification is on screen even with no push', !!strip && !strip.rowless, JSON.stringify(strip));
+  ok('phone: the result sits UNDER the title, not reordered into it',
+    strip && strip.lineTop >= strip.titleBottom - 1 && strip.titleIsolated && strip.lineIsolated,
+    JSON.stringify(strip));
+  ok('phone: the whole notification is a thumb-sized target', strip && strip.h >= 44, JSON.stringify(strip));
+
+  await page.click('#menuBtn').catch(() => {});
+  await page.evaluate(() => { const p = document.getElementById('panel'); if (p) p.style.display = 'block'; });
+  await page.waitForTimeout(200);
+  await shot(page, 'mobile-11-settings');
+  const btn = await page.evaluate(() => {
+    const b = document.getElementById('notifBtn');
+    if (!b) return null;
+    const r = b.getBoundingClientRect(), adv = document.getElementById('advanced');
+    return { visible: !!(r.width && r.height), width: Math.round(r.width), right: Math.round(r.right),
+             insideCollapsed: !!(adv && adv.contains(b) && getComputedStyle(adv).display === 'none'),
+             vw: window.innerWidth };
+  });
+  ok('phone: the notification switch is reachable without opening "פרטים"',
+    btn && btn.visible && !btn.insideCollapsed, JSON.stringify(btn));
+  ok('phone: and it fits on the screen', btn && btn.right <= btn.vw + 1, JSON.stringify(btn));
   await ctx.close();
 }
 

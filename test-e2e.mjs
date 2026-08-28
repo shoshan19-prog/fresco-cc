@@ -97,7 +97,9 @@ const seen = (page) => page.evaluate(() => {
   // and the one question LIA is there to answer. Same property as before — an
   // empty thread must never be a blank panel — asserted against what now fills it.
   ok('   and shows the home screen, not a blank panel',
-    /טוב, דוד/.test(shown || '') && /מה דורש תשומת לב עכשיו/.test(shown || ''),
+    // Time-of-day aware: בוקר טוב / צהריים טובים / ערב טוב — pinning one
+    // wording made this red at every hour but the morning.
+    /(טוב|טובים), דוד/.test(shown || '') && /מה דורש תשומת לב עכשיו/.test(shown || ''),
     `got: ${JSON.stringify((shown || '').slice(0, 80))}`);
 
   // The property the old regex assert in test-render.mjs claimed to cover and

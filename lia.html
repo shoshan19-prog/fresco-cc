@@ -93,8 +93,18 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 #sinceHere .sinceList,#notifBox .sinceList{margin:4px 0 6px;padding-inline-start:18px;line-height:1.55}
 #sinceHere .sinceList.dim{opacity:.72}
 /* The notification strip is the same object as the push card — this is where a
-   knock David missed, or never allowed, is still waiting for him. */
-#notifBox a{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor}
+   knock David missed, or never allowed, is still waiting for him.
+
+   TWO LINES PER NOTIFICATION, EACH BIDI-ISOLATED. On the phone the title and
+   the result share a wrapped line, and Hebrew text ending in a Latin/number
+   run ("· 205 חשבוניות, 744,042 ₪") gets reordered by the bidi algorithm — the
+   number jumps to the head of the line and the sentence reads backwards. An
+   isolate on each part keeps every fragment in its own direction context. */
+#notifBox .nRow{display:block;padding:10px 0;color:inherit;text-decoration:none;
+ border-top:1px solid var(--line);min-height:44px}
+#notifBox .nRow:first-of-type{border-top:0}
+#notifBox .nTitle{display:block;font-weight:600;line-height:1.45;unicode-bidi:isolate}
+#notifBox .nLine{display:block;margin-top:2px;color:var(--dim);font-size:12.5px;unicode-bidi:isolate}
 
 @media(min-width:1100px){
  #topbar{padding:14px 26px 13px;gap:16px}
@@ -395,6 +405,15 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 
 <div class="card"><b>שיחות קודמות</b><div id="sessions" style="margin-top:8px"></div></div>
 
+<!-- The one thing David has to do himself, on each device. It sat inside the
+     collapsed "פרטים" block, which on the phone means it did not exist: two
+     taps to the sheet and then a details toggle he has no reason to press. A
+     permission he cannot find is a notification that never arrives. -->
+<div class="card"><div class="row" style="justify-content:space-between;margin:0">
+ <b>התראות במכשיר הזה</b>
+ <button class="ghost" id="notifBtn" onclick="enableNotifications(true)">אפשר התראות</button></div>
+ <p class="dim" id="notifStat" style="margin:8px 0 0">כשמשימה מסתיימת בשרת, LIA תודיע כאן — גם כשהאפליקציה סגורה.</p></div>
+
 <div class="card"><div class="row" style="justify-content:space-between;margin:0">
 <b id="queueTitle">מה פתוח</b>
 <button class="det" onclick="toggleAdvanced()">פרטים</button></div>
@@ -404,8 +423,6 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
  <div class="row"><button class="ghost" onclick="runExpire()">נקה פגי-תוקף</button>
  <button class="ghost" onclick="load()">רענן</button>
  <button class="ghost" id="privBtn" onclick="togglePrivacy()">מצב פרטיות: כבוי</button>
- <button class="ghost" id="notifBtn" onclick="enableNotifications(true)">אפשר התראות במכשיר הזה</button>
- <span class="dim" id="notifStat"></span>
  <button class="ghost" onclick="getInstaller()">הורד את המתקין למחשב</button>
  <span class="dim" id="instStat"></span></div>
  <p style="margin-top:14px"><b>חיבור GPT ל-LIA Fresco</b></p>
@@ -743,7 +760,17 @@ function notifBtn(t){const b=document.getElementById('notifBtn');if(b)b.textCont
 
 async function enableNotifications(explicit){
  if(!pushSupported()){
-  notifSay('הדפדפן הזה לא תומך בהתראות — ההודעות ימתינו כאן ב-LIA.');return false;}
+  /* On an iPhone this is not "your browser cannot" — it is "not yet": iOS
+     gives a web app push only after it is added to the home screen. Saying
+     the generic sentence there sends David looking for a broken feature
+     instead of taking the one step that turns it on. */
+  const ios=/iPhone|iPad|iPod/i.test((navigator&&navigator.userAgent)||'');
+  const installed=(window&&window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)
+   ||(navigator&&navigator.standalone===true);
+  notifSay(ios&&!installed
+   ?'באייפון צריך קודם להוסיף את LIA למסך הבית (שיתוף ← הוסף למסך הבית) ואז לאשר. עד אז ההודעות ימתינו כאן ב-LIA.'
+   :'הדפדפן הזה לא תומך בהתראות — ההודעות ימתינו כאן ב-LIA.');
+  return false;}
  let reg=null;
  try{reg=await navigator.serviceWorker.register('sw.js',{scope:'./'});}catch(e){reg=null;}
  if(!reg){notifSay('לא הצלחתי להתקין את שירות ההתראות — ההודעות ימתינו כאן ב-LIA.');return false;}
@@ -789,9 +816,10 @@ function renderNotifications(){
  if(!NOTIFS.length){el.style.display='none';el.innerHTML='';return;}
  el.innerHTML='<div class="sinceHead">'
   +esc(NOTIFS.length===1?'התראה אחת ממתינה':NOTIFS.length+' התראות ממתינות')+'</div>'
-  +'<ul class="sinceList">'+NOTIFS.map(function(n,i){
-    return '<li><a href="#" onclick="openNotification('+i+');return false;"><b>'+esc(n.title||'')+'</b></a>'
-     +(n.line?' <span class="dim">· '+esc(n.line)+'</span>':'')+'</li>';}).join('')+'</ul>'
+  +NOTIFS.map(function(n,i){
+    return '<a class="nRow" href="#" onclick="openNotification('+i+');return false;">'
+     +'<span class="nTitle">'+esc(n.title||'')+'</span>'
+     +(n.line?'<span class="nLine">'+esc(n.line)+'</span>':'')+'</a>';}).join('')
   +'<button class="det" onclick="clearNotifications()">הבנתי</button>';
  el.style.display='block';}
 async function openNotification(i){
