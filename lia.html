@@ -106,8 +106,13 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
  #topbar{padding:14px 26px 13px;gap:16px}
  #topbar .brand{font-size:23px}
  #osName{display:inline}
+ /* The composer belongs to the CONVERSATION column, not to the whole shell.
+    Spanning both columns ("f f") centred it over the rail as well, so the box
+    David types into sat off to one side of the answers he was reading and was
+    wider than them. It shares the conversation's column now, and the rail
+    simply runs the full height beside it. */
  #shell{grid-template-columns:300px minmax(0,1fr);
-  grid-template-areas:"l c" "f f";
+  grid-template-areas:"l c" "l f";
   column-gap:26px;width:100%;max-width:1280px;margin:0 auto;padding:0 26px}
  #railL{grid-area:l;display:flex}
  #center{grid-area:c}
@@ -120,8 +125,10 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
  .hero h1{font-size:34px}
  .hero p{font-size:16.5px}
  #composer{padding:10px 0 16px}
+ /* The same measure as #thread>* — the box he types into lines up edge to
+    edge with the answers he is reading. */
  #composer .line,#composer .row,#composer #attachBar,#composer #noteStat{
-  max-width:1060px;margin-inline:auto}
+  max-width:840px;margin-inline:auto}
 }
 @media(min-width:1500px){
  #shell{grid-template-columns:320px minmax(0,1fr)}
@@ -1232,7 +1239,7 @@ function setMode(m){
  }
  applyMicVisibility();
 }
-function speakAgain(){const ta=document.getElementById('note');ta.value='';VOICE={};setMode('idle');stat('');micTap();}
+function speakAgain(){const ta=document.getElementById('note');ta.value='';growNote();VOICE={};setMode('idle');stat('');micTap();}
 function applyMicVisibility(){const b=document.getElementById('mic');if(b)b.style.display=micSupported()?'inline-block':'none';}
 /* One send button, and the same router the microphone uses: a question is asked,
    a report of something that happened is filed as a note. David never picks. */
@@ -1251,7 +1258,7 @@ function sendPrimary(){
   ATTACH=[];renderAttachBar();
   SESSION.sources=(SESSION.sources||[]).concat(atts.map(sourceDescriptor)).slice(-12);
   addTurn('me',t,null,atts.map(sourceDescriptor));
-  ta.value='';ta.rows=1;VOICE={};setMode('thinking');
+  ta.value='';ta.rows=1;growNote();VOICE={};setMode('thinking');
   doAsk(t,id,atts);return;}
  /* While she is waiting for "לשמור?", the send button used to file WHATEVER was
     in the box as a note — so a question typed at that moment, or a plain "כן",
@@ -1268,19 +1275,19 @@ function sendPrimary(){
      cancels: nothing is sent, the pending note is dropped, the box is cleared
      and she returns to idle. */
   if(PENDING_NOTE&&NO.indexOf(a)>=0){
-   PENDING_NOTE='';ta.value='';ta.rows=1;VOICE={};
+   PENDING_NOTE='';ta.value='';ta.rows=1;growNote();VOICE={};
    addTurn('me',t);addTurn('lia','בסדר, ביטלתי. לא שמרתי כלום.');
    setMode('idle');return;}
   PENDING_NOTE='';
  }
  const intent=classify(t,SESSION.turns.length>0);
- if(intent==='SIMPLIFY'){addTurn('me',t);ta.value='';ta.rows=1;VOICE={};setMode('idle');explainLast();return;}
+ if(intent==='SIMPLIFY'){addTurn('me',t);ta.value='';ta.rows=1;growNote();VOICE={};setMode('idle');explainLast();return;}
  if(intent==='ASK'||intent==='DO'){
   /* The turn is taken here, before the message is echoed to the thread: a
      second click of שלח (or Enter held down) gets null and returns, so it
      cannot produce a second bubble OR a second request. */
   const id=beginTurn();if(!id)return;
-  addTurn('me',t);ta.value='';ta.rows=1;VOICE={};setMode('thinking');
+  addTurn('me',t);ta.value='';ta.rows=1;growNote();VOICE={};setMode('thinking');
   (intent==='ASK'?doAsk:doAct)(t,id);
  }else sendNote(t);}
 
@@ -1404,7 +1411,7 @@ async function sendNote(text){
     ...(VOICE.model?{source:'voice_note',transcription:VOICE}:{source:'typed'})};
   const res=await api(b);
   if(!res||res.ok!==true)throw new Error('rejected');
-  SUBMIT_ID=null;VOICE={};ta.value='';ta.rows=1;setMode('idle');stat('');
+  SUBMIT_ID=null;VOICE={};ta.value='';ta.rows=1;growNote();setMode('idle');stat('');
   addTurn('me',t);
   WAITING={before:LAST_IDS.slice(),t:Date.now(),said:false};
   await load();
@@ -1754,10 +1761,10 @@ function afterTranscript(){
     so the next recording starts clean. REMEMBER keeps the text — David still
     needs to review and send it. */
  if(intent==='SIMPLIFY'){
-  document.getElementById('note').value='';VOICE={};setMode('idle');addTurn('me',t);explainLast();return;}
+  document.getElementById('note').value='';growNote();VOICE={};setMode('idle');addTurn('me',t);explainLast();return;}
  if(intent==='ASK'||intent==='DO'){
   const id=beginTurn();if(!id)return;      // a duplicate final event finds the turn already taken
-  document.getElementById('note').value='';VOICE={};setMode('thinking');
+  document.getElementById('note').value='';growNote();VOICE={};setMode('thinking');
   addTurn('me',t);
   (intent==='ASK'?doAsk:doAct)(t,id);
  }else{PENDING_NOTE=t;setMode('review');if(voiceUX())reflect();else endTurn();}}
@@ -2283,9 +2290,18 @@ async function doAct(text,turnId){
   res.__plain=spoken;showAnswer(res,outward?'מוכן לאישור במסך:':'הכנתי:');
   deliverText(spoken);
  }catch(e){stat('לא הצלחתי ('+e.message+')');deliverText('לא הצלחתי לבצע את זה.');}}
+/* The composer grows with what is typed — and SHRINKS BACK when it is sent.
+   Every send already reset ta.rows, but an inline height set while typing
+   outranks rows, so after one long message the empty box stayed at its full
+   34vh for the rest of the session. Clearing the value is not enough; the
+   height it caused has to be cleared with it. */
+function growNote(){
+ const ta=document.getElementById('note');if(!ta)return;
+ ta.style.height='auto';
+ if(!ta.value){ta.style.height='';return;}      // empty → back to its resting size
+ ta.style.height=Math.min(ta.scrollHeight,window.innerHeight*0.34)+'px';}
 (function(){const ta=document.getElementById('note');
- const grow=()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,window.innerHeight*0.34)+'px';};
- ta.addEventListener('input',grow);
+ ta.addEventListener('input',growNote);
  ta.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendPrimary();}});
  /* LIA's eyes — three ways in, one pipeline: the picker, Ctrl+V, and drop.

@@ -121,7 +121,20 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
     !/דבר עם LIA/.test(await page.textContent('#composer')));
   ok(`${tag}: answer does not spill sideways`, (await overflow(page)) <= 1, `overflow ${await overflow(page)}px`);
 
+  /* David, 28.8: "ישר את תיבת הצאט מול התשובות". The composer used to span the
+     whole shell — centred over the rail as well — so the box he types into sat
+     off to one side of the answers and was wider than them. */
+  const geo = await page.evaluate(() => {
+    const c = document.querySelector('#thread .msg.lia').getBoundingClientRect();
+    const b = document.querySelector('#composer .line').getBoundingClientRect();
+    return { dl: Math.round(b.left - c.left), dr: Math.round(b.right - c.right),
+             cw: Math.round(c.width), bw: Math.round(b.width) };
+  });
+  ok(`${tag}: the composer lines up with the answers`, Math.abs(geo.dl) <= 2 && Math.abs(geo.dr) <= 2,
+    JSON.stringify(geo));
+
   ok(`${tag}: evidence is NOT dumped inside the reply`, !/לקוח שחוזר שווה יותר/.test(card));
+
   // "Maximum 5-7 visible lines before expansion" — enforced structurally, not
   // by eyeballing: at most 3 findings and 2 interpretation lines reach the
   // card; everything beyond that is in the drawer.
@@ -152,6 +165,19 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   await page.click('#evHead .ghost');
   await page.waitForTimeout(200);
   ok(`${tag}: the drawer closes again`, !(await page.isVisible('#evDrawer.on')));
+
+  /* And it shrinks back. The height it took while a long message was being
+     typed is inline, so it outranks the rows reset every send already did —
+     one long question left the empty box at 34vh for the rest of the day. */
+  const box = await page.evaluate(() => Math.round(document.querySelector('#composer .line').getBoundingClientRect().height));
+  await page.fill('#note', 'שאלה ארוכה מאוד. '.repeat(60));
+  await page.waitForTimeout(150);
+  const grown = await page.evaluate(() => Math.round(document.querySelector('#composer .line').getBoundingClientRect().height));
+  await page.click('#sendBtn');
+  await page.waitForTimeout(600);
+  const back = await page.evaluate(() => Math.round(document.querySelector('#composer .line').getBoundingClientRect().height));
+  ok(`${tag}: the composer grows with a long message`, grown > box + 40, `${box} → ${grown}`);
+  ok(`${tag}: and shrinks back once it is sent`, back === box, `${grown} → ${back}, resting ${box}`);
   await ctx.close();
 }
 
