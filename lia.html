@@ -85,13 +85,9 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .prio .t{flex:1;min-width:0}
 .prio .w{display:block;font-size:11.5px;color:var(--dim);margin-top:1px}
 .railEmpty{font-size:12.5px;color:var(--dim);opacity:.75;padding:2px 0}
-/* מאז שהיית כאן — a strip above the thread, not a modal: David reads it on the
-   way in and it never stands between him and the composer. */
-#sinceHere,#notifBox{margin:10px 12px 0;padding:10px 12px;border-radius:12px;
+#notifBox{margin:10px 12px 0;padding:10px 12px;border-radius:12px;
  background:var(--card,#141821);border:1px solid var(--line,#242a36);font-size:13.5px}
-#sinceHere .sinceHead,#notifBox .sinceHead{font-weight:600;margin-bottom:6px}
-#sinceHere .sinceList,#notifBox .sinceList{margin:4px 0 6px;padding-inline-start:18px;line-height:1.55}
-#sinceHere .sinceList.dim{opacity:.72}
+#notifBox .nHead{font-weight:600;margin-bottom:6px}
 /* The notification strip is the same object as the push card — this is where a
    knock David missed, or never allowed, is still waiting for him.
 
@@ -365,7 +361,6 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 <div id="center">
 <!-- מאז שהיית כאן: the shared action ledger, so the phone sees the computer's
      work. Hidden until it has something true to say. -->
-<div id="sinceHere" style="display:none"></div>
 <div id="notifBox" style="display:none"></div>
 <main id="thread"></main>
 </div>
@@ -517,7 +512,7 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
- tickClock();loadRails().catch(()=>{});loadSinceLastHere().catch(()=>{});initNotifications();
+ tickClock();loadRails().catch(()=>{});initNotifications();
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
     that already existed, and the three read-only calls behind TODAY refresh
@@ -550,9 +545,6 @@ const SKEY='lia_sessions', SCUR='lia_session_cur';
    device is acting so the timeline can say "במחשב" rather than leaving him to
    guess; lia_seen_at remembers when THIS device was last here, so "מאז שהיית
    כאן" means the right thing on each one. */
-const SEEN='lia_seen_at';
-function lastSeen(){try{return localStorage.getItem(SEEN)||'';}catch(e){return '';}}
-function markSeen(){try{localStorage.setItem(SEEN,new Date().toISOString());}catch(e){}}
 let SESSION={id:'',title:'',ctx:'פרסקו',at:0,turns:[],retracted:[]};
 function jget(k,d){try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?d:v;}catch(e){return d;}}
 function jset(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
@@ -697,41 +689,6 @@ function renderRails(){
 function askAbout(text){
  const el=document.getElementById('note');
  if(!el)return;el.value='מה הסטטוס של: '+text;el.focus();}
-/* "מאז שהיית כאן" — the one strip that closes David's blind spot (27.8).
-   It reads the SHARED action ledger, not this browser's conversations, so
-   opening the phone shows what the computer did. Nothing is invented: an empty
-   ledger says so plainly rather than showing a reassuring blank.
-   Failure is silent by design — a feed that cannot load must never block the
-   panel David came here to use. */
-async function loadSinceLastHere(){
- if(!CODE)return;
- const el=document.getElementById('sinceHere');if(!el)return;
- const seen=lastSeen();
- let r=null;
- try{r=await cap('activity',seen?{since:seen}:{hours:24});}catch(e){return;}
- const row=r&&r.rows&&r.rows[0];
- if(!row||!row.total){el.style.display='none';markSeen();return;}
- const needs=(row.needs_you||[]).slice(0,4);
- const loops=row.open_now||{};
- const drafts=(loops.drafts_waiting||[]).slice(0,3);
- const work=(loops.work_running||[]).slice(0,3);
- let h='<div class="sinceHead">'+esc(row.summary||'')+'</div>';
- if(needs.length)h+='<ul class="sinceList">'+needs.map(i=>
-   '<li><b>'+esc(i.what)+'</b>'+(i.surface&&i.surface!=='unknown'?' <span class="dim">· '+esc(devHe(i.surface))+'</span>':'')+'</li>').join('')+'</ul>';
- if(drafts.length||work.length){
-  h+='<ul class="sinceList dim">'
-   +drafts.map(d=>'<li>טיוטה ממתינה לאישורך → '+esc(d.to||'')+'</li>').join('')
-   +work.map(w=>'<li>משימה רצה → '+esc(w.status_line||w.status||'')+'</li>').join('')
-   +'</ul>';}
- h+='<button class="det" onclick="askSince()">מה בדיוק קרה</button>'
-   +' <button class="det" onclick="dismissSince()">הבנתי</button>';
- el.innerHTML=h;el.style.display='block';}
-function devHe(s){return s==='phone'?'בנייד':s==='desktop'?'במחשב':s==='worker'?'בשרת':s==='whatsapp'?'בוואטסאפ':'';}
-function dismissSince(){markSeen();const el=document.getElementById('sinceHere');if(el)el.style.display='none';}
-/* "מה בדיוק קרה" asks LIA in David's own words rather than dumping the raw
-   feed — the strip is the headline, the answer is the conversation. */
-function askSince(){dismissSince();askLia('מה קרה מאז שהייתי כאן — כולל מה שקרה במכשיר השני');}
-
 /* ── THE KNOCK ON THE DOOR (28.8) ──────────────────────────────────────────
    A task that finishes on the server while this window is closed has to reach
    David. Web Push does that through the browser itself — his only step is
@@ -814,7 +771,7 @@ async function loadNotifications(){
 function renderNotifications(){
  const el=document.getElementById('notifBox');if(!el)return;
  if(!NOTIFS.length){el.style.display='none';el.innerHTML='';return;}
- el.innerHTML='<div class="sinceHead">'
+ el.innerHTML='<div class="nHead">'
   +esc(NOTIFS.length===1?'התראה אחת ממתינה':NOTIFS.length+' התראות ממתינות')+'</div>'
   +NOTIFS.map(function(n,i){
     return '<a class="nRow" href="#" onclick="openNotification('+i+');return false;">'
