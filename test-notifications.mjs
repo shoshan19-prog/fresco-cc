@@ -238,6 +238,24 @@ function panel(opts = {}) {
 }
 
 {
+  // iOS gives a web app push only once it is on the home screen. "Your browser
+  // cannot" would send him hunting for a broken feature instead of taking the
+  // one step that turns it on.
+  const p = panel({ navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Safari' },
+    window: {}, Notification: undefined });
+  await p.api.enableNotifications(true);
+  ok('on an iPhone that is not installed, it names the step that enables it',
+     /מסך הבית/.test(p.el('notifStat').textContent), p.el('notifStat').textContent);
+}
+
+{
+  const p = panel({ navigator: { userAgent: 'Mozilla/5.0 (Macintosh) Safari' }, window: {}, Notification: undefined });
+  await p.api.enableNotifications(true);
+  ok('on a desktop browser without push it does NOT tell him to install anything',
+     !/מסך הבית/.test(p.el('notifStat').textContent), p.el('notifStat').textContent);
+}
+
+{
   const nav = { serviceWorker: { register: async () => ({ pushManager: {} }), ready: Promise.resolve(),
     addEventListener: () => {} } };
   const p = panel({ navigator: nav, window: { PushManager: function () {}, Notification: {} },
