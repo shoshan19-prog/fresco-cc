@@ -64,6 +64,18 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .railCard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px}
 .railHead{display:flex;align-items:center;justify-content:space-between;
  font-size:10.5px;letter-spacing:2.2px;font-weight:700;color:var(--dim);margin-bottom:12px}
+/* Collapsible rail sections (David, 31.8) — conversational-first: KPIs and
+   PRIORITIES default to a one-line summary, not a wall of tiles. The data
+   is never removed, only hidden — expand reveals the same DOM the section
+   already renders. */
+.railCard.collapsible .railHead{cursor:pointer;margin-bottom:0;user-select:none}
+.railCard.collapsible[data-collapsed="true"] .railHead{margin-bottom:0}
+.railCard.collapsible:not([data-collapsed="true"]) .railHead{margin-bottom:12px}
+.railCard.collapsible[data-collapsed="true"] .railBody{display:none}
+.railHeadMeta{flex:1;text-align:start;margin-inline-start:8px;font-weight:600;
+ letter-spacing:.2px;color:var(--txt);text-transform:none;font-size:12px}
+.railChev{font-size:10px;color:var(--dim);transition:transform .15s ease;flex:0 0 auto}
+.railCard.collapsible:not([data-collapsed="true"]) .railChev{transform:rotate(180deg)}
 /* TODAY — three numbers, read in one glance, from data already on screen */
 .todayGrid{display:flex;flex-direction:column;gap:11px}
 .tStat{display:flex;align-items:baseline;gap:10px}
@@ -254,7 +266,15 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .nextPill.act:active{transform:scale(.995)}
 .nextPill.act[disabled]{opacity:.6;cursor:default}
 .nextPill .go{flex:0 0 auto;font-size:13px;opacity:.8;white-space:nowrap}
+/* Execution states (David, 31.8) — done/running are facts, not controls, so
+   they read differently from the pressable pill on sight, not just by cursor. */
+.nextPill.done{background:#eaf8ef;border-color:#bfe8cb}
+.nextPill.done .mark{background:var(--ok)}
+.nextPill.running{background:var(--card2);border-color:var(--line2);opacity:.85}
+.nextPill.running .mark{background:var(--dim);animation:pillPulse 1.1s ease-in-out infinite}
+@keyframes pillPulse{0%,100%{opacity:1}50%{opacity:.45}}
 .nextNote{font-size:12.5px;color:var(--dim);opacity:.8;margin:6px 2px 0}
+.nextNote.err{color:#c0392b;opacity:1}
 /* two small round icon buttons, nothing that looks like a toolbar */
 .msg .acts{display:flex;gap:6px;align-items:center;margin-top:12px}
 .msg .acts .det{width:30px;height:30px;padding:0;border-radius:50%;font-size:15px;line-height:1;
@@ -421,17 +441,21 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
       (command-center activity/business_query), a wider view of it — not a
       second source of truth. Leads the rail (David, 31.8 — moved above
       TODAY/PRIORITIES): the headline business numbers, not the day log. -->
- <section class="railCard">
-  <div class="railHead"><span>FRESCO KPIs</span></div>
-  <div class="kpiGrid" id="kpis"></div>
+ <section class="railCard collapsible" id="kpiCard" data-collapsed="true">
+  <div class="railHead" onclick="toggleRailSection('kpiCard')">
+   <span>FRESCO KPIs</span><span class="railHeadMeta" id="kpiSummary"></span><span class="railChev">▾</span>
+  </div>
+  <div class="kpiGrid railBody" id="kpis"></div>
  </section>
  <section class="railCard">
   <div class="railHead"><span>TODAY</span><span id="tDate"></span></div>
   <div class="todayGrid" id="today"></div>
  </section>
- <section class="railCard">
-  <div class="railHead"><span>PRIORITIES</span></div>
-  <div id="prios"></div>
+ <section class="railCard collapsible" id="prioCard" data-collapsed="true">
+  <div class="railHead" onclick="toggleRailSection('prioCard')">
+   <span>PRIORITIES</span><span class="railHeadMeta" id="prioSummary"></span><span class="railChev">▾</span>
+  </div>
+  <div class="railBody" id="prios"></div>
  </section>
  <section class="railCard" id="changedCard" style="display:none">
   <div class="railHead"><span>מה השתנה היום</span></div>
@@ -780,8 +804,30 @@ function renderRails(){
     '<div class="prio '+x.kind+'" onclick="askAbout('+JSON.stringify(x.text).replace(/"/g,'&quot;')+')">'
     +'<span class="n">'+(i+1)+'</span><span class="t">'+esc(clip(x.text,74))
     +'<span class="w">'+esc(x.when)+'</span></span></div>').join('')
-   :'<p class="railEmpty">אין באיחור ואין החלטות תלויות.</p>';}
+   :'<p class="railEmpty">אין באיחור ואין החלטות תלויות.</p>';
+  setRailSummary('prioSummary',list.length+' פריטים');}
 }
+/* Collapsible rail sections (David, 31.8): default collapsed, state kept
+   per-device in localStorage so a choice survives a reload without a
+   server round-trip — nothing in the underlying data is ever removed,
+   only the visibility of the .railBody toggles. */
+function toggleRailSection(id){
+ const sec=document.getElementById(id);if(!sec)return;
+ const collapsed=sec.getAttribute('data-collapsed')==='true';
+ sec.setAttribute('data-collapsed',collapsed?'false':'true');
+ try{localStorage.setItem('rail:'+id,collapsed?'0':'1');}catch(e){}
+}
+function setRailSummary(id,text){
+ const el=document.getElementById(id);if(el)el.textContent=text;
+}
+(function restoreRailCollapse(){
+ ['kpiCard','prioCard'].forEach(id=>{
+  try{
+   const v=localStorage.getItem('rail:'+id);
+   if(v==='0'){const sec=document.getElementById(id);if(sec)sec.setAttribute('data-collapsed','false');}
+  }catch(e){}
+ });
+})();
 /* A priority is a question, not a link: tapping it asks LIA about that item —
    the existing ask path, nothing new. */
 function askAbout(text){
@@ -1039,13 +1085,17 @@ function salesKpiText(r){
 function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
  const k=RAILS.kpis||{};
- el.innerHTML=
-   kpiTile('מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday')
-  +kpiTile('מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth')
-  +kpiTile('הזמנות פתוחות',null,'אוצר סטטוסים טרם אומת','c-openOrders')
-  +kpiTile('תעודות משלוח לחיוב',null,'טרם חובר חוזה','c-unbilled')
-  +kpiTile('חייבים / בפיגור',null,'טרם חובר חוזה','c-receivables')
-  +kpiTile('רווח גולמי משוער',null,'טרם חובר חוזה','c-grossProfit');
+ const rows=[
+  ['מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday'],
+  ['מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth'],
+  ['הזמנות פתוחות',null,'אוצר סטטוסים טרם אומת','c-openOrders'],
+  ['תעודות משלוח לחיוב',null,'טרם חובר חוזה','c-unbilled'],
+  ['חייבים / בפיגור',null,'טרם חובר חוזה','c-receivables'],
+  ['רווח גולמי משוער',null,'טרם חובר חוזה','c-grossProfit'],
+ ];
+ el.innerHTML=rows.map(r=>kpiTile(r[0],r[1],r[2],r[3])).join('');
+ const verified=rows.filter(r=>r[1]!==null&&r[1]!==undefined).length;
+ setRailSummary('kpiSummary',verified+' מאומתים · '+(rows.length-verified)+' ממתינים');
 }
 /* WHAT CHANGED TODAY / NEEDS DAVID / ACTIVE WORK all come from the ONE
    activity() call loadSinceLastHere() already makes for the compact strip —
@@ -1162,12 +1212,28 @@ function renderThread(){
    const na=nextActionOf(r);
    if(na){
     const dead=na.mode==='NONE'||!na.button;
+    const ex=na.__exec;
+    /* Execution state (David, 31.8) — a click that already ran (this device,
+       or reported back as already_done by another one) renders as a fact,
+       not a live control: DONE/RUNNING pills are not buttons at all, so a
+       stray re-render can never re-arm a control that already fired. Only
+       FAILED stays a real button — a failed attempt is retryable, and a
+       fresh click reaches the same deterministic action_id either way. */
+    let pill;
+    if(ex&&ex.status==='done'){
+     pill='<div class="nextPill done"><span class="mark">✓</span><span class="txt">'+esc(heb(na.label))+'</span><span class="go">בוצע</span></div>';
+    }else if(ex&&ex.status==='running'){
+     pill='<div class="nextPill running"><span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span><span class="go">מתחילה…</span></div>';
+    }else if(dead){
+     pill='<div class="nextPill"><span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span></div>';
+    }else{
+     pill='<button type="button" class="nextPill act" onclick="runNext('+i+',this)" title="'+esc(na.button)+'" aria-label="'+esc(na.button)+'">'
+       +'<span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span>'
+       +'<span class="go">'+esc(na.button)+'</span></button>';}
     h+='<div class="sec"><div class="secHead"><span class="ic">◎</span>הפעולה הבאה</div>'
-     +(dead
-       ?'<div class="nextPill"><span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span></div>'
-       :'<button type="button" class="nextPill act" onclick="runNext('+i+',this)" title="'+esc(na.button)+'" aria-label="'+esc(na.button)+'">'
-        +'<span class="mark">▶</span><span class="txt">'+esc(heb(na.label))+'</span>'
-        +'<span class="go">'+esc(na.button)+'</span></button>')
+     +pill
+     +(ex&&ex.status==='done'&&ex.note?'<div class="nextNote">'+esc(heb(ex.note))+'</div>':'')
+     +(ex&&ex.status==='failed'?'<div class="nextNote err">הפעולה נכשלה'+(ex.note?' · '+esc(heb(ex.note)):'')+' — לחיצה נוספת תנסה שוב.</div>':'')
      +(na.note?'<div class="nextNote">'+esc(heb(na.note))+'</div>':'')
      +'</div>';}
   }
@@ -2505,18 +2571,52 @@ function nextActionText(na){
  if(na.mode==='QUEUE')return na.cap?'הכיני לאישור: '+L:'הוסיפי להחלטות שלי: '+L;
  if(na.mode==='DRAFT')return 'נסחי בקשה ל'+String(na.to||'')+': '+L;
  return 'בצעי: '+L;}
-function runNext(i,el){
+/* THE CLICK IS REAL EXECUTION NOW (David, 31.8). Until today every next-
+   action click — RUN included — handed a Hebrew sentence to askLia() and
+   hoped the model called the right tool with the right arguments. That kept
+   every answer inside the kernel's own audited/narrated path, but it also
+   meant "the button must execute the underlying command" was not actually
+   true: nothing guaranteed the model picked na.cap, nothing deduped a
+   second click, and nothing survived a reload.
+   A next-action WITH a capability (na.cap set — RUN, or QUEUE already
+   holding a cap) now calls chat_action_run DIRECTLY: same authority gate as
+   ANY other call (chat_action_run dispatches through execCap internally —
+   see command-center's execCap, one gate, every run site), PLUS a
+   deterministic, persisted action_id so the SAME proposal never executes
+   twice. A next-action with NO capability (DRAFT / ASK / QUEUE without a
+   cap — asking a person, adding a free-text decision) still goes through
+   askLia(), unchanged: there is no capability to call directly, so the
+   free-text path is the real path for those, not a workaround. */
+async function runNext(i,el){
  const turn=SESSION.turns[i];if(!turn||!turn.res)return;
  const na=nextActionOf(turn.res);
  if(!na||!na.label||na.mode==='NONE'||!na.button)return;
- /* A tap that does nothing and says nothing is the same failure as a dead
-    button. While she is mid-turn, say so instead of swallowing it. */
+ if(na.__exec&&(na.__exec.status==='running'||na.__exec.status==='done'))return;
+ if(!na.cap){
+  /* Fallback path, unchanged: DRAFT / ASK / QUEUE with no capability. */
+  if(busy()){stat('רגע — אני באמצע. תלחץ שוב כשאסיים.');return;}
+  const btn=el||null;
+  if(btn)btn.setAttribute('disabled','disabled');
+  if(!askLia(nextActionText(na))&&btn)btn.removeAttribute('disabled');
+  return;}
+ /* Direct execution path. */
  if(busy()){stat('רגע — אני באמצע. תלחץ שוב כשאסיים.');return;}
- /* Pressed once. A second tap on a slow connection must not file the same
-    action twice — only THIS button goes dead, so older answers keep theirs. */
- const btn=el||null;
- if(btn)btn.setAttribute('disabled','disabled');
- if(!askLia(nextActionText(na))&&btn)btn.removeAttribute('disabled');}
+ na.__exec={status:'running'};
+ saveSession();renderThread();
+ try{
+  const out=await cap('chat_action_run',{cap:na.cap,args:na.args||{},label:na.label||'',work_id:na.work_id||null});
+  const row=(out&&out.rows&&out.rows[0])||{};
+  if(row.status==='done'||row.status==='already_done'){
+   na.__exec={status:'done',action_id:row.action_id||null,note:out.source||''};
+  }else if(row.status==='in_progress'){
+   na.__exec={status:'running',action_id:row.action_id||null};
+  }else{
+   na.__exec={status:'failed',note:(row.error||out.source||'')};
+  }
+ }catch(e){
+  na.__exec={status:'failed',note:String((e&&e.message)||e)};
+ }
+ saveSession();renderThread();}
 function explainTurn(i){
  /* Not a new question, so it must not act like one: it reads the answer that
     is already on the table (plainWords is pure — no capability call, no model
