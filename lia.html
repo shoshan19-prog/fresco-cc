@@ -78,10 +78,20 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
    view, not a second copy of the chat. Same card language as TODAY/PRIORITIES
    above: no new visual system, just more of the one already here. */
 .kpiGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.kpiTile{background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:10px 11px}
+.kpiTile{background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:10px 11px 10px 13px;
+ border-inline-start:3px solid transparent}
 .kpiTile .v{font-size:19px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
 .kpiTile .k{font-size:11.5px;color:var(--dim);margin-top:3px}
 .kpiTile.nv .v{font-size:13px;font-weight:600;color:var(--dim)}
+/* Six KPIs, six identities (David, 31.8) — a soft tint + accent edge per tile
+   so the grid reads at a glance instead of six identical grey cards. Verified
+   and unverified tiles keep the same hue family; .nv still dims the value. */
+.kpiTile.c-salesToday{background:#eaf1ff;border-inline-start-color:#2f6bff}
+.kpiTile.c-salesMonth{background:#e6f7f5;border-inline-start-color:#0f9488}
+.kpiTile.c-openOrders{background:#fdf3e3;border-inline-start-color:#c77700}
+.kpiTile.c-unbilled{background:#f4eefc;border-inline-start-color:#8b5cf6}
+.kpiTile.c-receivables{background:#fdecec;border-inline-start-color:#e35252}
+.kpiTile.c-grossProfit{background:#eaf8ef;border-inline-start-color:#12a150}
 .miniList{display:flex;flex-direction:column;gap:0}
 .miniItem{padding:8px 0;border-top:1px solid var(--line);font-size:13px;line-height:1.5}
 .miniItem:first-child{border-top:0}
@@ -407,6 +417,14 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 <div id="shell">
 <!-- LEFT: the day itself — built only from state/sales/decisions already fetched -->
 <aside id="railL" class="rail" aria-label="היום">
+ <!-- FRESCO EXECUTIVE (David, 31.8): the same shared state the phone reads
+      (command-center activity/business_query), a wider view of it — not a
+      second source of truth. Leads the rail (David, 31.8 — moved above
+      TODAY/PRIORITIES): the headline business numbers, not the day log. -->
+ <section class="railCard">
+  <div class="railHead"><span>FRESCO KPIs</span></div>
+  <div class="kpiGrid" id="kpis"></div>
+ </section>
  <section class="railCard">
   <div class="railHead"><span>TODAY</span><span id="tDate"></span></div>
   <div class="todayGrid" id="today"></div>
@@ -414,13 +432,6 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
  <section class="railCard">
   <div class="railHead"><span>PRIORITIES</span></div>
   <div id="prios"></div>
- </section>
- <!-- FRESCO EXECUTIVE (David, 31.8): the same shared state the phone reads
-      (command-center activity/business_query), a wider view of it — not a
-      second source of truth. -->
- <section class="railCard">
-  <div class="railHead"><span>FRESCO KPIs</span></div>
-  <div class="kpiGrid" id="kpis"></div>
  </section>
  <section class="railCard" id="changedCard" style="display:none">
   <div class="railHead"><span>מה השתנה היום</span></div>
@@ -1012,9 +1023,9 @@ async function loadRails(){
 // That is not business signal, so it is filtered out of what David sees here.
 const HARNESS_RE=/יחודי\d|יוחדמצב\d|בדיקה חיה|אימות התראת סיום|דדופ של דוח דלתא|ניקוי אחרי בדיקה|ארטיפקט אימות|verification artefact|live protocol verification/i;
 
-function kpiTile(label,text,note){
+function kpiTile(label,text,note,colorClass){
  const nv=(text===null||text===undefined);
- return '<div class="kpiTile'+(nv?' nv':'')+'"><div class="v">'+(nv?'לא מאומת':esc(text))+'</div>'
+ return '<div class="kpiTile'+(colorClass?' '+colorClass:'')+(nv?' nv':'')+'"><div class="v">'+(nv?'לא מאומת':esc(text))+'</div>'
    +'<div class="k">'+esc(label)+(note?' · '+esc(note):'')+'</div></div>';
 }
 function salesKpiText(r){
@@ -1029,12 +1040,12 @@ function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
  const k=RAILS.kpis||{};
  el.innerHTML=
-   kpiTile('מכירות היום',salesKpiText(k.sales_today))
-  +kpiTile('מכירות החודש',salesKpiText(k.sales_month))
-  +kpiTile('הזמנות פתוחות',null,'אוצר סטטוסים טרם אומת')
-  +kpiTile('תעודות משלוח לחיוב',null,'טרם חובר חוזה')
-  +kpiTile('חייבים / בפיגור',null,'טרם חובר חוזה')
-  +kpiTile('רווח גולמי משוער',null,'טרם חובר חוזה');
+   kpiTile('מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday')
+  +kpiTile('מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth')
+  +kpiTile('הזמנות פתוחות',null,'אוצר סטטוסים טרם אומת','c-openOrders')
+  +kpiTile('תעודות משלוח לחיוב',null,'טרם חובר חוזה','c-unbilled')
+  +kpiTile('חייבים / בפיגור',null,'טרם חובר חוזה','c-receivables')
+  +kpiTile('רווח גולמי משוער',null,'טרם חובר חוזה','c-grossProfit');
 }
 /* WHAT CHANGED TODAY / NEEDS DAVID / ACTIVE WORK all come from the ONE
    activity() call loadSinceLastHere() already makes for the compact strip —
