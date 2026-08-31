@@ -161,23 +161,6 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .prio .t{flex:1;min-width:0}
 .prio .w{display:block;font-size:11.5px;color:var(--dim);margin-top:1px}
 .railEmpty{font-size:12.5px;color:var(--dim);opacity:.75;padding:2px 0}
-#notifBox{margin:10px 12px 0;padding:10px 12px;border-radius:12px;
- background:var(--card,#141821);border:1px solid var(--line,#242a36);font-size:13.5px}
-#notifBox .nHead{font-weight:600;margin-bottom:6px}
-/* The notification strip is the same object as the push card — this is where a
-   knock David missed, or never allowed, is still waiting for him.
-
-   TWO LINES PER NOTIFICATION, EACH BIDI-ISOLATED. On the phone the title and
-   the result share a wrapped line, and Hebrew text ending in a Latin/number
-   run ("· 205 חשבוניות, 744,042 ₪") gets reordered by the bidi algorithm — the
-   number jumps to the head of the line and the sentence reads backwards. An
-   isolate on each part keeps every fragment in its own direction context. */
-#notifBox .nRow{display:block;padding:10px 0;color:inherit;text-decoration:none;
- border-top:1px solid var(--line);min-height:44px}
-#notifBox .nRow:first-of-type{border-top:0}
-#notifBox .nTitle{display:block;font-weight:600;line-height:1.45;unicode-bidi:isolate}
-#notifBox .nLine{display:block;margin-top:2px;color:var(--dim);font-size:12.5px;unicode-bidi:isolate}
-
 /* ONE LIA, MULTIPLE INTERFACES (David, 31.8). One compact line — alerts ·
    running WORKs · just completed — read from the exact same command-center
    state the desktop Control Tower shows. Collapsed by default (David's rule:
@@ -503,8 +486,9 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 
 <div id="center">
 <!-- מאז שהיית כאן: the shared action ledger, so the phone sees the computer's
-     work. Hidden until it has something true to say. -->
-<div id="notifBox" style="display:none"></div>
+     work. Hidden until it has something true to say. Completion notices do
+     NOT get a card here (David, 31.8) — they live in the rail's alerts card
+     and inside this strip's tap-open detail, never as a block over the chat. -->
 <div id="stateStrip" style="display:none"></div>
 <main id="thread"></main>
 </div>
@@ -708,7 +692,7 @@ function openSession(id){
  renderThread();setCtx(SESSION.ctx);}
 function saveSession(){
  SESSION.at=Date.now();
- if(!SESSION.title){const f=SESSION.turns.find(t=>t.role==='me');SESSION.title=f?clip(f.text,40):'שיחה';}
+ if(!SESSION.title){const f=SESSION.turns.find(t=>t.role==='me');SESSION.title=f?clip((f.exec&&f.exec.sum)||f.text,40):'שיחה';}
  jset('lia_s_'+SESSION.id,SESSION);
  const idx=jget(SKEY,[]).filter(s=>s.id!==SESSION.id);
  idx.unshift({id:SESSION.id,title:SESSION.title,at:SESSION.at,ctx:SESSION.ctx});
@@ -728,11 +712,38 @@ const CTX_RE=/(?:לקוח(?:ה)?|פרויקט|מוצר)\s+(?:ה)?([\u0590-\u05FF
 function updateCtx(text){
  const m=String(text||'').match(CTX_RE);
  if(m&&m[1])setCtx('פרסקו · '+m[1].trim());}
+/* EXECUTION PROMPTS ARE NOT CONVERSATION (David, 31.8 — "Long execution
+   instructions are rendered verbatim as a user chat bubble"). The FULL text
+   still goes to the server verbatim — work_intake persists it on the WORK
+   row, the task's single source of truth — but the visible bubble carries
+   only the human sentence. Detection is precision-first: only unmistakable
+   execution scaffolding triggers it (a Return-only schema, Implement/Verify
+   sections, an explicit WORK id inside a long message). A long dictated
+   business note has none of those and stays verbatim. */
+const EXEC_SCHEMA_RE=/return\s*only\s*:/i;
+const EXEC_SECTIONS_RE=/^\s*(?:implement|verify|current bug|desired behavior|goal)\s*:/im;
+function isExecPrompt(s){
+ const t=String(s||'');
+ /* A Return-only schema is unmistakable at any realistic length; the softer
+    markers demand real bulk so a short dictated note never trips this. */
+ if(EXEC_SCHEMA_RE.test(t))return t.length>=80;
+ if(t.length<160)return false;
+ if(EXEC_SECTIONS_RE.test(t)&&t.split('\n').length>=5)return true;
+ if(/\bWORK\b/i.test(t)&&/\b[0-9a-f]{8}\b/.test(t)&&t.split('\n').length>=6)return true;
+ return false;}
+function execSummaryOf(s){
+ const lines=String(s||'').split('\n').map(x=>x.trim()).filter(Boolean);
+ /* The human sentence = the first short Hebrew line that is not a schema
+    field; in David's prompts that is the goal he actually spoke. */
+ const heb=lines.find(l=>/[֐-׿]/.test(l)&&l.length<=120&&!/:$/.test(l));
+ return {sum:heb||'הוראת ביצוע',n:lines.length};}
 function addTurn(role,text,res,atts){
  if(role==='me')updateCtx(text);
+ const ex=(role==='me'&&isExecPrompt(text))?execSummaryOf(text):null;
  /* atts = descriptors only, never bytes — localStorage holds a conversation,
     not a file system. The bytes live in ATT_BYTES for this tab only. */
  SESSION.turns.push({role,text:String(text||''),at:Date.now(),res:res||null,
+                     exec:ex||undefined,
                      atts:(atts&&atts.length)?atts:undefined});
  if(SESSION.turns.length>60)SESSION.turns=SESSION.turns.slice(-60);
  saveSession();renderThread();
@@ -885,6 +896,8 @@ function askAbout(text){
    it never loses it. Read state lives on the server too: opening it on the
    phone clears it on the computer. */
 let NOTIFS=[];
+let NOTIF_SIG=null;
+let LAST_ACT_ROW=null;
 function pushSupported(){
  return ('serviceWorker' in navigator)&&('PushManager' in window)&&('Notification' in window);}
 function b64ToBytes(s){
@@ -951,19 +964,23 @@ async function loadNotifications(){
  if(!CODE)return;
  let r=null;
  try{r=await cap('notifications',{unread_only:true,limit:10});}catch(e){return;}
- NOTIFS=(r&&r.rows)||[];
+ const rows=(r&&r.rows)||[];
+ /* The 20s poll must not thrash surfaces that did not change — an open
+    state-strip detail would collapse on every beat otherwise. */
+ const sig=rows.map(function(n){return n.id;}).join(',');
+ if(sig===NOTIF_SIG)return;
+ NOTIF_SIG=sig;
+ NOTIFS=rows;
  renderNotifications();}
+/* THE CHAT WINDOW IS NOT A NOTICE BOARD (David, 31.8 — "אני לא רוצה את
+   ההתראות על החלון של הצאט"). Completion notices used to render as a card
+   at the top of the chat column (#notifBox); that block is gone. The SAME
+   queue now shows where every other alert already lives — the collapsed
+   "התראות" rail card on desktop, the compact strip's tap-open detail on
+   mobile — one source, zero copies inside the conversation. */
 function renderNotifications(){
- const el=document.getElementById('notifBox');if(!el)return;
- if(!NOTIFS.length){el.style.display='none';el.innerHTML='';return;}
- el.innerHTML='<div class="nHead">'
-  +esc(NOTIFS.length===1?'התראה אחת ממתינה':NOTIFS.length+' התראות ממתינות')+'</div>'
-  +NOTIFS.map(function(n,i){
-    return '<a class="nRow" href="#" onclick="openNotification('+i+');return false;">'
-     +'<span class="nTitle">'+esc(n.title||'')+'</span>'
-     +(n.line?'<span class="nLine">'+esc(n.line)+'</span>':'')+'</a>';}).join('')
-  +'<button class="det" onclick="clearNotifications()">הבנתי</button>';
- el.style.display='block';}
+ if(railsOn())renderNeeds(LAST_ACT_ROW);
+ renderStateStrip(LAST_ACT_ROW);}
 async function openNotification(i){
  const n=NOTIFS[i];if(!n)return;
  await markNotificationRead(n.id);
@@ -972,10 +989,11 @@ async function markNotificationRead(id){
  if(!id)return;
  try{await cap('notification_read',{notification_id:id});}catch(e){}
  NOTIFS=NOTIFS.filter(function(n){return n.id!==id;});
+ NOTIF_SIG=NOTIFS.map(function(n){return n.id;}).join(',');
  renderNotifications();}
 async function clearNotifications(){
  try{await cap('notification_read',{all:true});}catch(e){}
- NOTIFS=[];renderNotifications();}
+ NOTIFS=[];NOTIF_SIG='';renderNotifications();}
 
 /* ── ONE LIA, MULTIPLE INTERFACES (David, 31.8 — unified state) ────────────
    Mobile is chat-first: one compact line — alerts · WORKs running ·
@@ -992,6 +1010,7 @@ async function loadSinceLastHere(){
  let r=null;
  try{r=await cap('activity',{since:seen,hours:24});}catch(e){return;}
  const row=r&&r.rows&&r.rows[0];
+ LAST_ACT_ROW=row||null;
  renderStateStrip(row);
  if(railsOn())renderExecFromActivity(row);
  reconcilePendingActions(row);
@@ -1035,13 +1054,15 @@ function renderStateStrip(row){
  const alerts=(row&&row.alerts)||[];
  const running=(row&&row.open_now&&row.open_now.work_running)||[];
  const done=(row&&row.open_now&&row.open_now.completions_delivered)||[];
+ const notifs=NOTIFS||[];
  /* Nothing to say means nothing shown — no comforting blank card. */
- if(!row||(!row.total&&!alerts.length&&!running.length&&!done.length)){el.style.display='none';el.innerHTML='';return;}
+ if((!row||(!row.total&&!alerts.length&&!running.length&&!done.length))&&!notifs.length){el.style.display='none';el.innerHTML='';return;}
  const parts=[];
  if(alerts.length)parts.push(alerts.length+(alerts.length===1?' התראה':' התראות'));
  if(running.length)parts.push(running.length+' '+(running.length===1?'משימה רצה':'משימות רצות'));
  if(done.length)parts.push(done.length+(done.length===1?' הושלמה':' הושלמו'));
- STATE_ROW=row;
+ if(notifs.length)parts.push(notifs.length===1?'עדכון אחד ממתין':notifs.length+' עדכונים ממתינים');
+ STATE_ROW=row||null;
  el.innerHTML='<button class="stripLine" onclick="toggleStateDetail()">'
    +esc(parts.join(' · ')||'עודכן')+'</button>'
    +'<a class="stripTower" href="'+STATE_TOWER_URL+'" target="_blank" rel="noopener">מגדל הבקרה ↗</a>'
@@ -1050,9 +1071,14 @@ function renderStateStrip(row){
 const STATE_TOWER_URL='https://shoshan19-prog.github.io/fresco-cc/index.html';
 let STATE_ROW=null;
 function toggleStateDetail(){
- const d=document.getElementById('stateDetail');if(!d||!STATE_ROW)return;
+ const d=document.getElementById('stateDetail');if(!d)return;
  if(d.style.display!=='none'){d.style.display='none';return;}
- const row=STATE_ROW;
+ const row=STATE_ROW||{};
+ const notifLines=(NOTIFS||[]).map(function(n,i){
+   return '<div class="stripRow">'+esc(n.title||'')
+     +'<button class="det" style="margin-inline-start:8px" onclick="openNotification('+i+');event.stopPropagation();">פתחי</button>'
+     +'<button class="det" style="margin-inline-start:6px" onclick="markNotificationRead(\''+esc(n.id||'')+'\');event.stopPropagation();">הבנתי</button></div>';}).join('')
+  +((NOTIFS||[]).length>1?'<div class="stripRow"><button class="det" onclick="clearNotifications();event.stopPropagation();">הבנתי הכול</button></div>':'');
  const alertLines=(row.alerts||[]).map(function(a){
    return '<div class="stripRow '+esc(a.severity||'')+'">'+esc(a.title)
      +'<button class="det" style="margin-inline-start:8px" onclick="ackAlert(\''+esc(a.alert_id)+'\');event.stopPropagation();">אישרתי</button></div>';}).join('');
@@ -1060,7 +1086,7 @@ function toggleStateDetail(){
    return '<div class="stripRow">'+esc(w.status_line||w.status)+'</div>';}).join('');
  const doneLines=((row.open_now&&row.open_now.completions_delivered)||[]).map(function(c){
    return '<div class="stripRow">'+esc(c.spoken||'')+'</div>';}).join('');
- d.innerHTML=(alertLines+workLines+doneLines)||'<div class="stripRow">אין פרטים נוספים</div>';
+ d.innerHTML=(notifLines+alertLines+workLines+doneLines)||'<div class="stripRow">אין פרטים נוספים</div>';
  d.style.display='block';}
 async function ackAlert(id){
  if(!id)return;
@@ -1310,7 +1336,11 @@ function renderNeeds(row){
  if(!card||!el)return;
  const alerts=((row&&row.alerts)||[]).filter(a=>a.state!=='resolved'&&!HARNESS_RE.test(a.title||''));
  const drafts=(row&&row.open_now&&row.open_now.drafts_waiting)||[];
+ /* Completion notices share this card (David, 31.8 — not on the chat):
+    unread rows from cap('notifications'), each dismissible in place. */
+ const notifs=NOTIFS||[];
  const rows=[]
+  .concat(notifs.map(n=>({warn:false,lbl:clip(n.title||'',80),sub:n.line?clip(n.line,70):'',nid:n.id})))
   .concat(alerts.map(a=>({warn:true,lbl:clip(a.title||'',80),sub:a.detail?clip(a.detail,70):'',id:a.alert_id})))
   .concat(drafts.map(d=>({warn:false,lbl:'טיוטה ממתינה לאישורך → '+(d.to||''),sub:d.subject||''})));
  if(!rows.length){card.style.display='none';el.innerHTML='';return;}
@@ -1318,12 +1348,14 @@ function renderNeeds(row){
  el.innerHTML=rows.slice(0,6).map(r=>'<div class="miniItem'+(r.warn?' warn':'')+'">'
    +'<span class="lbl">'+esc(r.lbl)+'</span>'+(r.sub?'<span class="sub">'+esc(r.sub)+'</span>':'')
    +(r.id?'<button class="miniAck" onclick="ackAlert(\''+esc(r.id)+'\')">אישרתי</button>':'')
-   +'</div>').join('');
+   +(r.nid?'<button class="miniAck" onclick="markNotificationRead(\''+esc(r.nid)+'\')">הבנתי</button>':'')
+   +'</div>').join('')
+  +(notifs.length>1?'<button class="miniAck" style="margin-top:6px" onclick="clearNotifications()">הבנתי הכול</button>':'');
  /* Collapsed by default (David, 31.8): the compact header names the count —
     "התראות · N" — and a critical alert still gets a dot in the header even
     while collapsed, so David never has to expand the list to know something
     urgent is waiting; the dot alone never auto-expands it. */
- setRailSummary('needsSummary','· '+alerts.length);
+ setRailSummary('needsSummary','· '+(alerts.length+notifs.length));
  const dot=document.getElementById('needsCritDot');
  if(dot)dot.style.display=alerts.some(a=>a.severity==='critical')?'inline-block':'none';
 }
@@ -1364,8 +1396,14 @@ function renderThread(){
      return (b&&b.preview)?'<img src="'+b.preview+'" alt="'+esc(a.filename)+'">'
       :'<span class="fchip">'+(a.kind==='image'?'🖼️':a.kind==='sheet'?'📊':'📄')+' '+esc(a.filename)+'</span>';
     }).join('')+'</div>';}
+   /* An execution prompt shows its human sentence, never the scaffolding —
+      the verbatim text was sent and persisted server-side (WORK row). The
+      dim note says so, so a one-line bubble never hides that a full
+      instruction went through. */
+   const shown=t.exec?esc(t.exec.sum):esc(t.text);
+   const execNote=t.exec?'<span class="sub dim" style="display:block;margin-top:4px;font-size:11.5px">הוראת ביצוע מלאה ('+(t.exec.n|0)+' שורות) נשמרה בחבילת העבודה</span>':'';
    h+='<div class="msg me"><div class="who">אתה</div><div class="bubble">'
-    +esc(t.text)+shots+'</div></div>';return;}
+    +shown+execNote+shots+'</div></div>';return;}
   const r=t.res;
   /* The answer is a panel, not a wall of text (David's UI directive, 25.8 —
      "מה מצאתי / מה המשמעות / הפעולה הבאה / ראיות ופרטים"). What did NOT change:

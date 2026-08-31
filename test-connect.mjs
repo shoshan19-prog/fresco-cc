@@ -29,8 +29,13 @@ function harness(sequence) {
     if (s.throw) throw new Error('network down');
     return res(s.status, s.ct ?? 'application/json', s.body ?? '{"ok":true}');
   };
-  const { post, asJson } = new Function('fetch', 'CODE', 'setTimeout',
-    block + '\nreturn {post, asJson};')(fetchStub, 'code', (f) => f());   // no real delay in tests
+  /* The sliced block gained SURFACE (the phone/desktop probe) when devices
+     started stamping which surface they are — it reads matchMedia/navigator
+     at eval time, so the harness provides browser-shaped stubs. */
+  const { post, asJson } = new Function('fetch', 'CODE', 'setTimeout', 'matchMedia', 'navigator',
+    block + '\nreturn {post, asJson};')(
+    fetchStub, 'code', (f) => f(),
+    () => ({ matches: false }), { userAgent: 'test-harness' });   // no real delay in tests
   return { post, asJson, calls: () => calls };
 }
 
