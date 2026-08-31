@@ -73,6 +73,40 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .tStat.stop b{color:#ff6b6b}
 .tSum{margin-top:12px;padding-top:11px;border-top:1px solid var(--line);
  font-size:13px;color:var(--dim)}
+
+/* ── FRESCO EXECUTIVE (David, 31.8) — the right rail becomes a real business
+   view, not a second copy of the chat. Same card language as TODAY/PRIORITIES
+   above: no new visual system, just more of the one already here. */
+.kpiGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpiTile{background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:10px 11px}
+.kpiTile .v{font-size:19px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpiTile .k{font-size:11.5px;color:var(--dim);margin-top:3px}
+.kpiTile.nv .v{font-size:13px;font-weight:600;color:var(--dim)}
+.miniList{display:flex;flex-direction:column;gap:0}
+.miniItem{padding:8px 0;border-top:1px solid var(--line);font-size:13px;line-height:1.5}
+.miniItem:first-child{border-top:0}
+.miniItem .lbl{display:block}
+.miniItem .sub{display:block;font-size:11.5px;color:var(--dim);margin-top:2px}
+.miniItem.warn .lbl{color:var(--warn)}
+.miniAck{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;
+ font-size:11px;padding:3px 8px;margin-top:6px;cursor:pointer}
+.miniAck:hover{color:var(--txt);border-color:var(--line2)}
+/* ORGANIZATION — collapsed by default (native <details>, no JS needed) */
+.orgWrap summary{cursor:pointer;list-style:none;display:flex;align-items:center;
+ justify-content:space-between;font-size:10.5px;letter-spacing:2.2px;font-weight:700;color:var(--dim)}
+.orgWrap summary::-webkit-details-marker{display:none}
+.orgWrap summary .car{font-size:13px;transition:transform .18s}
+.orgWrap[open] summary .car{transform:rotate(90deg)}
+.orgList{margin-top:12px;display:flex;flex-direction:column;gap:0}
+.orgItem{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.orgItem:first-child{border-top:0}
+.orgItem .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.orgItem.s-LIVE .dot{background:var(--ok,#4caf82)}
+.orgItem.s-HIDDEN .dot,.orgItem.s-MISSING .dot{background:var(--warn,#e0a63c)}
+.orgItem.s-BLOCKED .dot{background:#ff6b6b}
+.orgItem .nm{flex:1;min-width:0}
+.orgItem .met{font-size:11.5px;color:var(--dim);white-space:nowrap}
+
 /* PRIORITIES — ranked, compact, never a wall */
 .prio{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13.5px;
  line-height:1.5;cursor:pointer;transition:opacity .2s}
@@ -381,6 +415,29 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
   <div class="railHead"><span>PRIORITIES</span></div>
   <div id="prios"></div>
  </section>
+ <!-- FRESCO EXECUTIVE (David, 31.8): the same shared state the phone reads
+      (command-center activity/business_query), a wider view of it — not a
+      second source of truth. -->
+ <section class="railCard">
+  <div class="railHead"><span>FRESCO KPIs</span></div>
+  <div class="kpiGrid" id="kpis"></div>
+ </section>
+ <section class="railCard" id="changedCard" style="display:none">
+  <div class="railHead"><span>מה השתנה היום</span></div>
+  <div class="miniList" id="changed"></div>
+ </section>
+ <section class="railCard" id="needsCard" style="display:none">
+  <div class="railHead"><span>דורש אותך</span></div>
+  <div class="miniList" id="needs"></div>
+ </section>
+ <section class="railCard">
+  <div class="railHead"><span>עבודה פעילה</span></div>
+  <div class="miniList" id="activeWork"></div>
+ </section>
+ <details class="railCard orgWrap" id="orgWrap">
+  <summary><span>ORGANIZATION</span><span class="car">▸</span></summary>
+  <div class="orgList" id="orgList"></div>
+ </details>
 </aside>
 
 <div id="center">
@@ -670,7 +727,7 @@ function greet(){const hh=new Date().getHours();
    ones capFocus and capImportant have always used. No new endpoint, no new
    table, nothing invented: if a number is not in a response, the row is not
    drawn. The rails are desktop-only; the phone stays one column. */
-let RAILS={sales:null,decisions:[],queue:[]};
+let RAILS={sales:null,decisions:[],queue:[],kpis:{},org:null};
 function railsOn(){return window.matchMedia('(min-width:1100px)').matches;}
 function pad2(n){return (n<10?'0':'')+n;}
 function tickClock(){const el=document.getElementById('clock');if(!el)return;
@@ -838,6 +895,7 @@ async function loadSinceLastHere(){
  try{r=await cap('activity',{since:seen,hours:24});}catch(e){return;}
  const row=r&&r.rows&&r.rows[0];
  renderStateStrip(row);
+ if(railsOn())renderExecFromActivity(row);
  markSeen();}
 function renderStateStrip(row){
  const el=document.getElementById('stateStrip');if(!el)return;
@@ -929,14 +987,109 @@ function askLia(text){
  ta.value=text;sendPrimary();return true;}
 async function loadRails(){
  if(!railsOn()||!CODE)return;
- /* Two read-only calls, the ones TODAY and PRIORITIES actually need. The
-    activity feed is gone, and so is the call that fed it. */
- const [sales,dec]=await Promise.all([
+ /* Four read-only calls: sales/next_decision feed TODAY+PRIORITIES as before;
+    business_query gives the two KPIs that are actually VERIFIED live Priority
+    contracts (sales_today/sales_month — CINVOICES, never ORDERS-as-sales);
+    tower gives the same department-health computation the Control Tower
+    shows, reused here rather than rebuilt. */
+ const [sales,dec,st,sm,tw]=await Promise.all([
   api({action:'sales'}).catch(()=>({error:'unreachable'})),
-  cap('next_decision').catch(()=>({rows:[]}))]);
+  cap('next_decision').catch(()=>({rows:[]})),
+  cap('business_query',{intent:'sales_today'}).catch(()=>null),
+  cap('business_query',{intent:'sales_month'}).catch(()=>null),
+  ccApi({action:'tower'}).catch(()=>null)]);
  RAILS.sales=sales;
  RAILS.decisions=(dec&&dec.rows)||[];
- renderRails();}
+ RAILS.kpis={sales_today:(st&&st.rows&&st.rows[0])||null,sales_month:(sm&&sm.rows&&sm.rows[0])||null};
+ RAILS.org=(tw&&tw.departments)||null;
+ renderRails();renderKpis();renderOrg();}
+
+/* ── FRESCO EXECUTIVE (David, 31.8) — the right rail becomes a real business
+   view, reading the exact command-center state the phone reads. No new store,
+   no invented numbers: a KPI shows "לא מאומת" until its own contract does. */
+// This session's own verification/audit runs (lwp-live, diag-ui) leave real
+// WORK rows behind BY DESIGN — they prove the system live against production.
+// That is not business signal, so it is filtered out of what David sees here.
+const HARNESS_RE=/יחודי\d|יוחדמצב\d|בדיקה חיה|אימות התראת סיום|דדופ של דוח דלתא|ניקוי אחרי בדיקה|ארטיפקט אימות|verification artefact|live protocol verification/i;
+
+function kpiTile(label,text,note){
+ const nv=(text===null||text===undefined);
+ return '<div class="kpiTile'+(nv?' nv':'')+'"><div class="v">'+(nv?'לא מאומת':esc(text))+'</div>'
+   +'<div class="k">'+esc(label)+(note?' · '+esc(note):'')+'</div></div>';
+}
+function salesKpiText(r){
+ if(!r||typeof r.headline_count!=='number')return null;
+ const amt=r.sums&&(r.sums.TOTPRICE!=null?r.sums.TOTPRICE:r.sums.QPRICE);
+ return (amt!=null?money(amt)+' · ':'')+r.headline_count+' חשבוניות';
+}
+function renderKpis(){
+ const el=document.getElementById('kpis');if(!el)return;
+ const k=RAILS.kpis||{};
+ el.innerHTML=
+   kpiTile('מכירות היום',salesKpiText(k.sales_today))
+  +kpiTile('מכירות החודש',salesKpiText(k.sales_month))
+  +kpiTile('הזמנות פתוחות',null,'אוצר סטטוסים טרם אומת')
+  +kpiTile('תעודות משלוח לחיוב',null,'טרם חובר חוזה')
+  +kpiTile('חייבים / בפיגור',null,'טרם חובר חוזה')
+  +kpiTile('רווח גולמי משוער',null,'טרם חובר חוזה');
+}
+/* WHAT CHANGED TODAY / NEEDS DAVID / ACTIVE WORK all come from the ONE
+   activity() call loadSinceLastHere() already makes for the compact strip —
+   no second fetch, same shared state the phone reads. */
+function renderExecFromActivity(row){
+ renderChanged(row);
+ renderNeeds(row);
+ renderActiveWork(row);
+}
+function renderChanged(row){
+ const card=document.getElementById('changedCard'),el=document.getElementById('changed');
+ if(!card||!el)return;
+ const today=todayISO();
+ const items=((row&&row.timeline)||[]).filter(i=>i.weight>=3&&String(i.at||'').slice(0,10)===today
+   &&!HARNESS_RE.test(i.what||''));
+ if(!items.length){card.style.display='none';el.innerHTML='';return;}
+ card.style.display='block';
+ el.innerHTML=items.slice(0,6).map(i=>'<div class="miniItem"><span class="lbl">'
+   +esc(clip(i.what||'',90))+'</span></div>').join('');
+}
+function renderNeeds(row){
+ const card=document.getElementById('needsCard'),el=document.getElementById('needs');
+ if(!card||!el)return;
+ const alerts=((row&&row.alerts)||[]).filter(a=>a.state!=='resolved'&&!HARNESS_RE.test(a.title||''));
+ const drafts=(row&&row.open_now&&row.open_now.drafts_waiting)||[];
+ const rows=[]
+  .concat(alerts.map(a=>({warn:true,lbl:clip(a.title||'',80),sub:a.detail?clip(a.detail,70):'',id:a.alert_id})))
+  .concat(drafts.map(d=>({warn:false,lbl:'טיוטה ממתינה לאישורך → '+(d.to||''),sub:d.subject||''})));
+ if(!rows.length){card.style.display='none';el.innerHTML='';return;}
+ card.style.display='block';
+ el.innerHTML=rows.slice(0,6).map(r=>'<div class="miniItem'+(r.warn?' warn':'')+'">'
+   +'<span class="lbl">'+esc(r.lbl)+'</span>'+(r.sub?'<span class="sub">'+esc(r.sub)+'</span>':'')
+   +(r.id?'<button class="miniAck" onclick="ackAlert(\''+esc(r.id)+'\')">אישרתי</button>':'')
+   +'</div>').join('');
+}
+function renderActiveWork(row){
+ const el=document.getElementById('activeWork');if(!el)return;
+ const running=((row&&row.open_now&&row.open_now.work_running)||[])
+   .filter(w=>!HARNESS_RE.test(w.status_line||''));
+ if(!running.length){el.innerHTML='<p class="railEmpty">אין עבודה פעילה כרגע.</p>';return;}
+ el.innerHTML=running.slice(0,3).map(w=>'<div class="miniItem"><span class="lbl">'
+   +esc(clip((w.status_line||'').replace(/^[A-Z_]+\s*·\s*/,''),90))+'</span></div>').join('');
+}
+/* ackAlert already exists (compact-strip detail list) — reused here verbatim. */
+const DEPT_LABEL={branding:'שיווק תוכן',marketing:'שיווק',advertising:'פרסום',sales:'מכירות',
+ purchasing:'רכש',operations:'תפעול',rnd:'מו"פ',capital:'כספים'};
+function renderOrg(){
+ const el=document.getElementById('orgList');if(!el)return;
+ const list=RAILS.org;
+ if(!list||!list.length){el.innerHTML='<p class="railEmpty">מצב הארגון עדיין לא נטען.</p>';return;}
+ el.innerHTML=list.map(d=>{
+  const m=(d.metrics||[])[0];
+  const metTxt=m?(m.value+' '+m.label):'';
+  return '<div class="orgItem s-'+esc(d.state||'')+'"><span class="dot"></span>'
+   +'<span class="nm">'+esc(DEPT_LABEL[d.key]||d.name)+'</span>'
+   +'<span class="met">'+esc(metTxt)+'</span></div>';
+ }).join('');
+}
 function renderThread(){
  const el=document.getElementById('thread');if(!el)return;
  const stick=nearBottom();
