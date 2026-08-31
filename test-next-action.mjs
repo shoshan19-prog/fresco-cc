@@ -19,7 +19,9 @@ function slice(from, to) {
   return src.slice(a, b);
 }
 const { nextActionOf, nextActionText } = new Function(
-  slice('function nextActionOf', 'function runNext')
+  /* runNext became async (chat_action_run round) — the end anchor must name
+     the full declaration or the slice ends on a dangling `async`. */
+  slice('function nextActionOf', 'async function runNext')
   + '\nreturn { nextActionOf, nextActionText };')();
 
 let bad = 0, total = 0;

@@ -136,20 +136,27 @@ function panel(opts = {}) {
     if (opts.cap) return opts.cap(name, args);
     return { rows: [] };
   };
+  /* 31.8: notices left the chat column — renderNotifications now routes into
+     renderNeeds (desktop rail card) + renderStateStrip (in the block). The
+     harness injects railsOn and a renderNeeds spy for the desktop path. */
+  const needsCalls = [];
   const api = new Function(
     'document', 'cap', 'esc', 'showAnswer', 'said', 'SURFACE', 'CODE',
     'navigator', 'Notification', 'location', 'history', 'setInterval', 'window', 'atob', 'btoa',
+    'railsOn', 'renderNeeds',
     `${BLOCK}
      return { loadNotifications, renderNotifications, openNotification, markNotificationRead,
               clearNotifications, showTask, openTaskFromUrl, enableNotifications, initNotifications,
-              pushSupported, b64ToBytes, bytesToB64, get NOTIFS(){return NOTIFS;}, set NOTIFS(v){NOTIFS=v;} };`,
+              pushSupported, b64ToBytes, bytesToB64, toggleStateDetail,
+              get NOTIFS(){return NOTIFS;}, set NOTIFS(v){NOTIFS=v;} };`,
   )(doc, cap, (s) => String(s || ''), (r) => answers.push(r), (a, f, s, m) => ({ answer: a, facts: f, sources: s, missing: m }),
     opts.surface || 'phone', opts.code === undefined ? 'code' : opts.code,
     opts.navigator || {}, opts.Notification || undefined,
     { href: opts.href || 'https://x/lia.html', pathname: '/lia.html' },
     { replaceState: () => { els._history = true; } }, () => 1,
-    opts.window || {}, globalThis.atob, globalThis.btoa);
-  return { api, calls, answers, el };
+    opts.window || {}, globalThis.atob, globalThis.btoa,
+    () => !!opts.rails, (row) => needsCalls.push(row));
+  return { api, calls, answers, el, needsCalls };
 }
 
 {
@@ -159,19 +166,32 @@ function panel(opts = {}) {
   ];
   const p = panel({ cap: async (name) => (name === 'notifications' ? { rows: N } : { rows: [] }) });
   await p.api.loadNotifications();
-  const box = p.el('notifBox');
+  const strip = p.el('stateStrip');
   ok('the inbox is read from the server, unread only',
      p.calls[0].name === 'notifications' && p.calls[0].args.unread_only === true, JSON.stringify(p.calls[0]));
-  ok('what a push would have said is on screen instead',
-     /בדיקת חשבוניות/.test(box.innerHTML) && /205 חשבוניות/.test(box.innerHTML), box.innerHTML.slice(0, 120));
-  ok('both waiting notifications are shown, with a way to clear them',
-     /סנכרון פריוריטי/.test(box.innerHTML) && /הבנתי/.test(box.innerHTML) && box.style.display === 'block');
+  ok('waiting notices surface on the compact strip — never a block over the chat (David, 31.8)',
+     /עדכונים ממתינים/.test(strip.innerHTML) && strip.style.display === 'flex', strip.innerHTML.slice(0, 120));
+  p.el('stateDetail').style.display = 'none';   // as the real markup boots it
+  p.api.toggleStateDetail();
+  const detail = p.el('stateDetail');
+  ok('what a push would have said is one tap away, with a way to clear it',
+     /בדיקת חשבוניות/.test(detail.innerHTML) && /סנכרון פריוריטי/.test(detail.innerHTML)
+     && /הבנתי/.test(detail.innerHTML), detail.innerHTML.slice(0, 160));
+}
+
+{
+  const p = panel({ cap: async (name) => (name === 'notifications'
+    ? { rows: [{ id: 'n1', work_id: 'w1', title: 'LIA · סיימתי: בדיקה', line: 'x', unread: true }] } : { rows: [] }),
+    rails: true });
+  await p.api.loadNotifications();
+  ok('on desktop the same queue re-renders the alerts card, one source for both surfaces',
+     p.needsCalls.length === 1, JSON.stringify(p.needsCalls));
 }
 
 {
   const p = panel({ cap: async () => ({ rows: [] }) });
   await p.api.loadNotifications();
-  ok('nothing waiting means no strip at all', p.el('notifBox').style.display === 'none');
+  ok('nothing waiting means no strip at all', p.el('stateStrip').style.display === 'none');
 }
 
 {
@@ -192,7 +212,7 @@ function panel(opts = {}) {
   ok('the task is shown with its outcome, not just its name',
      /בדיקת חשבוניות אוגוסט/.test(p.answers[0].answer) && /205 חשבוניות/.test(p.answers[0].answer),
      JSON.stringify(p.answers[0]));
-  ok('the strip empties once it is read', p.el('notifBox').style.display === 'none');
+  ok('the strip empties once it is read', p.el('stateStrip').style.display === 'none');
 }
 
 {
