@@ -193,6 +193,106 @@ const seen = (page) => page.evaluate(() => {
   ok('a note under review still sends when he confirms it', noteCalls === 1, `note calls: ${noteCalls}`);
 }
 
+/* ── THE LARGE WORK PROTOCOL, end to end (David, 30.8) ──────────────────────
+   He sent a complete execution specification — goal, numbered steps, success
+   criteria, "יש לך אוטונומיה" — and got "קלטתי, אבל לא זיהיתי פריט עסקי חדש
+   בפתק הזה". Run as a conversation, not described: the spec goes in, and what
+   must come out is a PERSISTED package, a first execution step, and never that
+   sentence. Then the same message again, to prove one job stays one job.
+
+   The verbatim LangGraph prompt is not in this repository; this is its shape,
+   as David described it. Replace the constant when the real text is pasted in. */
+{
+  const LANGGRAPH = `תבני POC של LangGraph לליה.
+
+מטרה: להוכיח שריצה ארוכה שורדת ניתוק, ושהמצב נשמר בין הרצות.
+
+שלבים:
+1. להקים גרף מינימלי עם שלושה צמתים: תכנון, ביצוע, אימות.
+2. לחבר checkpointer מתמיד כך שכל צעד נשמר.
+3. להריץ משימה ארוכה, לנתק באמצע ולחדש מאותה נקודה.
+
+קריטריוני הצלחה:
+- הריצה מתחדשת מהצ׳קפוינט ולא מאפס.
+- אותה בקשה פעמיים לא פותחת שתי משימות.
+
+יש לך אוטונומיה מלאה. אל תשאלי אותי לפני כל צעד.`;
+
+  const { page } = await session({ width: 1280, height: 900 }, 'large-work');
+  let noteCalls = 0, kernelCalls = 0;
+  const intakes = [];
+  /* One server-side package, keyed the way work_intake keys it: the same text
+     twice must find the same row rather than open a second. */
+  const store = new Map();
+  await page.route('**/functions/v1/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    if (body.action === 'note') noteCalls++;
+    if (body.action === 'cap' && body.name === 'work_intake') {
+      intakes.push(body.args && body.args.text);
+      const ref = String((body.args && body.args.text) || '').replace(/\s+/g, ' ').trim();
+      const first = !store.has(ref);
+      if (first) store.set(ref, { work_id: '1c530aac61887dbf19ac8e922b41ba09', step: 'נפתחה' });
+      const w = store.get(ref);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        rows: [{ work_id: w.work_id, action: first ? 'CREATE' : 'REUSE',
+                 checkpoint: first ? 'נפתחה' : 'חיבור checkpointer',
+                 next: first ? 'להקים גרף מינימלי' : 'ריצה ארוכה עם ניתוק',
+                 resumed: !first, authority: true, contract: first ? 'ACCEPTED' : 'RUNNING',
+                 reply_text: `${first ? 'התחלתי' : 'ממשיכה'}\nחבילה: 1c530aac\n`
+                   + `צ׳קפוינט: ${first ? 'נפתחה' : 'חיבור checkpointer'}\n`
+                   + `הצעד הבא: ${first ? 'להקים גרף מינימלי' : 'ריצה ארוכה עם ניתוק'}`,
+                 reply_spoken: first
+                   ? 'קיבלתי. פתחתי את העבודה. אחזור אליך רק אם צריך החלטה.'
+                   : 'קיבלתי. המשכתי את העבודה. אחזור אליך רק אם צריך החלטה.' }],
+        source: 'WORK · 1c530aac' }) });
+    }
+    if (body.action === 'kernel') {
+      kernelCalls++;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        answer: 'הקמתי את הגרף. שלושת הצמתים עונים.', facts: [], inferences: [], sources: [],
+        risks_opportunities: [], missing_information: [], recommended_next_action: '',
+        confidence: 'HIGH', capabilities_used: ['work_checkpoint'], work_id: body.work_id }) });
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"items":[],"objects":[]}' });
+  });
+
+  await seen(page);
+  await ask(page, LANGGRAPH);
+  await page.waitForTimeout(300);
+
+  ok('an execution specification is never filed as a note', noteCalls === 0, `note calls: ${noteCalls}`);
+  ok('   the panel classified it as EXECUTE',
+    await page.evaluate((t) => classify(t, false) === 'EXECUTE', LANGGRAPH));
+  ok('   PERSISTENCE BEFORE PROMISE: work_intake ran first', intakes.length === 1, `intakes: ${intakes.length}`);
+  ok('   and it was given his words, not a summary',
+    (intakes[0] || '').includes('קריטריוני הצלחה'), `sent: ${JSON.stringify((intakes[0] || '').slice(0, 60))}`);
+  const bubbles = await page.$$eval('#thread .msg.lia .bubble', n => n.map(x => x.textContent));
+  const all = bubbles.join('\n');
+  ok('   the note refusal never appears', !/לא זיהיתי פריט עסקי חדש/.test(all), all.slice(0, 120));
+  ok('   the package id is on the screen', /1c530aac/.test(all), all.slice(0, 200));
+  ok('   the checkpoint and the next step are on the screen',
+    /צ׳קפוינט/.test(all) && /הצעד הבא/.test(all), all.slice(0, 200));
+  ok('EXECUTION BEGINS: the first unit ran in the same turn', kernelCalls === 1, `kernel calls: ${kernelCalls}`);
+  ok('   and the kernel was told which package it is inside',
+    await page.evaluate(() => LAST && LAST.res && LAST.res.work_id === '1c530aac61887dbf19ac8e922b41ba09'));
+
+  /* THE SAME MESSAGE AGAIN. One job stays one job, and the second answer
+     RESUMES — it does not restart and it does not open a second package. */
+  await ask(page, LANGGRAPH);
+  await page.waitForTimeout(300);
+  ok('a repeated identical request opens NO second package', store.size === 1, `packages: ${store.size}`);
+  ok('   and the second answer resumes rather than restarts', (await page.$$eval(
+    '#thread .msg.lia .bubble', n => n.map(x => x.textContent).join('\n'))).includes('חיבור checkpointer'));
+
+  /* A GREETING MUST NOT ERASE RUNNING WORK. A new conversation is a new
+     screen, never a new operational context (Interaction Contract §2). */
+  await ask(page, 'בוקר טוב');
+  await page.waitForTimeout(200);
+  ok('a greeting does not open work', intakes.length === 2, `intakes: ${intakes.length}`);
+  ok('   and the running package is still on the thread', (await page.$$eval(
+    '#thread .msg.lia .bubble', n => n.map(x => x.textContent).join('\n'))).includes('1c530aac'));
+}
+
 /* ── the retraction that came back ──────────────────────────────────────────
    David's regression, run as a conversation rather than described:
      1. מה הדבר הכי חשוב שקורה היום בפרסקו?   → the server returns an unfounded

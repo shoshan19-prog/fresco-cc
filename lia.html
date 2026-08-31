@@ -1282,14 +1282,18 @@ function sendPrimary(){
  }
  const intent=classify(t,SESSION.turns.length>0);
  if(intent==='SIMPLIFY'){addTurn('me',t);ta.value='';ta.rows=1;growNote();VOICE={};setMode('idle');explainLast();return;}
- if(intent==='ASK'||intent==='DO'){
+ if(intent==='ASK'||intent==='DO'||intent==='EXECUTE'){
   /* The turn is taken here, before the message is echoed to the thread: a
      second click of שלח (or Enter held down) gets null and returns, so it
      cannot produce a second bubble OR a second request. */
   const id=beginTurn();if(!id)return;
   addTurn('me',t);ta.value='';ta.rows=1;growNote();VOICE={};setMode('thinking');
-  (intent==='ASK'?doAsk:doAct)(t,id);
+  road(intent)(t,id);
  }else sendNote(t);}
+/* One place decides which road an intent takes, so the two entry points (typed
+   send and finished dictation) can never disagree about it again. */
+function road(intent){
+ return intent==='EXECUTE'?doExecute:intent==='DO'?doAct:doAsk;}
 
 /* ── what LIA understood, in David's words ───────────────────────────── */
 const TYPE_HE={COMMITMENT:'התחייבות',DECISION:'החלטה',TASK:'משימה',DOCUMENT_REQUEST:'בקשת מסמך',
@@ -1727,6 +1731,35 @@ const SAVE_RE=/(?:^|\s)(?:תרשמי|תרשום|רשמי|תשמרי|תשמור|�
    question David never re-asked. Anchored to the whole utterance on purpose,
    so "תסבירי לי מה ההבדל בין A ל-B" stays a real question. */
 const SIMPLIFY_RE=/^(?:אז\s+)?(?:תסבירי|תסביר|הסבירי|תפשטי|תפשט)?\s*(?:לי\s*)?(?:את\s*זה\s*)?(?:יותר\s*)?(?:פשוט|בפשטות|במילים\s*פשוטות|פשוט\s*יותר|בקצרה|יותר\s*פשוט)[\s.!?]*$|^לא\s*הבנתי[\s.,!?]*$/;
+/* ── LARGE WORK PROTOCOL (David, 30.8) ─────────────────────────────────────
+   He sent a complete execution specification — goal, numbered steps, success
+   criteria, "יש לך אוטונומיה" — and got back "קלטתי, אבל לא זיהיתי פריט עסקי
+   חדש בפתק הזה". Three faults lined up:
+     · ACT_RE is a CLOSED list of thirteen verbs and not one of them BUILDS
+       anything — תעשי, תבני, תנסי, תמשיכי, תחברי, תסגרי, תיישמי are absent.
+     · SAVE_RE and MEM_RE are tested BEFORE ACT_RE, so a single "תשמרי" or
+       "החלטתי" anywhere in a forty-line spec took the whole thing to the note
+       road.
+     · The note road asks a pattern extractor whether it sees a business item.
+       A build order is not a commitment or a decision, so it saw none — the
+       sentence was true about the extractor and false about the message.
+   EXECUTE is its own class, decided BEFORE the note road, and it needs BOTH
+   signals: an execution imperative AND a message that carries work. Both, on
+   purpose — "תעשי לי פוקוס" is an imperative with nothing to execute and
+   stays a question; a long dictated note with no imperative stays a note. */
+const EXEC_RE=/(?:^|[\s,.:;!?"'([])(?:תעשי|תעשה|תבני|תבנה|תנסי|תנסה|תמשיכי|תמשיך|תחברי|תחבר|תסגרי|תסגור|תיישמי|תיישם|תממשי|תממש|תפתחי|תפתח|תריצי|תריץ|תתקני|תתקן|תכתבי|תכתוב|תקימי|תקים|תשלימי|תשלים|תבדקי|תבדוק|תכיני|תכין|תעדכני|תעדכן|תוסיפי|תוסיף)(?:[\s,.:;!?"')\]]|$)/;
+const SPEC_RE=/קריטריון|קריטריוני|תנאי\s*הצלחה|מדד\s*הצלחה|הגדרת\s*סיום|הגדרת\s*הצלחה|success\s*criteri|definition\s*of\s*done|\bDoD\b|אבני\s*דרך|שלב\s*\d|שלבים|צעדים|תוצר|תוצרים|deliverable|אוטונומי|autonom|\bPOC\b|פיילוט|פרוטוקול|ארכיטקטורה|מפרט\s*ביצוע|תוכנית\s*עבודה/i;
+const AUTHORITY_RE=/יש\s*לך\s*אוטונומיה|אוטונומיה\s*מלאה|באופן\s*אוטונומי|בצעי?\s*אוטונומית|execute\s*autonomously|full\s*autonomy|אל\s*תשאלי|בלי\s*לשאול|אל\s*תבקשי\s*אישור|do\s*not\s*ask/i;
+/* Structure IS a procedure even with none of the words: three numbered or
+   bulleted lines is a plan, and a long multi-paragraph brief is not a note. */
+function looksLikeSpec(s){
+ if(!s||!s.trim())return false;
+ if(SPEC_RE.test(s))return true;
+ const lines=s.split('\n').map(x=>x.trim()).filter(Boolean);
+ const steps=lines.filter(x=>/^(?:\d+[.)\]]|[-–—•*])\s+/.test(x)).length;
+ return steps>=3||(lines.length>=4&&s.length>=240);}
+function isExecution(s){
+ return (EXEC_RE.test(s)||ACT_RE.test(s))&&looksLikeSpec(s);}
 function classify(t,hasOpenThread){
  const s=(t||'').trim();
  if(SIMPLIFY_RE.test(s))return 'SIMPLIFY';   // works on the answer already on the table
@@ -1736,6 +1769,9 @@ function classify(t,hasOpenThread){
    ||KNOW_RE.test(s)||EXPLAIN_RE.test(s)||CORRECT_RE.test(s)||SYSPROJ_RE.test(s)
    ||/[?？]\s*$/.test(s);
  if(STATE_RE.test(s))return 'ASK';             // a correction outranks its own "שמרי" — kernel does retract+assert
+ /* BEFORE the note road, on purpose. This is the ordering fault that turned a
+    build order carrying one "תשמרי" into a note nobody could act on. */
+ if(isExecution(s))return 'EXECUTE';
  if(SAVE_RE.test(s))return 'REMEMBER';         // he asked for it in so many words
  if(ACT_RE.test(s))return 'DO';                // before the ASK signals: "תבדקי ותעני" is a DO
  if(asking)return 'ASK';
@@ -1762,11 +1798,11 @@ function afterTranscript(){
     needs to review and send it. */
  if(intent==='SIMPLIFY'){
   document.getElementById('note').value='';growNote();VOICE={};setMode('idle');addTurn('me',t);explainLast();return;}
- if(intent==='ASK'||intent==='DO'){
+ if(intent==='ASK'||intent==='DO'||intent==='EXECUTE'){
   const id=beginTurn();if(!id)return;      // a duplicate final event finds the turn already taken
   document.getElementById('note').value='';growNote();VOICE={};setMode('thinking');
   addTurn('me',t);
-  (intent==='ASK'?doAsk:doAct)(t,id);
+  road(intent)(t,id);
  }else{PENDING_NOTE=t;setMode('review');if(voiceUX())reflect();else endTurn();}}
  // PENDING_NOTE is set on BOTH roads: reflect() runs only when there is a voice
  // UX, and without it a typed note would sit in review with nothing recorded as
@@ -2262,6 +2298,43 @@ function explainLast(){
  speakTurn('אין לי תשובה פתוחה להסביר.',true);}
 
 /* ── DO: voice never changes permissions ──────────────────────────────── */
+/* ── THE EXECUTION ROAD (Large Work Protocol, David 30.8) ──────────────────
+   PERSISTENCE BEFORE PROMISE. work_intake runs FIRST and either finds a live
+   package for this job or opens one; only then does anything get said back.
+   LIA may not tell David work is under way unless a row proves it — the whole
+   point of the protocol is that "אני על זה" is never the only trace.
+   Then execution starts by itself: authority he already granted is not asked
+   for again, and his specification is not read back to him. */
+async function doExecute(text,turnId){
+ const id=turnId||beginTurn();
+ if(!id)return;
+ const reqId=id+':exec';
+ if(!issue(reqId))return;
+ try{
+  const intake=await ccApi({action:'cap',name:'work_intake',
+    args:{text:text,requested_by:'david',source:'david'}});
+  const w=(intake.rows||[])[0];
+  if(!w||!w.work_id){
+   /* No row means no promise. Say what is missing instead of claiming to have
+      started — the failure this protocol replaces was a confident sentence
+      with nothing behind it. */
+   const r=said('לא הצלחתי לפתוח חבילת עבודה, ולכן לא התחלתי. '
+     +(intake.source||'אין פרטים מהשרת'),[],[intake.source||''],['שמירת חבילת עבודה']);
+   LAST={q:text,res:r};showAnswer(r,'חסום:');deliverText(r.answer);return;}
+  addTurn('lia',(w.reply_text||'')||('התחלתי · חבילה: '+String(w.work_id).slice(0,8)));
+  /* The package exists and is on screen. Now the kernel does the first unit of
+     work, told which package it is inside so its checkpoints land on the row
+     David is already watching. */
+  const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
+    retracted:retractedForKernel(),request_id:reqId,work_id:w.work_id});
+  rememberRetracted(res);
+  LAST={q:text,res:res};
+  const spoken=spokenAnswer(res);
+  res.__plain=spoken;showAnswer(res,'ביצוע:');
+  deliverText(spoken);
+ }catch(e){stat('לא הצלחתי ('+e.message+')');
+  deliverText('לא הצלחתי להתחיל את העבודה. '+e.message);}}
+
 async function doAct(text,turnId){
  const id=turnId||beginTurn();
  if(!id)return;
