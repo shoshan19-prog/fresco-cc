@@ -95,10 +95,20 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
    above: no new visual system, just more of the one already here. */
 .kpiGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .kpiTile{background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:10px 11px 10px 13px;
- border-inline-start:3px solid transparent}
+ border-inline-start:3px solid transparent;cursor:pointer;transition:filter .15s ease}
+.kpiTile:hover{filter:brightness(.97)}
 .kpiTile .v{font-size:19px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
 .kpiTile .k{font-size:11.5px;color:var(--dim);margin-top:3px}
 .kpiTile.nv .v{font-size:13px;font-weight:600;color:var(--dim)}
+/* Card-owned detail (David, 31.8): each tile stays headline+value+note by
+   default — the breakdown lives INSIDE the tile, collapsed, same persisted-
+   state convention as the other rail cards (rail:kpi_<key>), just applied
+   per-tile because renderKpis() rebuilds the grid on every refresh. */
+.kpiTile .kpiDetail{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line2);font-size:11.5px;line-height:1.5;color:var(--dim)}
+.kpiTile[data-open="true"] .kpiDetail{display:block}
+.kpiTile .kpiDetail b{color:var(--txt);font-weight:600}
+.kpiTile .kpiChev{float:inline-end;font-size:9px;color:var(--dim);transition:transform .15s ease}
+.kpiTile[data-open="true"] .kpiChev{transform:rotate(180deg)}
 /* Six KPIs, six identities (David, 31.8) — a soft tint + accent edge per tile
    so the grid reads at a glance instead of six identical grey cards. Verified
    and unverified tiles keep the same hue family; .nv still dims the value. */
@@ -479,9 +489,11 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
   </div>
   <div class="miniList railBody" id="needs"></div>
  </section>
- <section class="railCard">
-  <div class="railHead"><span>עבודה פעילה</span></div>
-  <div class="miniList" id="activeWork"></div>
+ <section class="railCard collapsible" id="activeWorkCard" data-collapsed="true">
+  <div class="railHead" onclick="toggleRailSection('activeWorkCard')">
+   <span>עבודה פעילה</span><span class="railHeadMeta" id="activeWorkSummary"></span><span class="railChev">▾</span>
+  </div>
+  <div class="miniList railBody" id="activeWork"></div>
  </section>
  <details class="railCard orgWrap" id="orgWrap">
   <summary><span>ORGANIZATION</span><span class="car">▸</span></summary>
@@ -723,7 +735,10 @@ function addTurn(role,text,res,atts){
  SESSION.turns.push({role,text:String(text||''),at:Date.now(),res:res||null,
                      atts:(atts&&atts.length)?atts:undefined});
  if(SESSION.turns.length>60)SESSION.turns=SESSION.turns.slice(-60);
- saveSession();renderThread();}
+ saveSession();renderThread();
+ /* CONTEXTUAL OPEN: only on the turn that just arrived, never on a re-render
+    — otherwise every redraw would reopen a card the user already closed. */
+ if(role==='lia'&&typeof maybeAutoOpenCard==='function')maybeAutoOpenCard(SESSION.turns.length-1);}
 /* The kernel gets the same conversation, paired into the {q,a} shape it expects
    and bounded to the last few exchanges — derived, never maintained separately. */
 /* A claim LIA withdrew stays withdrawn. She retracted "גרסת הייצור שונה מהקוד
@@ -835,7 +850,7 @@ function setRailSummary(id,text){
  const el=document.getElementById(id);if(el)el.textContent=text;
 }
 (function restoreRailCollapse(){
- ['kpiCard','prioCard','needsCard'].forEach(id=>{
+ ['kpiCard','prioCard','needsCard','activeWorkCard'].forEach(id=>{
   try{
    const v=localStorage.getItem('rail:'+id);
    if(v==='0'){const sec=document.getElementById(id);if(sec)sec.setAttribute('data-collapsed','false');}
@@ -1130,10 +1145,67 @@ async function loadRails(){
 // That is not business signal, so it is filtered out of what David sees here.
 const HARNESS_RE=/יחודי\d|יוחדמצב\d|בדיקה חיה|אימות התראת סיום|דדופ של דוח דלתא|ניקוי אחרי בדיקה|ארטיפקט אימות|verification artefact|live protocol verification/i;
 
-function kpiTile(label,text,note,colorClass){
+/* CARD-OWNED DETAIL (David, 31.8): the tile stays headline+value+note by
+   default; the breakdown a chat answer would otherwise have pasted lives
+   HERE, one click away, read from the exact same row this tile's headline
+   already came from — never a second copy of the number. Persisted per
+   tile via the same rail:+id localStorage convention the other collapsible
+   cards use (kpiOpen() reads it fresh on every render, since renderKpis()
+   rebuilds the whole grid on every refresh — a static boot-time restore
+   would be wiped the first time the KPIs reload). */
+function kpiOpenKey(key){return 'rail:kpi_'+key;}
+function isKpiOpen(key){try{return localStorage.getItem(kpiOpenKey(key))==='0';}catch(e){return false;}}
+function toggleKpiDetail(key,el){
+ const tile=el&&el.closest?el.closest('.kpiTile'):document.querySelector('.kpiTile[data-kpi="'+key+'"]');
+ if(!tile)return;
+ const open=tile.getAttribute('data-open')==='true';
+ tile.setAttribute('data-open',open?'false':'true');
+ try{localStorage.setItem(kpiOpenKey(key),open?'1':'0');}catch(e){}
+}
+function openKpiDetail(key){
+ const tile=document.querySelector('.kpiTile[data-kpi="'+key+'"]');
+ if(tile&&railsOn()){
+  tile.setAttribute('data-open','true');
+  try{localStorage.setItem(kpiOpenKey(key),'0');}catch(e){}
+  tile.scrollIntoView({block:'center',behavior:'smooth'});
+  return;
+ }
+ /* Mobile: the rail (and this tile) does not render at all — the existing
+    evidence drawer already adapts to a bottom sheet there (see #evDrawer's
+    phone/desktop CSS), so it is the one honest "same behavior" target: the
+    SAME data, no separate mobile copy, just a different container. */
+ openDrawer(kpiDetailLines(key).join(''),KPI_LABEL[key]||'פרטים');
+}
+/* One line-builder, reused inline (tile) and in the drawer (mobile /
+   chat-triggered open) — the single place that turns a KPI row into text,
+   so the two surfaces can never drift apart. */
+function kpiDetailLines(key){
+ const r=(RAILS.kpis||{})[key];
+ if(!r)return ['<p class="dim">'+esc(KPI_UNVERIFIED_NOTE[key]||'אין עדיין נתון מאומת.')+'</p>'];
+ const lines=[];
+ if(typeof r.headline_count==='number')lines.push('<p><b>שורות:</b> '+r.headline_count+'</p>');
+ if(r.sums){
+  if(r.sums.QPRICE!=null)lines.push('<p><b>לפני מע"מ:</b> '+esc(money(r.sums.QPRICE))+'</p>');
+  if(r.sums.TOTPRICE!=null)lines.push('<p><b>כולל מע"מ:</b> '+esc(money(r.sums.TOTPRICE))+'</p>');
+ }
+ if(r.window)lines.push('<p><b>חלון:</b> '+esc(r.window)+'</p>');
+ if(r.canonical_source)lines.push('<p><b>מקור:</b> '+esc(r.canonical_source)+'</p>');
+ if(Array.isArray(r.validation)&&r.validation.length)lines.push('<p class="dim">'+r.validation.map(x=>esc(String(x))).join(' · ')+'</p>');
+ return lines.length?lines:['<p class="dim">אין עדיין נתון מאומת.</p>'];
+}
+const KPI_LABEL={sales_today:'מכירות היום',sales_month:'מכירות החודש',open_orders:'הזמנות פתוחות',
+ unbilled:'תעודות משלוח לחיוב',receivables:'חייבים / בפיגור',gross_profit:'רווח גולמי משוער'};
+const KPI_UNVERIFIED_NOTE={open_orders:'אוצר סטטוסים טרם אומת',unbilled:'טרם חובר חוזה',
+ receivables:'טרם חובר חוזה',gross_profit:'טרם חובר חוזה'};
+function kpiTile(key,label,text,note,colorClass){
  const nv=(text===null||text===undefined);
- return '<div class="kpiTile'+(colorClass?' '+colorClass:'')+(nv?' nv':'')+'"><div class="v">'+(nv?'לא מאומת':esc(text))+'</div>'
-   +'<div class="k">'+esc(label)+(note?' · '+esc(note):'')+'</div></div>';
+ const open=isKpiOpen(key);
+ return '<div class="kpiTile'+(colorClass?' '+colorClass:'')+(nv?' nv':'')+'" data-kpi="'+esc(key)+'" data-open="'+open+'"'
+   +' onclick="toggleKpiDetail(\''+key+'\',this)" role="button" tabindex="0" aria-expanded="'+open+'">'
+   +'<span class="kpiChev">▾</span><div class="v">'+(nv?'לא מאומת':esc(text))+'</div>'
+   +'<div class="k">'+esc(label)+(note?' · '+esc(note):'')+'</div>'
+   +'<div class="kpiDetail">'+kpiDetailLines(key).join('')+'</div>'
+   +'</div>';
 }
 function salesKpiText(r){
  if(!r||typeof r.headline_count!=='number')return null;
@@ -1147,16 +1219,72 @@ function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
  const k=RAILS.kpis||{};
  const rows=[
-  ['מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday'],
-  ['מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth'],
-  ['הזמנות פתוחות',null,'אוצר סטטוסים טרם אומת','c-openOrders'],
-  ['תעודות משלוח לחיוב',null,'טרם חובר חוזה','c-unbilled'],
-  ['חייבים / בפיגור',null,'טרם חובר חוזה','c-receivables'],
-  ['רווח גולמי משוער',null,'טרם חובר חוזה','c-grossProfit'],
+  ['sales_today','מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday'],
+  ['sales_month','מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth'],
+  ['open_orders','הזמנות פתוחות',null,KPI_UNVERIFIED_NOTE.open_orders,'c-openOrders'],
+  ['unbilled','תעודות משלוח לחיוב',null,KPI_UNVERIFIED_NOTE.unbilled,'c-unbilled'],
+  ['receivables','חייבים / בפיגור',null,KPI_UNVERIFIED_NOTE.receivables,'c-receivables'],
+  ['gross_profit','רווח גולמי משוער',null,KPI_UNVERIFIED_NOTE.gross_profit,'c-grossProfit'],
  ];
- el.innerHTML=rows.map(r=>kpiTile(r[0],r[1],r[2],r[3])).join('');
- const verified=rows.filter(r=>r[1]!==null&&r[1]!==undefined).length;
+ el.innerHTML=rows.map(r=>kpiTile(r[0],r[1],r[2],r[3],r[4])).join('');
+ const verified=rows.filter(r=>r[2]!==null&&r[2]!==undefined).length;
  setRailSummary('kpiSummary',verified+' מאומתים · '+(rows.length-verified)+' ממתינים');
+}
+/* CHAT → CARD ROUTING (David, 31.8). No backend change: every kernel answer
+   already carries capabilities_used (finalize() in command-center adds it
+   to every reply) and a business_query answer's own source string is always
+   "contract <intent> · ..." — the exact same intent name renderKpis()
+   already keys its tiles by. This reads both, it invents nothing: an answer
+   that used no matched capability gets no route, and the old facts/
+   inferences rendering stands untouched for it. */
+const CARD_ROUTES=[
+ {test:r=>/^contract sales_today\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'sales_today'},
+ {test:r=>/^contract sales_month\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'sales_month'},
+ {test:r=>/^contract sales_period\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'sales_month'},
+ {test:r=>/^contract open_orders\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'open_orders'},
+ {test:r=>(r.capabilities_used||[]).includes('work_status'),kind:'card',id:'activeWorkCard'},
+ {test:r=>(r.capabilities_used||[]).some(c=>c==='alerts'||c==='alert_ack'),kind:'card',id:'needsCard'},
+ {test:r=>(r.capabilities_used||[]).includes('next_decision'),kind:'card',id:'prioCard'},
+];
+function matchCardRoute(r){
+ if(!r)return null;
+ for(const route of CARD_ROUTES)if(route.test(r))return route;
+ return null;
+}
+/* Desktop: un-collapse (or open) the existing card and scroll to it — the
+   SAME element the tile/header click already controls, never a duplicate.
+   Mobile: the rail does not render at all, so the existing evidence drawer
+   (already a bottom sheet there) is the honest target — same data, no
+   second copy, no new overlay built just for this. */
+function openCardRoute(i){
+ const t=SESSION.turns[i];if(!t||!t.res)return;
+ const route=matchCardRoute(t.res);if(!route)return;
+ if(route.kind==='kpi'){openKpiDetail(route.key);return;}
+ if(railsOn()){
+  const el=document.getElementById(route.id);
+  if(el){
+   if(el.getAttribute('data-collapsed')==='true')toggleRailSection(route.id);
+   el.scrollIntoView({block:'center',behavior:'smooth'});
+  }
+  return;
+ }
+ // mobile: the phone's equivalent view is the compact strip's own detail —
+ // same alerts/work/priorities data loadSinceLastHere() already fetched.
+ const d=document.getElementById('stateDetail');
+ if(d&&STATE_ROW){toggleStateDetail();if(d.style.display==='none')toggleStateDetail();}
+}
+/* CONTEXTUAL OPEN (David, 31.8): "תראה לי את הגבייה" may open the card on
+   its own, not wait for the button. Bounded to an explicit "show/open" verb
+   in HIS OWN question — a plain question about the same topic still gets
+   only the button, because auto-opening on every mention would be the
+   opposite of "chat stays the primary workspace". */
+const SHOW_ME_RE=/תראה|תראי|תציג|תציגי|תפתח|תפתחי|הצג|הראה/;
+function maybeAutoOpenCard(idx){
+ const t=SESSION.turns[idx];if(!t||!t.res)return;
+ const route=matchCardRoute(t.res);if(!route)return;
+ let q=null;
+ for(let j=idx-1;j>=0&&j>=idx-3;j--){if(SESSION.turns[j]&&SESSION.turns[j].role==='me'){q=SESSION.turns[j].text;break;}}
+ if(q&&SHOW_ME_RE.test(q))openCardRoute(idx);
 }
 /* WHAT CHANGED TODAY / NEEDS DAVID / ACTIVE WORK all come from the ONE
    activity() call loadSinceLastHere() already makes for the compact strip —
@@ -1203,9 +1331,10 @@ function renderActiveWork(row){
  const el=document.getElementById('activeWork');if(!el)return;
  const running=((row&&row.open_now&&row.open_now.work_running)||[])
    .filter(w=>!HARNESS_RE.test(w.status_line||''));
- if(!running.length){el.innerHTML='<p class="railEmpty">אין עבודה פעילה כרגע.</p>';return;}
- el.innerHTML=running.slice(0,3).map(w=>'<div class="miniItem"><span class="lbl">'
+ if(!running.length){el.innerHTML='<p class="railEmpty">אין עבודה פעילה כרגע.</p>';}
+ else el.innerHTML=running.slice(0,3).map(w=>'<div class="miniItem"><span class="lbl">'
    +esc(clip((w.status_line||'').replace(/^[A-Z_]+\s*·\s*/,''),90))+'</span></div>').join('');
+ setRailSummary('activeWorkSummary',running.length+' פעילות');
 }
 /* ackAlert already exists (compact-strip detail list) — reused here verbatim. */
 const DEPT_LABEL={branding:'שיווק תוכן',marketing:'שיווק',advertising:'פרסום',sales:'מכירות',
@@ -1262,12 +1391,24 @@ function renderThread(){
   h+=structured?'<div class="ansCard">'
      +'<div class="secHead"><span class="ic">✦</span>מה מצאתי</div>':'';
   h+='<div class="bubble">'+esc(denied?DATA_LEAD:heb(t.text))+'</div>';
+  /* CARD-OWNED DETAILS (David, 31.8): "do not paste the full structured
+     detail into chat — the breakdown lives in the relevant card." When this
+     answer's own capabilities_used/sources say it came from a KPI contract
+     or a card-backed capability, skip the facts/inferences dump entirely
+     and offer one button that opens the SAME card instead — reusing
+     nextActionOf's turn-index pattern, not a second answer-shape. */
+  const route=structured?matchCardRoute(r):null;
   if(structured){
+   if(route){
+    h+='<div class="sec"><button type="button" class="miniAck" style="margin-top:2px" '
+      +'onclick="openCardRoute('+i+')">פתחי פרטים</button></div>';
+   }else{
    if(facts.length)h+='<div class="secBody facts">'
     +facts.slice(0,FACTS_ON_CARD).map(x=>'<span class="fact">'+esc(heb(String(x)))+'</span>').join('')+'</div>';
    const mean=(r.inferences||[]).filter(Boolean);
    if(mean.length)h+='<div class="sec"><div class="secHead"><span class="ic">◈</span>מה המשמעות</div>'
     +'<div class="secBody">'+mean.slice(0,2).map(x=>esc(heb(String(x)))).join('<br>')+'</div></div>';
+   }
    /* THE NEXT ACTION IS A BUTTON (David, 27.8): "ע״י לחיצה על האייקון היא
       תעבור לפעולה". The ▶ used to be decoration and David retyped the
       sentence. Now it acts.
@@ -1343,15 +1484,22 @@ function detailsHtml(r,txt){
    of unfolding thirty lines inside the reply. The drawer is where the FULL
    evidence lives: every fact, not the first three the card shows. */
 const FACTS_ON_CARD=3;
+/* ONE opener (David, 31.8 — card-owned details): the evidence drawer already
+   adapts itself — side panel on desktop, bottom sheet on the phone — so it
+   is the one honest mobile target for "open this card's detail" too, not a
+   second overlay built from scratch. Title is settable so a KPI card can
+   say what it is, not just "ראיות ופרטים". */
+function openDrawer(html,title){
+ const h=document.querySelector('#evHead b');if(h)h.textContent=title||'ראיות ופרטים';
+ document.getElementById('evBody').innerHTML=html;
+ document.getElementById('evDrawer').classList.add('on');
+ document.getElementById('evScrim').classList.add('on');}
 function toggleDeep(i){
  const t=SESSION.turns[i];if(!t||!t.res)return;
  const r=t.res,facts=(r.facts||[]).filter(Boolean);
  const extra=facts.length?'<p class="dim" style="margin-top:2px"><b>עובדות (מהמערכות)</b></p><ul>'
    +facts.map(x=>'<li class="dim">'+esc(heb(String(x)))+'</li>').join('')+'</ul>':'';
- document.getElementById('evBody').innerHTML=
-   '<div class="deep" id="deep_'+i+'">'+extra+detailsHtml(r,t.text)+'</div>';
- document.getElementById('evDrawer').classList.add('on');
- document.getElementById('evScrim').classList.add('on');}
+ openDrawer('<div class="deep" id="deep_'+i+'">'+extra+detailsHtml(r,t.text)+'</div>','ראיות ופרטים');}
 function closeEv(){document.getElementById('evDrawer').classList.remove('on');
  document.getElementById('evScrim').classList.remove('on');}
 
