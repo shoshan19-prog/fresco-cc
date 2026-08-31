@@ -208,6 +208,88 @@ for (const t of ['מטריצה', 'פרסקו', 'מטרייה של גשם']) {   
     console.log(`FAIL  bare "פרסקו" must not read as the OS project :: ${t}`); bad++; }
 }
 
+/* ── LARGE WORK PROTOCOL (David, 30.8) ──────────────────────────────────────
+   The live failure: a complete execution specification — goal, numbered steps,
+   success criteria, "יש לך אוטונומיה" — was filed as a note and answered
+   "קלטתי, אבל לא זיהיתי פריט עסקי חדש בפתק הזה". Three faults at once: no
+   build verb in ACT_RE, the note road tested BEFORE the action road, and a
+   note extractor that cannot see a build order. EXECUTE is now its own class,
+   decided before the note road, and it needs BOTH an imperative and a message
+   that carries work.
+
+   The VERBATIM LangGraph prompt is not in this repository. This is its shape,
+   as David described it; when the real text is pasted in, replace this
+   constant and nothing else changes. */
+const LANGGRAPH = `תבני POC של LangGraph לליה.
+
+מטרה: להוכיח שריצה ארוכה שורדת ניתוק, ושהמצב נשמר בין הרצות.
+
+שלבים:
+1. להקים גרף מינימלי עם שלושה צמתים: תכנון, ביצוע, אימות.
+2. לחבר checkpointer מתמיד כך שכל צעד נשמר.
+3. להריץ משימה ארוכה, לנתק באמצע ולחדש מאותה נקודה.
+4. לתעד את הראיות בלוג.
+
+קריטריוני הצלחה:
+- הריצה מתחדשת מהצ׳קפוינט ולא מאפס.
+- אותה בקשה פעמיים לא פותחת שתי משימות.
+
+יש לך אוטונומיה מלאה. אל תשאלי אותי לפני כל צעד.`;
+
+for (const open of [false, true]) {
+  const got = classify(LANGGRAPH, open);
+  if (got !== 'EXECUTE') {
+    console.log(`FAIL  the LangGraph spec must be EXECUTE (open=${open}), got ${got}`); bad++; }
+}
+/* The exact shape of the reported bug: the same spec carrying a save verb.
+   SAVE_RE used to win on "תשמרי" and take the whole build order to the note
+   road — the ordering fault, held down. */
+const WITH_SAVE = LANGGRAPH + '\n\nותשמרי את זה אצלך כמשימה פעילה.';
+if (classify(WITH_SAVE, false) !== 'EXECUTE') {
+  console.log(`FAIL  a spec containing "תשמרי" must still EXECUTE, got ${classify(WITH_SAVE, false)}`); bad++; }
+const WITH_MEM = 'החלטתי שאנחנו בונים את זה.\n' + LANGGRAPH;
+if (classify(WITH_MEM, false) !== 'EXECUTE') {
+  console.log(`FAIL  a spec containing "החלטתי" must still EXECUTE, got ${classify(WITH_MEM, false)}`); bad++; }
+
+// Every imperative David listed, with a spec behind it.
+for (const v of ['תעשי', 'תבני', 'תבדקי', 'תנסי', 'תמשיכי', 'תחברי', 'תסגרי', 'תיישמי']) {
+  const msg = `${v} את זה.\n\nשלבים:\n1. אחד\n2. שתיים\n3. שלוש\n\nקריטריון הצלחה: עובד.`;
+  const got = classify(msg, false);
+  if (got !== 'EXECUTE') { console.log(`FAIL  "${v}" + spec must EXECUTE, got ${got}  ::  ${v}`); bad++; }
+}
+/* THE PRECISION SIDE. An imperative with nothing to execute is a question, and
+   a long dictated note with no imperative is a note. Without both halves the
+   fix would trade one misrouting for another — every ordinary "תבדקי" would
+   start opening work packages. */
+for (const [t, want] of [
+  ['ליה, תעשי לי פוקוס.', 'ASK'],                                  // the standing acceptance case
+  ['תעשי לי סדר בראש', 'ASK'],
+  ['תבדקי את המיילים ותראי מה דורש מאיתנו תגובה.', 'ASK'],
+  ['תכיני תשובה ל-Davide.', 'DO'],                                  // a one-shot draft stays DO
+  ['תרשמי שמורן צריכה מפרט עד חמישי', 'REMEMBER'],
+  ['דיברתי עם יוסי.\nהוא ביקש מפרט.\nהבטחתי לשלוח מחר.\nצריך לזכור את זה כי זה חשוב מאוד ואני '
+   + 'נוטה לשכוח דברים כאלה בדיוק כשהם הכי דחופים ואז זה מתפוצץ לי בפנים בסוף השבוע.', 'REMEMBER'],
+]) {
+  const got = classify(t, false);
+  if (got !== want) { console.log(`FAIL  ${want} expected, got ${got}  ::  ${t.slice(0, 40)}`); bad++; }
+}
+// The correction ruling still outranks everything, spec-shaped or not.
+if (classify(BEN_ZIV, false) !== 'ASK') {
+  console.log('FAIL  a correction must still beat EXECUTE'); bad++; }
+// A greeting on a new conversation is never work — it must not open a package.
+for (const t of ['בוקר טוב', 'היי ליה', 'מה נשמע?']) {
+  if (classify(t, false) === 'EXECUTE') { console.log(`FAIL  a greeting opened work :: ${t}`); bad++; }
+}
+// The road table is single-sourced, so typed send and dictation cannot diverge.
+{
+  const roadSrc = src.slice(src.indexOf('function road(intent)'), src.indexOf('function road(intent)') + 220);
+  for (const [intent, fn] of [['EXECUTE', 'doExecute'], ['DO', 'doAct'], ['ASK', 'doAsk']]) {
+    if (!roadSrc.includes(fn)) { console.log(`FAIL  road() has no ${intent} destination`); bad++; }
+  }
+  if ((src.match(/road\(intent\)\(t, ?id\)/g) || []).length !== 2) {
+    console.log('FAIL  the two entry points do not share road()'); bad++; }
+}
+
 /* ── repo capability honesty: no GitHub access is a PARTIAL answer, never
    the לא-זיהיתי menu. Runs the REAL capRepoState from lia.html with fetch
    refused and the ledger read stubbed. */
@@ -229,5 +311,5 @@ const mixed = await capRepoState('הפרויקטים בריפו');
 if (!/מסלול נפרד/.test(mixed.answer)) { console.log('FAIL  mixed phrasing must state the repo/projects split'); bad++; }
 
 console.log(bad ? `\n${bad} FAILED` : `\n${CASES.length + 5 + CTX_CASES.length + ROUTES.length + 4
-  + ACCEPTANCE.length + 10 + 5 + 16 + 8 + 5} asserts passed`);
+  + ACCEPTANCE.length + 10 + 5 + 16 + 8 + 5 + 26} asserts passed`);
 process.exit(bad ? 1 : 0);

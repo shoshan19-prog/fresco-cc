@@ -62,8 +62,17 @@ check('the previous conversation body survives', !!store['lia_s_' + first]);
 
 // one canonical source: nothing else may hold a parallel history
 check('no separate HISTORY array remains', !/\blet\s+HISTORY\b/.test(src));
-check('kernel calls send the derived history, with the current turn for context filtering',
-  (src.match(/history:historyForKernel\(text\)/g) || []).length === 2);
+/* EVERY kernel call sends the derived history — stated as the property, not as
+   a count. It was pinned at exactly 2 (doAsk and doAct); adding the execution
+   road made it 3 and the assertion failed on correct code, which is the shape
+   of test that gets deleted rather than fixed. What matters is that no kernel
+   call anywhere carries a hand-rolled history. */
+{
+  const calls = src.match(/action:'kernel'[\s\S]{0,200}?\}\)/g) || [];
+  check('every kernel call exists to be checked', calls.length >= 3);
+  check('kernel calls send the derived history, with the current turn for context filtering',
+    calls.every((c) => c.includes('history:historyForKernel(text)')));
+}
 
 
 // ── the Orna loop, second carrier: image-description turns leave the context
