@@ -76,6 +76,10 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
  letter-spacing:.2px;color:var(--txt);text-transform:none;font-size:12px}
 .railChev{font-size:10px;color:var(--dim);transition:transform .15s ease;flex:0 0 auto}
 .railCard.collapsible:not([data-collapsed="true"]) .railChev{transform:rotate(180deg)}
+/* Critical-alert indicator (David, 31.8): visible in the header whether the
+   card is collapsed or open — same red already used for a blocked org item
+   (.orgItem.s-BLOCKED .dot) — never auto-expands the list on its own. */
+.critDot{width:7px;height:7px;border-radius:50%;background:#ff6b6b;flex:0 0 auto;margin-inline-start:6px}
 /* TODAY — three numbers, read in one glance, from data already on screen */
 .todayGrid{display:flex;flex-direction:column;gap:11px}
 .tStat{display:flex;align-items:baseline;gap:10px}
@@ -467,9 +471,13 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
   <div class="railHead"><span>מה השתנה היום</span></div>
   <div class="miniList" id="changed"></div>
  </section>
- <section class="railCard" id="needsCard" style="display:none">
-  <div class="railHead"><span>דורש אותך</span></div>
-  <div class="miniList" id="needs"></div>
+ <section class="railCard collapsible" id="needsCard" data-collapsed="true" style="display:none">
+  <div class="railHead" onclick="toggleRailSection('needsCard')">
+   <span>התראות</span><span class="railHeadMeta" id="needsSummary"></span>
+   <span class="critDot" id="needsCritDot" style="display:none" title="יש התראה קריטית"></span>
+   <span class="railChev">▾</span>
+  </div>
+  <div class="miniList railBody" id="needs"></div>
  </section>
  <section class="railCard">
   <div class="railHead"><span>עבודה פעילה</span></div>
@@ -827,7 +835,7 @@ function setRailSummary(id,text){
  const el=document.getElementById(id);if(el)el.textContent=text;
 }
 (function restoreRailCollapse(){
- ['kpiCard','prioCard'].forEach(id=>{
+ ['kpiCard','prioCard','needsCard'].forEach(id=>{
   try{
    const v=localStorage.getItem('rail:'+id);
    if(v==='0'){const sec=document.getElementById(id);if(sec)sec.setAttribute('data-collapsed','false');}
@@ -1183,6 +1191,13 @@ function renderNeeds(row){
    +'<span class="lbl">'+esc(r.lbl)+'</span>'+(r.sub?'<span class="sub">'+esc(r.sub)+'</span>':'')
    +(r.id?'<button class="miniAck" onclick="ackAlert(\''+esc(r.id)+'\')">אישרתי</button>':'')
    +'</div>').join('');
+ /* Collapsed by default (David, 31.8): the compact header names the count —
+    "התראות · N" — and a critical alert still gets a dot in the header even
+    while collapsed, so David never has to expand the list to know something
+    urgent is waiting; the dot alone never auto-expands it. */
+ setRailSummary('needsSummary','· '+alerts.length);
+ const dot=document.getElementById('needsCritDot');
+ if(dot)dot.style.display=alerts.some(a=>a.severity==='critical')?'inline-block':'none';
 }
 function renderActiveWork(row){
  const el=document.getElementById('activeWork');if(!el)return;
