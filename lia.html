@@ -113,9 +113,15 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .miniAck{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;
  font-size:11px;padding:3px 8px;margin-top:6px;cursor:pointer}
 .miniAck:hover{color:var(--txt);border-color:var(--line2)}
-/* ORGANIZATION — collapsed by default (native <details>, no JS needed) */
+/* ORGANIZATION — collapsed by default (native <details>). The whole <summary>
+   row is already the native toggle target (David, 31.8 fix: the click always
+   worked, the row just never LOOKED clickable) — hover + cursor make that
+   affordance visible without touching the resting appearance: negative
+   margin offsets the added padding so the row's default box is unchanged. */
 .orgWrap summary{cursor:pointer;list-style:none;display:flex;align-items:center;
- justify-content:space-between;font-size:10.5px;letter-spacing:2.2px;font-weight:700;color:var(--dim)}
+ justify-content:space-between;font-size:10.5px;letter-spacing:2.2px;font-weight:700;color:var(--dim);
+ margin:-4px -6px;padding:4px 6px;border-radius:var(--rs);transition:background .15s ease,color .15s ease}
+.orgWrap summary:hover{background:var(--card2);color:var(--txt)}
 .orgWrap summary::-webkit-details-marker{display:none}
 .orgWrap summary .car{font-size:13px;transition:transform .18s}
 .orgWrap[open] summary .car{transform:rotate(90deg)}
@@ -826,6 +832,18 @@ function setRailSummary(id,text){
    const v=localStorage.getItem('rail:'+id);
    if(v==='0'){const sec=document.getElementById(id);if(sec)sec.setAttribute('data-collapsed','false');}
   }catch(e){}
+ });
+})();
+/* ORGANIZATION persistence (David, 31.8): same 'rail:'+id localStorage key
+   convention as toggleRailSection above — '0' = open, '1'/missing = collapsed
+   (collapsed is the markup's own default, no `open` attribute in the HTML).
+   <details> already fires a native `toggle` event on every open/close, click
+   or keyboard alike, so this is the one listener needed to keep it. */
+(function restoreOrgCollapse(){
+ const d=document.getElementById('orgWrap');if(!d)return;
+ try{ if(localStorage.getItem('rail:orgWrap')==='0') d.setAttribute('open',''); }catch(e){}
+ d.addEventListener('toggle',()=>{
+  try{ localStorage.setItem('rail:orgWrap', d.open?'0':'1'); }catch(e){}
  });
 })();
 /* A priority is a question, not a link: tapping it asks LIA about that item —
