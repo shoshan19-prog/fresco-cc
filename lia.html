@@ -1019,8 +1019,11 @@ function kpiTile(label,text,note){
 }
 function salesKpiText(r){
  if(!r||typeof r.headline_count!=='number')return null;
- const amt=r.sums&&(r.sums.TOTPRICE!=null?r.sums.TOTPRICE:r.sums.QPRICE);
- return (amt!=null?money(amt)+' · ':'')+r.headline_count+' חשבוניות';
+ // Sales/revenue = pre-VAT (QPRICE). VAT is a government liability collected
+ // on Fresco's behalf, not company revenue — showing TOTPRICE (VAT-inclusive)
+ // inflated the KPI by the VAT rate (~17%). Fixed 31.8, Fresco KPI audit.
+ const amt=r.sums&&(r.sums.QPRICE!=null?r.sums.QPRICE:r.sums.TOTPRICE);
+ return (amt!=null?money(amt)+' (לפני מע"מ) · ':'')+r.headline_count+' חשבוניות';
 }
 function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
