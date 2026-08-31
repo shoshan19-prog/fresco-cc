@@ -113,6 +113,9 @@ function api(b,auth){
     if(!r.ok)return r.text().then(function(t){throw new Error(t)});
     return r.json();});
 }
+// Same command-center capability router the mobile chat uses (action:'cap') —
+// one state, read the same way from either interface.
+function cap(name,args){return api({action:'cap',name:name,args:args||{}});}
 var SETUP=false;
 api({action:'status'},false).then(function(s){
   SETUP=!!s.setup;
@@ -133,7 +136,27 @@ function load(){
   B('#login').innerHTML='<p class="small" style="text-align:center;margin-top:60px">טוען…</p>';
   return Promise.all([api({action:'tower'}),api({action:'state'})]).then(function(a){
     T=a[0];S=a[1];
-    B('#login').style.display='none';B('#app').style.display='block';render('tower');});
+    B('#login').style.display='none';B('#app').style.display='block';render('tower');
+    startTowerPoll();});
+}
+// ONE LIA, MULTIPLE INTERFACES (David, 31.8): a WORK started on the phone, an
+// alert acknowledged there, a completion delivered there — this desktop view
+// reads the identical shared state, so it should catch up without a manual
+// reload where practical. Same 60s beat as the phone's status strip; only
+// refreshes the data and re-renders if the tower tab is the one showing.
+function currentTab(){
+  var on=document.querySelector('nav button.on');
+  return on?on.getAttribute('data-t'):'tower';
+}
+function startTowerPoll(){
+  if(window._towerPoll)return;
+  window._towerPoll=setInterval(function(){
+    if(!code())return;
+    api({action:'tower'}).then(function(x){
+      T=x;
+      if(currentTab()==='tower')render('tower');
+    }).catch(function(){});
+  },60000);
 }
 var tabs=document.querySelectorAll('nav button');
 for(var i=0;i<tabs.length;i++)(function(b){b.onclick=function(){
@@ -179,6 +202,43 @@ function renderTower(m){
         +'<button class="b-no" data-a="rejected" data-i="'+i+'">דחה</button>'
         +'</div></div>';
     }).join('');
+  }
+  h+='</div>';
+
+  // 2b/2c. ONE LIA, MULTIPLE INTERFACES (David, 31.8) — the SAME shared state
+  // the mobile chat's compact strip reads (command-center `tower`, sourced
+  // from the same alerts/work storage as `activity`). Acknowledging here is
+  // acknowledging everywhere: the phone strip stops showing it too.
+  var alerts=T.alerts||[];
+  h+='<div class="card"><h3>התראות פתוחות · '+alerts.length+'</h3>';
+  if(!alerts.length){h+='<p class="small">אין התראות פתוחות</p>';}
+  else{
+    h+=alerts.map(function(al){
+      return '<div class="appr">'
+        +'<div class="claim">'+esc(al.title)+'</div>'
+        +(al.detail?'<div class="why">'+esc(al.detail)+'</div>':'')
+        +'<span class="tag '+(al.severity==='critical'?'bad':'warn')+'">'+esc(al.state)+'</span>'
+        +(al.state==='acknowledged'?'':'<div class="btns"><button class="b-ok alertAck" data-id="'+esc(al.alert_id)+'">אישרתי</button></div>')
+        +'</div>';
+    }).join('');
+  }
+  h+='</div>';
+
+  var running=T.work_running||[];
+  h+='<div class="card"><h3>משימות רצות · '+running.length+'</h3>';
+  if(!running.length){h+='<p class="small">אין משימות רצות</p>';}
+  else{
+    h+=running.map(function(w){
+      return '<div class="item">'+esc(w.objective||w.work_id)
+        +'<span class="tag">'+esc(w.status)+'</span>'
+        +(w.status_line?'<div class="small">'+esc(w.status_line)+'</div>':'')+'</div>';
+    }).join('');
+  }
+  var justDone=T.completions_just_delivered||[];
+  if(justDone.length){
+    h+='<div style="margin-top:10px"><b class="small">הושלמו עכשיו</b>'
+      +justDone.map(function(c){return '<div class="item">'+esc(c.spoken||c.objective||'')+'</div>';}).join('')
+      +'</div>';
   }
   h+='</div>';
 
@@ -235,6 +295,21 @@ function renderTower(m){
   for(var i=0;i<bs.length;i++)(function(b){
     b.onclick=function(){decide(b.getAttribute('data-a'),Number(b.getAttribute('data-i')),b);};
   })(bs[i]);
+
+  // Wire the alert acknowledge buttons — same lifecycle as the phone's.
+  var aks=m.querySelectorAll('.alertAck');
+  for(var j=0;j<aks.length;j++)(function(b){
+    b.onclick=function(){ackAlert(b.getAttribute('data-id'),b);};
+  })(aks[j]);
+}
+
+function ackAlert(id,btn){
+  if(!id)return;
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  cap('alert_ack',{alert_id:id,action:'acknowledge'})
+    .then(function(){return api({action:'tower'});})
+    .then(function(x){T=x;render('tower');})
+    .catch(function(e){if(btn){btn.disabled=false;btn.textContent='אישרתי';}alert('שגיאה: '+e.message);});
 }
 
 function decide(action,idx,btn){

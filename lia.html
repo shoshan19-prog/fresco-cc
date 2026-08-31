@@ -102,6 +102,24 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 #notifBox .nTitle{display:block;font-weight:600;line-height:1.45;unicode-bidi:isolate}
 #notifBox .nLine{display:block;margin-top:2px;color:var(--dim);font-size:12.5px;unicode-bidi:isolate}
 
+/* ONE LIA, MULTIPLE INTERFACES (David, 31.8). One compact line — alerts ·
+   running WORKs · just completed — read from the exact same command-center
+   state the desktop Control Tower shows. Collapsed by default (David's rule:
+   no large operational cards on the chat screen); tap for the short list
+   behind it; the Tower link is the fuller view over the SAME shared state. */
+#stateStrip{display:none;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 12px 0;
+ padding:8px 12px;border-radius:12px;background:var(--card,#141821);
+ border:1px solid var(--line,#242a36);font-size:13px}
+#stateStrip .stripLine{flex:1;min-width:0;background:none;border:0;color:inherit;
+ font:inherit;text-align:right;padding:0;cursor:pointer;overflow:hidden;
+ text-overflow:ellipsis;white-space:nowrap;unicode-bidi:isolate}
+#stateStrip .stripTower{flex:0 0 auto;color:var(--dim);text-decoration:none;font-size:12px;white-space:nowrap}
+#stateStrip .stripTower:hover{color:inherit}
+#stateDetail{width:100%;margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+#stateDetail .stripRow{padding:4px 0;font-size:12.5px;color:var(--dim);unicode-bidi:isolate}
+#stateDetail .stripRow.warn{color:#e0a63c}
+#stateDetail .stripRow.critical{color:#ff8f8f}
+
 @media(min-width:1100px){
  #topbar{padding:14px 26px 13px;gap:16px}
  #topbar .brand{font-size:23px}
@@ -369,6 +387,7 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
 <!-- מאז שהיית כאן: the shared action ledger, so the phone sees the computer's
      work. Hidden until it has something true to say. -->
 <div id="notifBox" style="display:none"></div>
+<div id="stateStrip" style="display:none"></div>
 <main id="thread"></main>
 </div>
 
@@ -520,11 +539,15 @@ function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
  tickClock();loadRails().catch(()=>{});initNotifications();
+ loadSinceLastHere().catch(()=>{});
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
     that already existed, and the three read-only calls behind TODAY refresh
-    once a minute instead of riding it. */
- if(!window._liaRails){window._liaRails=setInterval(()=>{tickClock();loadRails().catch(()=>{});},60000);}}
+    once a minute instead of riding it. The state strip rides the same slow
+    beat — cross-device state changes (a WORK finished on the computer, an
+    alert acknowledged there) do not need 8s freshness to feel live. */
+ if(!window._liaRails){window._liaRails=setInterval(()=>{tickClock();loadRails().catch(()=>{});},60000);}
+ if(!window._liaState){window._liaState=setInterval(()=>{loadSinceLastHere().catch(()=>{});},60000);}}
 let MODEL_ON=false;
 /* One source of truth for connection wording, in David's terms: Fresco LIA runs
    on GPT, so that is what the panel says. The provider adapter underneath still
@@ -798,6 +821,60 @@ async function markNotificationRead(id){
 async function clearNotifications(){
  try{await cap('notification_read',{all:true});}catch(e){}
  NOTIFS=[];renderNotifications();}
+
+/* ── ONE LIA, MULTIPLE INTERFACES (David, 31.8 — unified state) ────────────
+   Mobile is chat-first: one compact line — alerts · WORKs running ·
+   completed — never a card. It reads the exact same state the desktop
+   Control Tower reads (command-center's `activity`), so a WORK started on
+   the computer, an alert acknowledged there, a completion delivered there
+   all show up here without David asking. Only the "since I last looked"
+   cursor is local to this device (lia_seen_at) — the CONTENT is shared. */
+function lastSeen(){try{return localStorage.getItem('lia_seen_at')||'';}catch(e){return '';}}
+function markSeen(){try{localStorage.setItem('lia_seen_at',new Date().toISOString());}catch(e){}}
+async function loadSinceLastHere(){
+ if(!CODE)return;
+ const seen=lastSeen();
+ let r=null;
+ try{r=await cap('activity',{since:seen,hours:24});}catch(e){return;}
+ const row=r&&r.rows&&r.rows[0];
+ renderStateStrip(row);
+ markSeen();}
+function renderStateStrip(row){
+ const el=document.getElementById('stateStrip');if(!el)return;
+ const alerts=(row&&row.alerts)||[];
+ const running=(row&&row.open_now&&row.open_now.work_running)||[];
+ const done=(row&&row.open_now&&row.open_now.completions_delivered)||[];
+ /* Nothing to say means nothing shown — no comforting blank card. */
+ if(!row||(!row.total&&!alerts.length&&!running.length&&!done.length)){el.style.display='none';el.innerHTML='';return;}
+ const parts=[];
+ if(alerts.length)parts.push(alerts.length+(alerts.length===1?' התראה':' התראות'));
+ if(running.length)parts.push(running.length+' '+(running.length===1?'משימה רצה':'משימות רצות'));
+ if(done.length)parts.push(done.length+(done.length===1?' הושלמה':' הושלמו'));
+ STATE_ROW=row;
+ el.innerHTML='<button class="stripLine" onclick="toggleStateDetail()">'
+   +esc(parts.join(' · ')||'עודכן')+'</button>'
+   +'<a class="stripTower" href="'+STATE_TOWER_URL+'" target="_blank" rel="noopener">מגדל הבקרה ↗</a>'
+   +'<div id="stateDetail" style="display:none"></div>';
+ el.style.display='flex';}
+const STATE_TOWER_URL='https://shoshan19-prog.github.io/fresco-cc/index.html';
+let STATE_ROW=null;
+function toggleStateDetail(){
+ const d=document.getElementById('stateDetail');if(!d||!STATE_ROW)return;
+ if(d.style.display!=='none'){d.style.display='none';return;}
+ const row=STATE_ROW;
+ const alertLines=(row.alerts||[]).map(function(a){
+   return '<div class="stripRow '+esc(a.severity||'')+'">'+esc(a.title)
+     +'<button class="det" style="margin-inline-start:8px" onclick="ackAlert(\''+esc(a.alert_id)+'\');event.stopPropagation();">אישרתי</button></div>';}).join('');
+ const workLines=((row.open_now&&row.open_now.work_running)||[]).map(function(w){
+   return '<div class="stripRow">'+esc(w.status_line||w.status)+'</div>';}).join('');
+ const doneLines=((row.open_now&&row.open_now.completions_delivered)||[]).map(function(c){
+   return '<div class="stripRow">'+esc(c.spoken||'')+'</div>';}).join('');
+ d.innerHTML=(alertLines+workLines+doneLines)||'<div class="stripRow">אין פרטים נוספים</div>';
+ d.style.display='block';}
+async function ackAlert(id){
+ if(!id)return;
+ try{await cap('alert_ack',{alert_id:id,action:'acknowledge'});}catch(e){return;}
+ loadSinceLastHere().catch(function(){});}
 
 /* The tap has to land on THE TASK, not on the app in general — the answer is
    read from the stored package, the same row every device reads. */
