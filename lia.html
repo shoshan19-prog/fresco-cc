@@ -953,7 +953,42 @@ async function loadSinceLastHere(){
  const row=r&&r.rows&&r.rows[0];
  renderStateStrip(row);
  if(railsOn())renderExecFromActivity(row);
+ reconcilePendingActions(row);
  markSeen();}
+/* PASSIVE CROSS-DEVICE ACTION SYNC (David, 31.8): "if clicked on mobile,
+   desktop immediately shows the action as started/done" — without a click on
+   THIS device. The conversation itself stays per-device (localStorage, by
+   design — §privacy), but chat_action_run already writes the SAME shared
+   ledger every other cross-device feature reads (decision_event, via
+   activity() — see loadSinceLastHere above, already polled every 60s and on
+   boot). No new UI, no new poll, no second state system: this only teaches
+   the EXISTING poll to also recognize "my still-pending button already ran
+   elsewhere" and flip it to the SAME done pill runNext() already renders.
+   stableStringifyJS mirrors _shared/chatAction.ts's stableStringify exactly
+   (key order does not matter, array order does) so the match key a pending
+   pill computes here is byte-identical to the one the server derived when
+   chat_action_run actually ran it. */
+function stableStringifyJS(v){
+ if(v===null||v===undefined)return 'null';
+ if(typeof v!=='object')return JSON.stringify(v);
+ if(Array.isArray(v))return '['+v.map(stableStringifyJS).join(',')+']';
+ const keys=Object.keys(v).sort();
+ return '{'+keys.map(function(k){return JSON.stringify(k)+':'+stableStringifyJS(v[k]);}).join(',')+'}';}
+function reconcilePendingActions(row){
+ const matches=new Set(((row&&row.timeline)||[])
+   .filter(function(i){return i.kind==='chat_action_executed'&&i.match;})
+   .map(function(i){return i.match;}));
+ if(!matches.size)return;
+ let changed=false;
+ SESSION.turns.forEach(function(t){
+  if(!t.res)return;
+  const na=nextActionOf(t.res);
+  if(!na||!na.cap)return;
+  if(na.__exec&&(na.__exec.status==='done'||na.__exec.status==='running'))return;
+  const key=(String(na.cap||'').trim().slice(0,60)+'|'+stableStringifyJS(na.args||{})
+    +'|'+String(na.label||'').slice(0,300)).slice(0,400);
+  if(matches.has(key)){na.__exec={status:'done',note:'בוצע במכשיר אחר'};changed=true;}});
+ if(changed){saveSession();renderThread();}}
 function renderStateStrip(row){
  const el=document.getElementById('stateStrip');if(!el)return;
  const alerts=(row&&row.alerts)||[];
