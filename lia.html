@@ -2564,8 +2564,14 @@ async function doAsk(text,turnId,atts){
    LAST={q:text,res:r};finishAsk(ph,r,heb(r.answer||''));return;}
   /* The loop brake: a repeated answer is stopped and SAID, not delivered as
      if it were new. David hears it on the first repeat, not after an hour. */
-  {const prevAnswers=SESSION.turns.filter(t=>t.role==='lia').slice(-2).map(t=>t.text);
-   if(isRepeatAnswer(res.answer,prevAnswers)){
+  {const prevAnswers=SESSION.turns.filter(t=>t.role==='lia'&&!t.pending).slice(-2).map(t=>t.text);
+   /* Ask-in-a-row (1.9): the brake exists for the SAME question looping, not
+      for two DIFFERENT questions that happen to draw similar answers — that
+      exact misfire was measured live the first time two asks ran side by
+      side. It now requires the question itself to be a recent repeat. */
+   const prevAsks=SESSION.turns.filter(t=>t.role==='me').slice(-3,-1).map(t=>norm(t.text||''));
+   const sameAsk=prevAsks.indexOf(norm(text))>=0;
+   if(sameAsk&&isRepeatAnswer(res.answer,prevAnswers)){
     res=Object.assign({},res,{answer:'עצרתי: זו בפעם השנייה אותה תשובה בערך — משהו תקוע, ולא אשרוף לך עוד סיבוב עליה. '
       +'אם זה שוב על תמונה ישנה — פתח שיחה חדשה (✎ למעלה) או כתוב "עזבי את התמונה". '
       +'התשובה החוזרת שמורה בפרטים.',
