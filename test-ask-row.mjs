@@ -39,6 +39,11 @@ check('LIA: the turn machine is released by the LAST resolver; overlapped answer
   assert(/if\(overlapped\)\{setMode\('idle'\);endTurn\(\);\}/.test(lia), 'overlap does not release the turn silently');
   assert(/if\(INFLIGHT===1\)speak\(filler\(\)\)/.test(lia), 'every overlapping ask would speak a filler');
 });
+check('LIA: the repeat brake fires only when the QUESTION repeats — never across two different asks', () => {
+  assert(/const sameAsk=prevAsks\.indexOf\(norm\(text\)\)>=0;/.test(lia), 'no same-question guard');
+  assert(/if\(sameAsk&&isRepeatAnswer\(res\.answer,prevAnswers\)\)/.test(lia), 'the brake still fires on different questions');
+  assert(/t\.role==='lia'&&!t\.pending/.test(lia), 'pending bubbles counted as previous answers');
+});
 check('LIA: an unanswered ask never pairs as an answer in kernel history', () => {
   assert(/else if\(t\.pending\)continue;/.test(lia), 'pending bubbles leak into {q,a} history');
 });
