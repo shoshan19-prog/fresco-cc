@@ -1179,15 +1179,17 @@ async function loadRails(){
     contracts (sales_today/sales_month — CINVOICES, never ORDERS-as-sales);
     tower gives the same department-health computation the Control Tower
     shows, reused here rather than rebuilt. */
- const [sales,dec,st,sm,tw]=await Promise.all([
+ const [sales,dec,st,sm,oo,tw]=await Promise.all([
   api({action:'sales'}).catch(()=>({error:'unreachable'})),
   cap('next_decision').catch(()=>({rows:[]})),
   cap('business_query',{intent:'sales_today'}).catch(()=>null),
   cap('business_query',{intent:'sales_month'}).catch(()=>null),
+  cap('business_query',{intent:'open_orders'}).catch(()=>null),
   ccApi({action:'tower'}).catch(()=>null)]);
  RAILS.sales=sales;
  RAILS.decisions=(dec&&dec.rows)||[];
- RAILS.kpis={sales_today:(st&&st.rows&&st.rows[0])||null,sales_month:(sm&&sm.rows&&sm.rows[0])||null};
+ RAILS.kpis={sales_today:(st&&st.rows&&st.rows[0])||null,sales_month:(sm&&sm.rows&&sm.rows[0])||null,
+  open_orders:(oo&&oo.rows&&oo.rows[0]&&typeof oo.rows[0].headline_count==='number')?oo.rows[0]:null};
  RAILS.org=(tw&&tw.departments)||null;
  renderRails();renderKpis();renderOrg();}
 
@@ -1237,6 +1239,19 @@ function kpiDetailLines(key){
  const r=(RAILS.kpis||{})[key];
  if(!r)return ['<p class="dim">'+esc(KPI_GAP_DETAIL[key]||KPI_UNVERIFIED_NOTE[key]||'אין עדיין נתון מאומת.')+'</p>'];
  const lines=[];
+ /* OPEN ORDERS (הכרעת דוד 1.9): פתוחה = BOOLCLOSED ריק; מציגים בביצוע · טיוטא
+    · סה"כ — וכל סטטוס פתוח אחר בפירוט, כדי שהסכום תמיד יתאזן מול הסה"כ. */
+ if(r.by_status){
+  lines.push('<p><b>בביצוע:</b> '+(r.by_status['בבצוע']||0)+'</p>');
+  lines.push('<p><b>טיוטא:</b> '+(r.by_status['טיוטא']||0)+'</p>');
+  for(const s of Object.keys(r.by_status)){
+   if(s==='בבצוע'||s==='טיוטא')continue;
+   lines.push('<p>'+esc(s)+': '+r.by_status[s]+'</p>');
+  }
+  lines.push('<p><b>סה"כ פתוחות:</b> '+r.headline_count+(r.at_cap?' לפחות (תקרת דפדוף)':'')+'</p>');
+  if(r.open_definition)lines.push('<p class="dim">'+esc(r.open_definition)+'</p>');
+  return lines;
+ }
  if(typeof r.headline_count==='number')lines.push('<p><b>שורות:</b> '+r.headline_count+'</p>');
  if(r.sums){
   if(r.sums.QPRICE!=null)lines.push('<p><b>לפני מע"מ:</b> '+esc(money(r.sums.QPRICE))+'</p>');
@@ -1256,10 +1271,10 @@ const KPI_UNVERIFIED_NOTE={open_orders:'אוצר סטטוסים טרם אומת'
    number — but its detail now says exactly WHAT is missing and WHO owns the
    next step, read from the same contract reality the backend declares. */
 const KPI_GAP_DETAIL={
- open_orders:'נמדד חי 31.8 על 100 ההזמנות האחרונות: ORDSTATUSDES ∈ {"בבצוע","בוצעה","מבוטלת"} בהתאמה מלאה ל-BOOLCLOSED. חסר אישור של דוד להגדרת "פתוחה" (BOOLCLOSED ריק ≡ "בבצוע") — עד אז אין מספר.',
+ open_orders:'החוזה מאומת (הכרעת דוד 1.9: פתוחה = BOOLCLOSED ריק) — אבל הקריאה הזו לא חזרה. רענן; אם זה נמשך, פריוריטי או הפונקציה לא זמינות.',
  unbilled:'דרוש קישור תעודת משלוח→חשבונית (שדה קישור על DOCUMENTS_D) — טרם אומת מול פריוריטי. תעודות המשלוח עצמן חיות ומאומתות (DOCUMENTS_D, 25.8).',
- receivables:'מקור מאומת קיים — OBLIGO (חשיפה פר-לקוח, אומת חי 27.8) — אבל חוזה סיכום כלל-חברה לחייבים/פיגור טרם הוגדר ואושר.',
- gross_profit:'דורש נתוני עלות (BOM/רכש) מול הכנסות — אין חוזה מאומת לרווח גולמי; לא ממציאה מספר.'};
+ receivables:'הכרעת דוד (1.9): לא מציגים חייבים/פיגור ממקור ישן — הצילום העדכני ביותר ב-OBLIGO הוא מ-19.7. האריח ימתין למקור טרי.',
+ gross_profit:'הכרעת דוד (1.9): נשאר לא-מאומת עד מקור עלות אמין. לא ממציאה מספר.'};
 function kpiTile(key,label,text,note,colorClass){
  const nv=(text===null||text===undefined);
  const open=isKpiOpen(key);
@@ -1269,6 +1284,13 @@ function kpiTile(key,label,text,note,colorClass){
    +'<div class="k">'+esc(label)+(note?' · '+esc(note):'')+'</div>'
    +'<div class="kpiDetail">'+kpiDetailLines(key).join('')+'</div>'
    +'</div>';
+}
+function openOrdersKpiText(r){
+ if(!r||typeof r.headline_count!=='number')return null;
+ // David's ruling (1.9): open = BOOLCLOSED empty. The headline is the total;
+ // the ruling's separate בביצוע/טיוטא numbers live in the note and the detail.
+ // The live status value is "בבצוע" (no yud) — the label follows David's word.
+ return r.headline_count+' פתוחות'+(r.at_cap?' לפחות':'');
 }
 function salesKpiText(r){
  if(!r||typeof r.headline_count!=='number')return null;
@@ -1284,7 +1306,10 @@ function renderKpis(){
  const rows=[
   ['sales_today','מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday'],
   ['sales_month','מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth'],
-  ['open_orders','הזמנות פתוחות',null,KPI_UNVERIFIED_NOTE.open_orders,'c-openOrders'],
+  ['open_orders','הזמנות פתוחות',openOrdersKpiText(k.open_orders),
+   k.open_orders&&k.open_orders.by_status
+    ?('בביצוע '+(k.open_orders.by_status['בבצוע']||0)+' · טיוטא '+(k.open_orders.by_status['טיוטא']||0))
+    :KPI_UNVERIFIED_NOTE.open_orders,'c-openOrders'],
   ['unbilled','תעודות משלוח לחיוב',null,KPI_UNVERIFIED_NOTE.unbilled,'c-unbilled'],
   ['receivables','חייבים / בפיגור',null,KPI_UNVERIFIED_NOTE.receivables,'c-receivables'],
   ['gross_profit','רווח גולמי משוער',null,KPI_UNVERIFIED_NOTE.gross_profit,'c-grossProfit'],

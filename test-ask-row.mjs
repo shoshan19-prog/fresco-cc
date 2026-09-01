@@ -87,10 +87,29 @@ check('LIA: the self-diagnosis path disarms its watchdog before removing the bub
     'the keyless road leaves a live watchdog on a removed bubble');
 });
 check('LIA: an unwired KPI names its gap instead of dead-ending', () => {
-  assert(/KPI_GAP_DETAIL/.test(lia), 'no gap-detail map');
+  // Anchor on the DECLARATION: the first 'KPI_GAP_DETAIL' in the file is its
+  // usage inside kpiDetailLines, and slicing from there ends at KPI_LABEL's
+  // '};' — a slice that "passed" only because KPI_LABEL shares the keys.
+  const map = lia.split('const KPI_GAP_DETAIL')[1].split('};')[0];
   for (const key of ['open_orders', 'unbilled', 'receivables', 'gross_profit']) {
-    assert(new RegExp(key + ':').test(lia.split('KPI_GAP_DETAIL')[1].split('};')[0]), `${key} has no named gap`);
+    assert(new RegExp(key + ':').test(map), `${key} has no named gap`);
   }
+});
+check("LIA: the open-orders tile carries David's ruling — total headline, בביצוע/טיוטא split, full tally in detail", () => {
+  assert(/intent:'open_orders'/.test(lia), 'the rail never fetches the open_orders contract');
+  assert(/function openOrdersKpiText\(/.test(lia) && /פתוחות'\+\(r\.at_cap\?' לפחות':''\)/.test(lia),
+    'the headline is not the honest total (with the page-cap floor)');
+  // The live status value is "בבצוע" (no yud); the display label is David's
+  // word "בביצוע". Both must appear — data matched honestly, labeled his way.
+  assert(/by_status\['בבצוע'\]/.test(lia), 'the tile does not read the real live status value');
+  assert(/בביצוע/.test(lia), 'the ruling\'s label is missing');
+  assert(/סה"כ פתוחות/.test(lia), 'no total line in the detail');
+  assert(/r\.open_definition/.test(lia), 'the definition is not surfaced');
+});
+check("LIA: David's 1.9 rulings are recorded on the still-unwired tiles", () => {
+  const gaps = lia.split('const KPI_GAP_DETAIL')[1].split('};')[0];
+  assert(/לא מציגים חייבים\/פיגור ממקור ישן/.test(gaps), 'the receivables ruling is not recorded');
+  assert(/עד מקור עלות אמין/.test(gaps), 'the gross-profit ruling is not recorded');
 });
 
 // ── YAELI: the microphone and the same non-blocking asks ───────────────────
