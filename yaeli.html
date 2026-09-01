@@ -36,6 +36,9 @@ h1{font-size:18px;margin:0}
  background:var(--card);color:var(--txt);font-size:16px;max-height:110px}
 #composer button{width:auto;margin:0;padding:0 18px}
 #composer button:disabled{opacity:.5}
+#mic{background:var(--card);border:1px solid var(--line);color:var(--txt);width:auto;padding:0 14px}
+#mic.rec{background:#c0392b;border-color:#c0392b;color:#fff;animation:micPulse 1.1s infinite}
+@keyframes micPulse{0%,100%{opacity:1}50%{opacity:.55}}
 .empty{color:var(--dim);text-align:center;margin-top:24px;font-size:13.5px}
 </style>
 </head>
@@ -60,6 +63,7 @@ h1{font-size:18px;margin:0}
  <main id="thread"><p class="empty">שאל אותי על מכירות, הזמנות, לקוחות — התשובות מנתוני אמת.</p></main>
  <footer id="composer">
   <textarea id="note" rows="1" placeholder="שאל את YAELI…"></textarea>
+  <button id="mic" onclick="toggleMic()" title="דבר אל YAELI">🎤</button>
   <button id="send" onclick="send()">שלח</button>
  </footer>
 </div>
@@ -69,7 +73,7 @@ const API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/lia?api=1';
 const CC='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 let CODE=localStorage.getItem('yaeli_code')||'';
 let HIST=[];            // [{q,a}] — this device's short memory, sent with each ask
-let BUSY=false;
+let INFLIGHT=0;         // ask-in-a-row (David, 1.9): questions never wait for each other
 
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 async function post(url,body){
@@ -107,28 +111,88 @@ function bubble(role,text,meta){
  return d;
 }
 
-async function send(){
- if(BUSY)return;
+/* Ask-in-a-row: every question gets its own "חושבת…" bubble the moment it is
+   sent, and ITS answer replaces THAT bubble — so a second (or third) question
+   can go out while the first is still thinking, and answers stay glued to
+   their questions whatever order they return in. */
+function fillBubble(w,text,meta){
+ const b=w.querySelector('.bubble');
+ b.innerHTML=esc(text)+(meta?'<span class="meta">'+esc(meta)+'</span>':'');
+ const th=document.getElementById('thread');th.scrollTop=th.scrollHeight;}
+async function send(text){
  const ta=document.getElementById('note');
- const t=ta.value.trim();if(!t)return;
- ta.value='';
+ const t=String(text!==undefined?text:ta.value).trim();if(!t)return;
+ if(text===undefined)ta.value='';
  bubble('me',t);
- BUSY=true;document.getElementById('send').disabled=true;
  const w=bubble('her','חושבת…');
+ INFLIGHT++;
  try{
   const {status,json}=await post(CC,{action:'kernel',body:t,history:HIST.slice(-6)});
-  w.remove();
   if(status===401){localStorage.removeItem('yaeli_code');location.reload();return;}
   const r=json||{};
   const ans=String(r.answer||r.text||'לא התקבלה תשובה.');
   const src=(r.sources||[]).length;
-  bubble('her',ans,src?('מקורות: '+src):null);
+  fillBubble(w,ans,src?('מקורות: '+src):null);
   HIST.push({q:t,a:ans});if(HIST.length>12)HIST=HIST.slice(-12);
  }catch(e){
-  w.remove();
-  bubble('her','לא הצלחתי להגיע למערכת ('+(e&&e.message||'רשת')+') — נסה שוב.');
+  fillBubble(w,'לא הצלחתי להגיע למערכת ('+(e&&e.message||'רשת')+') — נסה שוב.');
  }
- BUSY=false;document.getElementById('send').disabled=false;
+ INFLIGHT=Math.max(0,INFLIGHT-1);
+}
+
+/* ── the microphone (Arik, 1.9): two engines, one behaviour ──────────────
+   The browser's OWN speech recognition (he-IL) is the default — no upload,
+   no recording kept. A browser without it (iPhone Safari) records and sends
+   the audio to the server's existing transcribe route, which forwards to
+   Whisper and keeps nothing. Either way the words land as a normal question
+   and are sent — a talk, not a form. */
+let REC=null,MEDIA=null,CHUNKS=[],MICON=false;
+function micBtn(){return document.getElementById('mic');}
+function setRec(on){MICON=on;micBtn().classList.toggle('rec',on);micBtn().textContent=on?'■':'🎤';}
+function toggleMic(){MICON?stopMic():startMic();}
+function startMic(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(SR){
+  REC=new SR();REC.lang='he-IL';REC.interimResults=false;REC.maxAlternatives=1;
+  REC.onresult=ev=>{const t=(ev.results[0]&&ev.results[0][0]&&ev.results[0][0].transcript||'').trim();
+   setRec(false);if(t)send(t);};
+  REC.onerror=()=>{setRec(false);recFallback();};
+  REC.onend=()=>{if(MICON)setRec(false);};
+  try{REC.start();setRec(true);return;}catch(e){/* fall through */}
+ }
+ recFallback();
+}
+async function recFallback(){
+ if(!navigator.mediaDevices||!window.MediaRecorder){
+  bubble('her','אין למכשיר הזה זיהוי דיבור זמין — כתוב לי במקום.');return;}
+ try{
+  const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  const mime=['audio/webm','audio/mp4','audio/ogg'].find(m=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m))||'';
+  MEDIA=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
+  CHUNKS=[];
+  MEDIA.ondataavailable=ev=>{if(ev.data&&ev.data.size)CHUNKS.push(ev.data);};
+  MEDIA.onstop=async()=>{
+   stream.getTracks().forEach(tr=>tr.stop());
+   const blob=new Blob(CHUNKS,{type:MEDIA.mimeType||mime||'audio/webm'});
+   if(!blob.size){setRec(false);return;}
+   const w=bubble('her','מתמללת…');
+   try{
+    const r=await fetch(API+'&transcribe',{method:'POST',
+     headers:{'x-fresco-code':CODE,'x-audio-type':blob.type||'audio/webm'},body:blob});
+    const j=await r.json().catch(()=>null);
+    w.remove();
+    const t=(j&&j.text||'').trim();
+    if(t)send(t);
+    else bubble('her',(j&&j.message)||'לא זיהיתי דיבור — נסה שוב קרוב יותר למיקרופון.');
+   }catch(e){w.remove();bubble('her','התמלול לא הצליח ('+(e&&e.message||'רשת')+').');}
+  };
+  MEDIA.start();setRec(true);
+ }catch(e){bubble('her','אין גישה למיקרופון — אשר הרשאה בדפדפן ונסה שוב.');setRec(false);}
+}
+function stopMic(){
+ setRec(false);
+ if(REC){try{REC.stop();}catch(e){}REC=null;}
+ if(MEDIA&&MEDIA.state==='recording'){try{MEDIA.stop();}catch(e){}}
 }
 document.getElementById('note').addEventListener('keydown',ev=>{
  if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}});
