@@ -67,6 +67,32 @@ check('LIA: historyForKernel truly skips pending bubbles (executed)', () => {
   assert(!out.some((p) => /חושבת/.test(p.a)), 'a pending bubble was sent as an answer');
 });
 
+// ── LIA: the stuck bubble can no longer exist (David's photo, 1.9) ─────────
+check('LIA: a restored session finalizes orphaned pending bubbles — no eternal חושבת', () => {
+  assert(/if\(t&&t\.pending\)\{t\.pending=false;/.test(lia.replace(/\n /g, '')) ||
+    /for\(const t of SESSION\.turns\)if\(t&&t\.pending\)/.test(lia),
+    'restored pending bubbles keep spinning');
+  assert(/נשארה בלי תשובה/.test(lia), 'the orphaned bubble is not closed honestly');
+});
+check('LIA: every ask carries a 150s watchdog; finishAsk releases the machine exactly once', () => {
+  assert(/ph\.__wd=setTimeout\(/.test(lia), 'no watchdog on the pending bubble');
+  assert(/150000\)/.test(lia), 'the watchdog is not the platform ceiling (150s)');
+  assert(/if\(ph&&ph\.__wd\)\{clearTimeout\(ph\.__wd\);delete ph\.__wd;\}/.test(lia), 'a normal finish leaves the watchdog armed');
+  assert(/const late=!!\(ph&&ph\.__done\);/.test(lia) && /if\(late\)return;/.test(lia),
+    'a late answer would double-release the turn machine');
+});
+check('LIA: the self-diagnosis path disarms its watchdog before removing the bubble', () => {
+  const i = lia.indexOf('res.self_diagnosis');
+  assert(i > 0 && /clearTimeout\(ph\.__wd\)/.test(lia.slice(i, i + 400)),
+    'the keyless road leaves a live watchdog on a removed bubble');
+});
+check('LIA: an unwired KPI names its gap instead of dead-ending', () => {
+  assert(/KPI_GAP_DETAIL/.test(lia), 'no gap-detail map');
+  for (const key of ['open_orders', 'unbilled', 'receivables', 'gross_profit']) {
+    assert(new RegExp(key + ':').test(lia.split('KPI_GAP_DETAIL')[1].split('};')[0]), `${key} has no named gap`);
+  }
+});
+
 // ── YAELI: the microphone and the same non-blocking asks ───────────────────
 check('YAELI: a microphone button exists beside שלח', () => {
   assert(/id="mic"/.test(yaeli) && /toggleMic\(\)/.test(yaeli));

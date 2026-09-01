@@ -687,6 +687,13 @@ function openSession(id){
  SESSION=found||{id:uuid(),title:'',ctx:'פרסקו',at:Date.now(),turns:[],retracted:[]};
  if(!Array.isArray(SESSION.retracted))SESSION.retracted=[];   // sessions saved before this existed
  if(!Array.isArray(SESSION.sources))SESSION.sources=[];       // the evidence registry of this conversation
+ /* A pending bubble is owned by an in-flight request in THIS page. A restored
+    session has no such request — whatever saved the bubble died with its page
+    (reload, closed tab, a request that never returned). Left as-is it spins
+    "חושבת על זה…" forever, which is exactly the stuck bubble David
+    photographed on 1.9. Restoring = closing it honestly. */
+ for(const t of SESSION.turns)if(t&&t.pending){t.pending=false;
+  t.text='⚠️ השאלה הזו נשארה בלי תשובה — הדף נסגר או שהבקשה מתה באמצע. שאל אותי שוב.';}
  localStorage.setItem(SCUR,SESSION.id);
  if(!idx.some(s=>s.id===SESSION.id))saveSession();
  renderThread();setCtx(SESSION.ctx);}
@@ -1228,7 +1235,7 @@ function openKpiDetail(key){
    so the two surfaces can never drift apart. */
 function kpiDetailLines(key){
  const r=(RAILS.kpis||{})[key];
- if(!r)return ['<p class="dim">'+esc(KPI_UNVERIFIED_NOTE[key]||'אין עדיין נתון מאומת.')+'</p>'];
+ if(!r)return ['<p class="dim">'+esc(KPI_GAP_DETAIL[key]||KPI_UNVERIFIED_NOTE[key]||'אין עדיין נתון מאומת.')+'</p>'];
  const lines=[];
  if(typeof r.headline_count==='number')lines.push('<p><b>שורות:</b> '+r.headline_count+'</p>');
  if(r.sums){
@@ -1244,6 +1251,15 @@ const KPI_LABEL={sales_today:'מכירות היום',sales_month:'מכירות �
  unbilled:'תעודות משלוח לחיוב',receivables:'חייבים / בפיגור',gross_profit:'רווח גולמי משוער'};
 const KPI_UNVERIFIED_NOTE={open_orders:'אוצר סטטוסים טרם אומת',unbilled:'טרם חובר חוזה',
  receivables:'טרם חובר חוזה',gross_profit:'טרם חובר חוזה'};
+/* THE GAP, NAMED (David, 1.9 — "תפטור את החסרים בתוך המסך"): an unwired tile
+   used to dead-end at "טרם חובר חוזה". The tile stays honest — no invented
+   number — but its detail now says exactly WHAT is missing and WHO owns the
+   next step, read from the same contract reality the backend declares. */
+const KPI_GAP_DETAIL={
+ open_orders:'נמדד חי 31.8 על 100 ההזמנות האחרונות: ORDSTATUSDES ∈ {"בבצוע","בוצעה","מבוטלת"} בהתאמה מלאה ל-BOOLCLOSED. חסר אישור של דוד להגדרת "פתוחה" (BOOLCLOSED ריק ≡ "בבצוע") — עד אז אין מספר.',
+ unbilled:'דרוש קישור תעודת משלוח→חשבונית (שדה קישור על DOCUMENTS_D) — טרם אומת מול פריוריטי. תעודות המשלוח עצמן חיות ומאומתות (DOCUMENTS_D, 25.8).',
+ receivables:'מקור מאומת קיים — OBLIGO (חשיפה פר-לקוח, אומת חי 27.8) — אבל חוזה סיכום כלל-חברה לחייבים/פיגור טרם הוגדר ואושר.',
+ gross_profit:'דורש נתוני עלות (BOM/רכש) מול הכנסות — אין חוזה מאומת לרווח גולמי; לא ממציאה מספר.'};
 function kpiTile(key,label,text,note,colorClass){
  const nv=(text===null||text===undefined);
  const open=isKpiOpen(key);
@@ -2541,6 +2557,16 @@ async function doAsk(text,turnId,atts){
  if(INFLIGHT>0)OVERLAPPED=true;
  INFLIGHT++;
  const ph=addPendingTurn();        // the answer lands HERE, whatever order it returns in
+ /* The watchdog (1.9, the stuck-bubble photo): fetch here has no timeout, so
+    a stalled connection could hold "חושבת על זה…" indefinitely with the turn
+    machine locked. 150s is the platform's own function ceiling — past it no
+    answer is coming through THIS request. finishAsk is idempotent per bubble:
+    if the answer does limp in later it still replaces the text, but the
+    machine is only ever released once. */
+ ph.__wd=setTimeout(function(){
+  if(ph.pending)finishAsk(ph,null,
+   'עברו 150 שניות בלי תשובה מהשרת — שחררתי את השאלה הזו. אם תשובה תגיע באיחור היא תופיע כאן; אחרת שאל שוב.');
+ },150000);
  /* Sources for this request: attachments on THIS turn (with bytes), plus
     anything David referred back to — "התמונה הראשונה", "ה-PDF" — resolved
     from the conversation registry. */
@@ -2589,6 +2615,8 @@ async function doAsk(text,turnId,atts){
      the function can actually see — a typo'd secret name is otherwise
      indistinguishable from no secret at all. Names only; never a key value. */
   if(res.self_diagnosis){
+   if(ph.__wd){clearTimeout(ph.__wd);delete ph.__wd;}          // the bubble is leaving — disarm its watchdog
+   ph.pending=false;ph.__done=true;
    const i=SESSION.turns.indexOf(ph);if(i>=0){SESSION.turns.splice(i,1);saveSession();renderThread();}
    INFLIGHT=Math.max(0,INFLIGHT-1);if(INFLIGHT===0)OVERLAPPED=false;
    return askDirect(text,res.self_diagnosis.config_seen,id);}
@@ -2605,7 +2633,11 @@ async function doAsk(text,turnId,atts){
    and the microphone authority returns to IDLE directly. */
 function finishAsk(ph,res,spoken,textOverride){
  const shown=textOverride||(res?((res.__plain?heb(res.__plain):heb(res.answer||''))||spoken):spoken);
+ if(ph&&ph.__wd){clearTimeout(ph.__wd);delete ph.__wd;}
+ const late=!!(ph&&ph.__done);      // the watchdog already released the machine
  resolvePendingTurn(ph,shown,res);
+ if(late)return;                    // a late answer only lands in its bubble
+ if(ph)ph.__done=true;
  INFLIGHT=Math.max(0,INFLIGHT-1);
  if(INFLIGHT>0)return;                 // others still thinking — hold the turn
  const overlapped=OVERLAPPED;OVERLAPPED=false;
