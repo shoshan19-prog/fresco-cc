@@ -44,6 +44,10 @@ check('LIA: the repeat brake fires only when the QUESTION repeats — never acro
   assert(/if\(sameAsk&&isRepeatAnswer\(res\.answer,prevAnswers\)\)/.test(lia), 'the brake still fires on different questions');
   assert(/t\.role==='lia'&&!t\.pending/.test(lia), 'pending bubbles counted as previous answers');
 });
+check('LIA: the composer stays LIVE while she thinks — the send button is never disabled by thinking mode', () => {
+  assert(!/m==='thinking'\)\{\s*if\(S\)\{S\.disabled=true/.test(lia), 'thinking mode still locks the send button');
+  assert(/שלח שאלה נוספת/.test(lia), 'the button does not invite the next question');
+});
 check('LIA: an unanswered ask never pairs as an answer in kernel history', () => {
   assert(/else if\(t\.pending\)continue;/.test(lia), 'pending bubbles leak into {q,a} history');
 });

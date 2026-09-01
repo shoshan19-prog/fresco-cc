@@ -1817,7 +1817,10 @@ function setMode(m){
   ta.rows=4;if(S)S.title='שלח ל-LIA';
   A.innerHTML='<button class="ghost" onclick="speakAgain()">דבר שוב</button>';
  }else if(m==='thinking'){
-  if(S){S.disabled=true;S.textContent='⋯';S.title='בודקת…';}
+  /* Ask-in-a-row (David, 1.9): the composer stays LIVE while she thinks —
+     the disabled ⋯ button was the exact wait he asked to remove. The
+     thinking indicator is the card above, not a locked keyboard. */
+  if(S)S.title='שלח שאלה נוספת';
  }else if(m==='failed'){
   H.textContent='לא הצלחתי לתמלל.';H.style.display='block';
   A.innerHTML='<button class="ghost" onclick="speakAgain()">דבר שוב</button>';
