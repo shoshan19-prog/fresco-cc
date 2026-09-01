@@ -750,6 +750,26 @@ function addTurn(role,text,res,atts){
  /* CONTEXTUAL OPEN: only on the turn that just arrived, never on a re-render
     — otherwise every redraw would reopen a card the user already closed. */
  if(role==='lia'&&typeof maybeAutoOpenCard==='function')maybeAutoOpenCard(SESSION.turns.length-1);}
+/* ── ask-in-a-row (David, 1.9) ────────────────────────────────────────────
+   Every question gets its own pending bubble the moment it is sent, and its
+   answer replaces THAT bubble — so answers stay glued to their questions
+   whatever order they come back in. INFLIGHT counts live asks; the TURN
+   machine (microphone authority) is held by the first and released when the
+   last resolves. When asks overlapped, answers are delivered as text only —
+   two voices reading two answers at once helps no one. */
+let INFLIGHT=0,OVERLAPPED=false;
+function addPendingTurn(){
+ const ph={role:'lia',text:'⏳ חושבת על זה…',at:Date.now(),res:null,pending:true};
+ SESSION.turns.push(ph);
+ if(SESSION.turns.length>60)SESSION.turns=SESSION.turns.slice(-60);
+ saveSession();renderThread();return ph;}
+function resolvePendingTurn(ph,text,res){
+ const i=SESSION.turns.indexOf(ph);
+ if(i<0){addTurn('lia',text,res);return;}
+ ph.text=String(text||'');ph.res=res||null;ph.pending=false;ph.at=Date.now();
+ saveSession();renderThread();
+ if(typeof maybeAutoOpenCard==='function')maybeAutoOpenCard(i);}
+
 /* The kernel gets the same conversation, paired into the {q,a} shape it expects
    and bounded to the last few exchanges — derived, never maintained separately. */
 /* A claim LIA withdrew stays withdrawn. She retracted "גרסת הייצור שונה מהקוד
@@ -772,6 +792,7 @@ function historyForKernel(currentText){
  const out=[];let q=null;
  for(const t of SESSION.turns){
   if(t.role==='me')q=t.text;
+  else if(t.pending)continue;              // an unanswered ask is not an answer
   else if(q!=null&&t.text){out.push({q,a:t.text});q=null;}}
  /* An entity question that does not mention pictures gets a history with the
     image-description turns removed: on the old backend those turns pulled
@@ -1813,11 +1834,16 @@ function sendPrimary(){
  if(ATTACH.some(a=>a.status==='READING')){stat('רגע — עוד קוראת את הקובץ…');return;}
  if(!t&&!atts.length)return;
  if(!t)t='תסתכלי על זה';           // a file with no words is still a request to look
- if(TURN==='PROCESSING')return;    // a request is in flight — this would be a second turn
+ /* ASK-IN-A-ROW (David, 1.9): a typed QUESTION no longer waits for the one
+    in flight — each ask gets its own pending bubble and its answer lands in
+    it, in place. Everything with side effects (notes, actions, files) and
+    the microphone stay single-turn: the concurrency is for reading, never
+    for acting twice. The old blanket return moved into the branches below. */
  if(TURN==='SPEAKING'||TTS)shutUp();  // he moved on mid-sentence: stop talking and listen to him
  /* Evidence attached = a question about the evidence. It never files as a note,
     whatever the words look like — the paperclip already did the router's job. */
  if(atts.length){
+  if(TURN==='PROCESSING'){stat('רגע — מסיימת את הקודמת ואז אסתכל על הקובץ');return;}
   const id=beginTurn();if(!id)return;
   ATTACH=[];renderAttachBar();
   SESSION.sources=(SESSION.sources||[]).concat(atts.map(sourceDescriptor)).slice(-12);
@@ -1846,14 +1872,26 @@ function sendPrimary(){
  }
  const intent=classify(t,SESSION.turns.length>0);
  if(intent==='SIMPLIFY'){addTurn('me',t);ta.value='';ta.rows=1;growNote();VOICE={};setMode('idle');explainLast();return;}
+ if(intent==='DO'||intent==='EXECUTE'){
+  if(TURN==='PROCESSING'){stat('פעולה מחכה שהסיבוב הנוכחי ייגמר — פעולות רצות אחת-אחת');return;}
+ }
  if(intent==='ASK'||intent==='DO'||intent==='EXECUTE'){
   /* The turn is taken here, before the message is echoed to the thread: a
      second click of שלח (or Enter held down) gets null and returns, so it
      cannot produce a second bubble OR a second request. */
-  const id=beginTurn();if(!id)return;
+  let id=beginTurn();
+  if(!id){
+   /* A live turn exists. A typed ASK rides alongside it with its own id;
+      a rapid double-send of the same words within a second is still one. */
+   if(intent!=='ASK')return;
+   if(t===LASTSEND.t&&Date.now()-LASTSEND.at<900)return;
+   id=uuid();
+  }
+  LASTSEND={t:t,at:Date.now()};
   addTurn('me',t);ta.value='';ta.rows=1;growNote();VOICE={};setMode('thinking');
   road(intent)(t,id);
  }else sendNote(t);}
+let LASTSEND={t:'',at:0};
 /* One place decides which road an intent takes, so the two entry points (typed
    send and finished dictation) can never disagree about it again. */
 function road(intent){
@@ -2490,12 +2528,16 @@ function showAnswer(r,title){
  addTurn('lia',(title&&title!=='ליה'?title+' ':'')+text,r);}
 
 async function doAsk(text,turnId,atts){
- /* One live turn. A second press, a duplicate speech-final event and a
-    re-render all land here, and all three get null and stop. */
+ /* Ask-in-a-row (1.9): a typed question arrives here with its own id even
+    when another is in flight. The duplicate-request guard is unchanged —
+    the same id still never goes out twice. */
  const id=turnId||beginTurn();
  if(!id)return;
  const reqId=id+':ask';
  if(!issue(reqId))return;          // the same request never goes out twice
+ if(INFLIGHT>0)OVERLAPPED=true;
+ INFLIGHT++;
+ const ph=addPendingTurn();        // the answer lands HERE, whatever order it returns in
  /* Sources for this request: attachments on THIS turn (with bytes), plus
     anything David referred back to — "התמונה הראשונה", "ה-PDF" — resolved
     from the conversation registry. */
@@ -2503,7 +2545,7 @@ async function doAsk(text,turnId,atts){
  const refs=resolveSourceRef(text,SESSION.sources||[])
    .filter(rid=>!pend.some(a=>a.source_id===rid));
  const srcs=sourcesForKernel(pend,refs,attBytes);
- speak(filler());
+ if(INFLIGHT===1)speak(filler());   // one voice; overlapping asks think silently
  try{
   /* `let`, not `const`. This binding is genuinely REPLACED below — unwrapPayload
      returns a new object — and a const that is reassigned throws
@@ -2519,7 +2561,7 @@ async function doAsk(text,turnId,atts){
      15. She says what she has and what is missing, and never fakes sight. */
   if(srcs.length&&!kernelSawSources(res)){
    const r=eyesNotLiveAnswer(pend.length?pend:srcs);
-   LAST={q:text,res:r};showAnswer(r);deliverText(r.answer);return;}
+   LAST={q:text,res:r};finishAsk(ph,r,heb(r.answer||''));return;}
   /* The loop brake: a repeated answer is stopped and SAID, not delivered as
      if it were new. David hears it on the first repeat, not after an hour. */
   {const prevAnswers=SESSION.turns.filter(t=>t.role==='lia').slice(-2).map(t=>t.text);
@@ -2537,14 +2579,30 @@ async function doAsk(text,turnId,atts){
      server's own config report into the answer so "פרטים" says WHICH config name
      the function can actually see — a typo'd secret name is otherwise
      indistinguishable from no secret at all. Names only; never a key value. */
-  if(res.self_diagnosis)return askDirect(text,res.self_diagnosis.config_seen,id);
+  if(res.self_diagnosis){
+   const i=SESSION.turns.indexOf(ph);if(i>=0){SESSION.turns.splice(i,1);saveSession();renderThread();}
+   INFLIGHT=Math.max(0,INFLIGHT-1);if(INFLIGHT===0)OVERLAPPED=false;
+   return askDirect(text,res.self_diagnosis.config_seen,id);}
   res=unwrapPayload(res);          // before it reaches memory, screen or voice
   rememberRetracted(res);          // a withdrawn claim does not come back next turn
   LAST={q:text,res:res};
-  showAnswer(res);
-  deliverText(spokenAnswer(res));      // → SPEAKING → IDLE. Never → LISTENING.
+  finishAsk(ph,res,spokenAnswer(res));
  }catch(e){stat('לא הצלחתי להגיע למערכת ('+e.message+')');
-  deliverText('לא הצלחתי להגיע למערכת כרגע.');}}
+  finishAsk(ph,null,'לא הצלחתי להגיע למערכת כרגע.','לא הצלחתי להגיע למערכת ('+e.message+')');}}
+
+/* One exit for every ask: the pending bubble becomes THIS answer; the turn
+   machine is released only when the LAST in-flight ask resolves; the voice
+   speaks only when the asks never overlapped — otherwise text is the answer
+   and the microphone authority returns to IDLE directly. */
+function finishAsk(ph,res,spoken,textOverride){
+ const shown=textOverride||(res?((res.__plain?heb(res.__plain):heb(res.answer||''))||spoken):spoken);
+ resolvePendingTurn(ph,shown,res);
+ INFLIGHT=Math.max(0,INFLIGHT-1);
+ if(INFLIGHT>0)return;                 // others still thinking — hold the turn
+ const overlapped=OVERLAPPED;OVERLAPPED=false;
+ if(overlapped){setMode('idle');endTurn();}
+ else deliverText(spoken);             // → SPEAKING → IDLE. Never → LISTENING.
+}
 
 /* ── the keyless road: the SAME capabilities, called directly ─────────────
    command-center exposes each capability on its own (action:'cap'), so real
