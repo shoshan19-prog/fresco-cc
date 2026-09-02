@@ -133,5 +133,31 @@ check('YAELI: recording is explicit — tap to start, visible state, tap to stop
   assert(/setRec\(true\)/.test(yaeli) && /setRec\(false\)/.test(yaeli) && /#mic\.rec/.test(yaeli));
 });
 
+// ── THE MOBILE COMMS LAW (David, 2.9) — diagnostics behind פתחי פרטים ──────
+check('COMMS: the client demotion mirror exists, with the server\'s whitelist', () => {
+  assert(/function demoteDiag\(/.test(lia), 'no client demotion');
+  assert(/const CANON_LABELS=\['PROJECT','BIGGEST PROGRESS'/.test(lia), 'no shared whitelist');
+  assert(/flags\.filter\(Boolean\)\.length<2/.test(lia), 'a single stray label would be demoted');
+});
+check('COMMS: the bubble renders the CLEAN text; an all-dump reply says where the report went', () => {
+  assert(/const dg=demoteDiag\(t\.text\);/.test(lia), 'the bubble ignores the demotion');
+  assert(/dg\.tech\.length\?\(dg\.clean\|\|TECH_FALLBACK\):t\.text/.test(lia), 'clean/fallback selection missing');
+  assert(/הדוח הטכני המלא הועבר לראיות ופרטים/.test(lia), 'no fallback line');
+});
+check('COMMS: the technical report renders ONLY in the drawer — LTR, isolated, monospace, wrapped', () => {
+  assert(/r&&r\.technical_report\)\|\|\[\],demoteDiag\(txt\|\|''\)\.tech/.test(lia),
+    'the drawer misses server-demoted or client-demoted lines');
+  assert(/<pre class="tech" dir="ltr">/.test(lia), 'no LTR technical block');
+  const css = lia.split('.tech{')[1]?.split('}')[0] || '';
+  assert(/direction:ltr/.test(css) && /unicode-bidi:isolate/.test(css) && /monospace/.test(css),
+    'the .tech CSS lost its bidi isolation');
+  assert(/overflow-wrap:anywhere/.test(css) && /max-width:100%/.test(css), 'the .tech block can overflow a phone');
+});
+check('COMMS: answer lines take their own direction (plaintext bidi) and cannot overflow', () => {
+  const css = lia.split('.msg.lia .bubble{')[1]?.split('}')[0] || '';
+  assert(/unicode-bidi:plaintext/.test(css) && /text-align:start/.test(css), 'RTL still shreds English lines');
+  assert(/overflow-wrap:anywhere/.test(css), 'a long token can force horizontal scroll');
+});
+
 console.log(`\n${passed}/${passed + failed} asserts passed`);
 process.exit(failed ? 1 : 0);

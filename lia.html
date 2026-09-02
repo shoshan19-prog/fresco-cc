@@ -241,8 +241,14 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .msg.me .bubble{background:var(--me);border:1px solid #d6e2ff;
  border-radius:var(--rs);padding:12px 15px}
 .msg.lia{align-self:stretch;max-width:100%}
-/* LIA answers as a dark-glass panel, not a chat bubble */
-.msg.lia .bubble{background:none;border:0;padding:0;color:var(--txt)}
+/* LIA answers as a dark-glass panel, not a chat bubble.
+   MOBILE COMMS LAW (David, 2.9): the page is RTL, but an answer line that
+   starts in English (the canonical PROJECT/NEXT labels) must not be shredded
+   by the base direction — unicode-bidi:plaintext lets EVERY LINE take the
+   direction of its own first strong character, and text-align:start follows
+   it. overflow-wrap keeps long ids from forcing a horizontal scroll. */
+.msg.lia .bubble{background:none;border:0;padding:0;color:var(--txt);
+ unicode-bidi:plaintext;text-align:start;overflow-wrap:anywhere;max-width:100%}
 .ansCard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
  padding:20px 20px 16px}
 .secHead{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:700;
@@ -296,9 +302,17 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 #evHead{display:flex;align-items:center;justify-content:space-between;gap:10px;
  padding:14px 18px;border-bottom:1px solid var(--line);flex:0 0 auto}
 #evHead b{font-size:14px;letter-spacing:.4px}
-#evBody{flex:1;min-height:0;overflow-y:auto;padding:14px 18px 22px}
+#evBody{flex:1;min-height:0;overflow-y:auto;padding:14px 18px 22px;overflow-wrap:anywhere}
 #evBody ul{margin:4px 12px 0;padding:0}
-#evBody .deep{animation:rise .25s ease both}
+#evBody .deep{animation:rise .25s ease both;max-width:100%}
+/* The technical report lives HERE, behind פתחי פרטים — never in the bubble.
+   English/code diagnostics read left-to-right, isolated from the RTL page,
+   monospace, wrapped — no fixed width, no horizontal overflow on a phone. */
+.tech{direction:ltr;unicode-bidi:isolate;text-align:left;
+ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+ font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;
+ word-break:break-word;max-width:100%;margin:6px 0 0;padding:10px 12px;
+ background:var(--card2);border:1px solid var(--line);border-radius:10px;color:var(--dim)}
 #evScrim{position:fixed;inset:0;z-index:23;background:rgba(16,24,40,.28);display:none}
 #evScrim.on{display:block;animation:fadein .25s ease both}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
@@ -1490,7 +1504,10 @@ function renderThread(){
   h+='<div class="msg lia"><div class="who">LIA</div>';
   h+=structured?'<div class="ansCard">'
      +'<div class="secHead"><span class="ic">✦</span>מה מצאתי</div>':'';
-  h+='<div class="bubble">'+esc(denied?DATA_LEAD:heb(t.text))+'</div>';
+  /* Diagnostics never ride the bubble (David, 2.9): label lines drop to the
+     drawer; a reply that was ONLY a diagnostic dump says where it went. */
+  const dg=demoteDiag(t.text);
+  h+='<div class="bubble">'+esc(denied?DATA_LEAD:heb(dg.tech.length?(dg.clean||TECH_FALLBACK):t.text))+'</div>';
   /* CARD-OWNED DETAILS (David, 31.8): "do not paste the full structured
      detail into chat — the breakdown lives in the relevant card." When this
      answer's own capabilities_used/sources say it came from a KPI contract
@@ -1566,6 +1583,29 @@ const NO_CHECK=/בלי לבדוק|לא בדקתי|לא ניגשתי|לא משכ�
 function hasData(r){return !!(r&&((r.facts&&r.facts.filter(Boolean).length)||(r.sources&&r.sources.length)));}
 function contradicts(text,r){return !!(text&&NO_CHECK.test(String(text))&&hasData(r));}
 const DATA_LEAD='הנה מה שמצאתי במערכות:';
+/* MOBILE COMMS LAW (David, 2.9). Live failure on the phone: a completion/
+   status reply arrived as raw English diagnostic labels (COMPLETIONS, DEDUP,
+   DURABLE INBOX, NEXT-CONTACT DELIVERY, ACK, ACCEPTANCE, DELIVERED TO DAVID,
+   STATUS, BLOCKER) — debug output in the main conversation, shredded by RTL.
+   The server now demotes these into r.technical_report; this mirror catches
+   old cached turns and any reply that slips through: English label lines
+   (two or more — one stray label is prose) move out of the bubble and into
+   the evidence drawer. The canonical project-status labels are DAVID-MANDATED
+   in the main answer and stay. Same whitelist as the server. */
+const CANON_LABELS=['PROJECT','BIGGEST PROGRESS','BIGGEST BLOCKER','AUTONOMY','NEEDS DAVID','NEXT',
+ 'SUPREME','FRESCO','MATRIYA','FINANCE','REAL ESTATE','ORGANIZATION','NORTH STAR'];
+const DIAG_RE=/^\s*([A-Z][A-Z0-9 _\/.\-]{1,40}?)\s*:(.*)$|^\s*([A-Z][A-Z0-9 _\/.\-]{2,40})\s*$/;
+function demoteDiag(text){
+ const lines=String(text||'').split('\n');
+ const flags=lines.map(function(ln){
+  const m=ln.match(DIAG_RE);if(!m)return false;
+  const label=(m[1]||m[3]||'').trim();
+  return !!label&&CANON_LABELS.indexOf(label)===-1;});
+ if(flags.filter(Boolean).length<2)return {clean:String(text||''),tech:[]};
+ const clean=[],tech=[];
+ lines.forEach(function(ln,i){(flags[i]?tech:clean).push(ln);});
+ return {clean:clean.join('\n').replace(/\n{3,}/g,'\n\n').trim(),tech:tech};}
+const TECH_FALLBACK='הדוח הטכני המלא הועבר לראיות ופרטים — פתחי פרטים.';
 function detailsHtml(r,txt){
  const list=(t,a)=>a&&a.length?'<p class="dim" style="margin-top:8px"><b>'+t+'</b></p><ul>'+
    a.map(x=>'<li class="dim">'+esc(heb(String(x)))+'</li>').join('')+'</ul>':'';
@@ -1573,12 +1613,19 @@ function detailsHtml(r,txt){
     out of the bubble — nothing was dropped, it just stopped being stapled to
     every reply. Facts are NOT repeated here: they are on the card now, read
     from this same object, which is the whole point of the single-truth fix. */
+ /* The technical report (server-demoted + anything this client demoted from
+    the bubble) renders HERE only — LTR, isolated, monospace, wrapped. */
+ const tech=[];const seen={};
+ [].concat((r&&r.technical_report)||[],demoteDiag(txt||'').tech).forEach(function(x){
+  const s=String(x);if(s.trim()&&!seen[s]){seen[s]=1;tech.push(s);}});
+ const techHtml=tech.length?'<p class="dim" style="margin-top:8px"><b>דוח טכני (מחוץ לשיחה)</b></p>'
+   +'<pre class="tech" dir="ltr">'+tech.map(esc).join('\n')+'</pre>':'';
  return (list('ההערכות שלי',r.inferences)
    +list('מה שהייתי עושה',r.recommended_next_action?[r.recommended_next_action]:null)
    +list('סיכונים והזדמנויות',r.risks_opportunities)+list('מה חסר לי',r.missing_information)
    +list('משכתי בחזרה',r.retracted_claims)
    +list('הניסוח שנפסל (סתר את הנתונים)',contradicts(txt,r)?[txt]:null)
-   +list('מה שמעתי',r.__heard?[r.__heard]:null)+list('מקורות',r.sources))
+   +list('מה שמעתי',r.__heard?[r.__heard]:null)+list('מקורות',r.sources)+techHtml)
    ||'<p class="dim">אין פירוט נוסף.</p>';}
 /* Same control, same name, same call sites — it just opens the drawer instead
    of unfolding thirty lines inside the reply. The drawer is where the FULL
