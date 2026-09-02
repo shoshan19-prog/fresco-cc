@@ -503,6 +503,14 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
      work. Hidden until it has something true to say. Completion notices do
      NOT get a card here (David, 31.8) — they live in the rail's alerts card
      and inside this strip's tap-open detail, never as a block over the chat. -->
+<!-- THE ONE TAP THE PHONE STILL NEEDS (David, 2.9). Measured 19:33Z on his
+     Android: push supported, permission=default — the browser was never asked
+     for THIS site, and the only "אפשר התראות" button lived behind ⋯. A
+     permission the browser will only grant from a tap needs a tap he can see. -->
+<div id="notifCta" style="display:none;margin:0 0 8px;padding:10px 12px;border:1px solid #d9d2c5;border-radius:12px;background:#fff8ea;font-size:14px">
+ <span id="notifCtaText">התראות למכשיר הזה עדיין לא הופעלו — כשמשימה מסתיימת ברקע, LIA לא תוכל להודיע.</span>
+ <button class="ghost" id="notifCtaBtn" type="button" onclick="enableNotifications(true)" style="margin-inline-start:8px">הפעל התראות</button>
+</div>
 <div id="stateStrip" style="display:none"></div>
 <main id="thread"></main>
 </div>
@@ -594,7 +602,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-02.3';
+const LIA_BUILD='2026-09-02.4';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -959,6 +967,23 @@ function bytesToB64(b){
  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 function notifSay(m){const el=document.getElementById('notifStat');if(el)el.textContent=m;}
 function notifBtn(t){const b=document.getElementById('notifBtn');if(b)b.textContent=t;}
+/* The strip above the thread: shown only while this device still needs the
+   tap (push supported, permission not yet asked); says "blocked" when the
+   browser refused; gone the moment the server holds the device. */
+function renderNotifCta(state){
+ const box=document.getElementById('notifCta');if(!box)return;
+ const txt=document.getElementById('notifCtaText'),btn=document.getElementById('notifCtaBtn');
+ const s=state||((!pushSupported())?'unsupported'
+  :((typeof Notification!=='undefined'&&Notification&&Notification.permission)||'default'));
+ if(s==='default'){
+  if(txt)txt.textContent='התראות למכשיר הזה עדיין לא הופעלו — כשמשימה מסתיימת ברקע, LIA לא תוכל להודיע.';
+  if(btn)btn.style.display='';
+  box.style.display='block';return;}
+ if(s==='denied'){
+  if(txt)txt.textContent='התראות חסומות לאתר הזה בדפדפן — פתח את הגדרות האתר ואפשר התראות. עד אז ההודעות ימתינו כאן ב-LIA.';
+  if(btn)btn.style.display='none';
+  box.style.display='block';return;}
+ box.style.display='none';}
 /* THE REGISTRATION LEAVES A TRAIL (David, 2.9 — "approved on the phone, LIA
    still says no_device"). Every stage of this flow used to end in a status
    line inside the ⋯ sheet and nowhere else; the server never learned which
@@ -1012,6 +1037,7 @@ async function enableNotifications(explicit){
    ?'התראות חסומות בדפדפן — ההודעות ימתינו כאן ב-LIA.'
    :'התראות עדיין לא אושרו — ההודעות ימתינו כאן ב-LIA.');
   pushLog('permission_'+perm,{ok:false,permission:perm});
+  renderNotifCta(perm);
   return false;}
  let stage='key';
  try{
@@ -1047,6 +1073,7 @@ async function enableNotifications(explicit){
    +(row.completions_delivered?' נמסרו עכשיו '+row.completions_delivered+' עדכונים שהמתינו.':''));
   pushLog('registered',{ok:true,detail:'device='+String(row.device_id).slice(0,8)+' devices='+row.devices
    +' delivered='+(row.completions_delivered||0)+' pending='+(row.completions_pending||0)});
+  renderNotifCta('registered');
   return true;
  }catch(e){
   notifBtn('אפשר התראות');
@@ -1236,6 +1263,7 @@ function initNotifications(){
  const perm=(typeof Notification!=='undefined'&&Notification&&Notification.permission)||'none';
  pushLog('open',{ok:sup&&perm==='granted',permission:perm,
   detail:'supported='+sup+' permission='+perm+' build='+LIA_BUILD});
+ renderNotifCta();
  /* Already allowed on this device → re-register silently. A subscription the
     browser rotated is a knock that never comes, and nothing else would notice.
     The button says "active" only once the SERVER has the device (2.9). */
