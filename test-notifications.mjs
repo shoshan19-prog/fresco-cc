@@ -147,15 +147,15 @@ function panel(opts = {}) {
     `${BLOCK}
      return { loadNotifications, renderNotifications, openNotification, markNotificationRead,
               clearNotifications, showTask, openTaskFromUrl, enableNotifications, initNotifications,
-              pushSupported, b64ToBytes, bytesToB64, toggleStateDetail,
+              pushSupported, b64ToBytes, bytesToB64, toggleStateDetail, renderNotifCta, newerBuild, checkPanelBuild,
               get NOTIFS(){return NOTIFS;}, set NOTIFS(v){NOTIFS=v;} };`,
   )(doc, cap, (s) => String(s || ''), (r) => answers.push(r), (a, f, s, m) => ({ answer: a, facts: f, sources: s, missing: m }),
     opts.surface || 'phone', opts.code === undefined ? 'code' : opts.code,
     opts.navigator || {}, opts.Notification || undefined,
-    { href: opts.href || 'https://x/lia.html', pathname: '/lia.html' },
+    { href: opts.href || 'https://x/lia.html', pathname: '/lia.html', reload: () => { els._reloads = (els._reloads || 0) + 1; } },
     { replaceState: () => { els._history = true; } }, () => 1,
     opts.window || {}, globalThis.atob, globalThis.btoa,
-    () => !!opts.rails, (row) => needsCalls.push(row), 'test-build');
+    () => !!opts.rails, (row) => needsCalls.push(row), '2026-09-02.0');
   return { api, calls, answers, el, needsCalls };
 }
 
@@ -414,7 +414,7 @@ function panel(opts = {}) {
      p.el('notifBtn').textContent !== 'התראות פעילות', p.el('notifBtn').textContent);
   ok('every open leaves ONE row: supported, permission and the panel build (2.9, 19:27Z — the silent branches)',
      p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'open' && c.args.permission === 'granted'
-       && /supported=true/.test(c.args.detail) && /build=test-build/.test(c.args.detail)),
+       && /supported=true/.test(c.args.detail) && /build=2026-09-02\.0/.test(c.args.detail)),
      JSON.stringify(p.calls.filter((c) => c.name === 'push_register_log').map((c) => c.args)));
 }
 
@@ -462,6 +462,56 @@ function panel(opts = {}) {
   ok('the strip\'s tap asks the browser, registers with the server, and the strip disappears',
      shownFirst && okd === true && p.el('notifCta').style.display === 'none',
      `shownFirst=${shownFirst} okd=${okd} display=${p.el('notifCta').style.display}`);
+  ok('the open row carries cta=shown — the device itself reports the strip (David, 2.9 20:02Z)',
+     p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'open' && /cta=shown/.test(c.args.detail)),
+     JSON.stringify(p.calls.filter((c) => c.args && c.args.stage === 'open').map((c) => c.args.detail)));
+}
+
+{
+  // The tap asks the browser FIRST — before the service worker, before any await.
+  const order = [];
+  const sub = { options: {}, toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/o', keys: { p256dh: 'p', auth: 'a' } }) };
+  const nav = { serviceWorker: { register: async () => { order.push('sw.register'); return { pushManager: { getSubscription: async () => null, subscribe: async () => sub } }; },
+    ready: Promise.resolve(), addEventListener: () => {} } };
+  const p = panel({ navigator: nav, surface: 'phone', window: { PushManager: function () {}, Notification: {} },
+    Notification: { permission: 'default', requestPermission: async () => { order.push('requestPermission'); return 'granted'; } },
+    cap: async (name) => {
+      if (name === 'push_key') return { rows: [{ public_key: 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8' }] };
+      if (name === 'push_subscribe') return { rows: [{ ok: true, device_id: 'd4', devices: 1 }] };
+      return { rows: [] };
+    } });
+  await p.api.enableNotifications(true);
+  ok('requestPermission() is the first thing the tap does — before the service worker registers',
+     order[0] === 'requestPermission' && order[1] === 'sw.register', JSON.stringify(order));
+}
+
+{
+  // Registration that does not finish (server said no device) keeps the strip up, as "try again".
+  const sub = { options: {}, toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/r', keys: { p256dh: 'p', auth: 'a' } }) };
+  const nav = { serviceWorker: { register: async () => ({ pushManager: { getSubscription: async () => null, subscribe: async () => sub } }),
+    ready: Promise.resolve(), addEventListener: () => {} } };
+  const p = panel({ navigator: nav, surface: 'phone', window: { PushManager: function () {}, Notification: {} },
+    Notification: { permission: 'granted' },
+    cap: async (name) => (name === 'push_key' ? { rows: [{ public_key: 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8' }] }
+      : name === 'push_subscribe' ? { rows: [{ ok: false, error: 'x' }] } : { rows: [] }) });
+  await p.api.enableNotifications(true);
+  ok('the strip hides ONLY after the server holds the device — a rejected registration keeps it up with "try again"',
+     p.el('notifCta').style.display === 'block' && /נסה שוב/.test(p.el('notifCtaText').textContent) && p.el('notifCtaBtn').textContent === 'הפעל התראות',
+     `${p.el('notifCta').style.display} | ${p.el('notifCtaText').textContent}`);
+}
+
+{
+  // The panel reloads itself once when the server announces a newer build (the cached-page trap).
+  const p = panel({ window: {} });
+  ok('build ordering: same-day higher suffix and later day are newer; malformed never is',
+     p.api.newerBuild('2026-09-02.5', '2026-09-02.3') && p.api.newerBuild('2026-09-03.1', '2026-09-02.9')
+     && !p.api.newerBuild('2026-09-02.3', '2026-09-02.3') && !p.api.newerBuild('2026-09-02.2', '2026-09-02.3') && !p.api.newerBuild('', '2026-09-02.3'), 'ordering');
+  const reloaded = p.api.checkPanelBuild({ panel_build_latest: '2099-01-01.1' });
+  const notReloaded = p.api.checkPanelBuild({ panel_build_latest: '2026-09-02.0' }) || p.api.checkPanelBuild({});
+  ok('an older panel reloads once on a newer panel_build_latest; equal or missing never reloads',
+     reloaded === true && p.el('_reloads') && notReloaded === false
+     && p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'reload_for_build'),
+     `reloaded=${reloaded} not=${notReloaded}`);
 }
 
 {
