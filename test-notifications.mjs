@@ -418,6 +418,52 @@ function panel(opts = {}) {
      JSON.stringify(p.calls.filter((c) => c.name === 'push_register_log').map((c) => c.args)));
 }
 
+// ── 2.9 19:33Z — THE PHONE SPOKE: Android Chrome, push supported, permission=default.
+// The browser was never asked for this site; the only button lived behind ⋯.
+{
+  const p = panel({ navigator: { serviceWorker: { register: async () => ({}), ready: Promise.resolve(), addEventListener: () => {} } },
+    window: { PushManager: function () {}, Notification: {} }, Notification: { permission: 'default' },
+    cap: async () => ({ rows: [] }) });
+  p.api.initNotifications();
+  const cta = p.el('notifCta');
+  ok('permission=default on a capable device shows the enable strip ABOVE THE THREAD, with its button',
+     cta.style.display === 'block' && /עדיין לא הופעלו/.test(p.el('notifCtaText').textContent) && p.el('notifCtaBtn').style.display !== 'none',
+     `${cta.style.display} | ${p.el('notifCtaText').textContent}`);
+  ok('the open row says permission=default so the trail names the missing tap',
+     p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'open' && c.args.permission === 'default'),
+     JSON.stringify(p.calls.map((c) => [c.name, c.args.stage, c.args.permission])));
+}
+
+{
+  const p = panel({ navigator: { serviceWorker: { register: async () => ({}), ready: Promise.resolve(), addEventListener: () => {} } },
+    window: { PushManager: function () {}, Notification: {} }, Notification: { permission: 'denied' },
+    cap: async () => ({ rows: [] }) });
+  p.api.initNotifications();
+  ok('permission=denied shows the strip as "blocked in the browser" with no button to press',
+     p.el('notifCta').style.display === 'block' && /חסומות/.test(p.el('notifCtaText').textContent) && p.el('notifCtaBtn').style.display === 'none',
+     p.el('notifCtaText').textContent);
+}
+
+{
+  // Once the server holds the device the strip is gone.
+  const sub = { options: {}, toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/z', keys: { p256dh: 'p', auth: 'a' } }) };
+  const nav = { serviceWorker: { register: async () => ({ pushManager: { getSubscription: async () => null, subscribe: async () => sub } }),
+    ready: Promise.resolve(), addEventListener: () => {} } };
+  const p = panel({ navigator: nav, surface: 'phone', window: { PushManager: function () {}, Notification: {} },
+    Notification: { permission: 'default', requestPermission: async () => 'granted' },
+    cap: async (name) => {
+      if (name === 'push_key') return { rows: [{ public_key: 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8' }] };
+      if (name === 'push_subscribe') return { rows: [{ ok: true, device_id: 'd3', devices: 1 }] };
+      return { rows: [] };
+    } });
+  p.api.initNotifications();
+  const shownFirst = p.el('notifCta').style.display === 'block';
+  const okd = await p.api.enableNotifications(true);   // the tap on the strip
+  ok('the strip\'s tap asks the browser, registers with the server, and the strip disappears',
+     shownFirst && okd === true && p.el('notifCta').style.display === 'none',
+     `shownFirst=${shownFirst} okd=${okd} display=${p.el('notifCta').style.display}`);
+}
+
 {
   // The phone that came back twice and said nothing: no push API at all
   // (an iPhone in Safari, not installed). The open row must still be written.
