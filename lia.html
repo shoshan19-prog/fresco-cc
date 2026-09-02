@@ -591,6 +591,10 @@ const TRANSIENT=[502,503,504,522,524];
 /* WHICH DEVICE THIS IS (David, 27.8: "כשאני נכנס לנייד אני לא רואה את הפעולות
    שהיו על המחשב"). Declared here, above the network layer that uses it. */
 const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)?'phone':'desktop';
+/* Which panel is talking. An installed app kept alive keeps running the code
+   it loaded days ago; every request now says which build it is, so "the fix
+   is live" and "the phone runs the fix" stop being the same claim (2.9). */
+const LIA_BUILD='2026-09-02.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -606,6 +610,7 @@ async function post(url,body,tries){
  try{
   const o=(typeof body==='string')?JSON.parse(body):Object.assign({},body||{});
   o.surface=SURFACE;
+  o.client_build=LIA_BUILD;
   payload=JSON.stringify(o);
  }catch(e){ payload=(typeof body==='string')?body:JSON.stringify(body); }
  let last=null;
@@ -1222,14 +1227,30 @@ if('serviceWorker' in navigator){
   if(d.task_id)showTask(d.task_id);});}
 
 function initNotifications(){
+ /* Every open leaves ONE row (2.9, 19:27Z): the phone came back twice after
+    the fix and the trail stayed empty, because the silent branches below —
+    no push API, permission never asked, blocked — logged nothing. Now the
+    first row of every open says what this device can do and which build of
+    the panel it is running. */
+ const sup=pushSupported();
+ const perm=(typeof Notification!=='undefined'&&Notification&&Notification.permission)||'none';
+ pushLog('open',{ok:sup&&perm==='granted',permission:perm,
+  detail:'supported='+sup+' permission='+perm+' build='+LIA_BUILD});
  /* Already allowed on this device → re-register silently. A subscription the
     browser rotated is a knock that never comes, and nothing else would notice.
     The button says "active" only once the SERVER has the device (2.9). */
- if(pushSupported()&&Notification.permission==='granted'){
+ if(sup&&perm==='granted'){
   notifBtn('מאמת התראות…');
   enableNotifications(false).catch(function(){});
- }else if(pushSupported()&&Notification.permission==='denied'){
-  notifSay('התראות חסומות בדפדפן — ההודעות ימתינו כאן ב-LIA.');}
+ }else if(sup&&perm==='denied'){
+  notifSay('התראות חסומות בדפדפן — ההודעות ימתינו כאן ב-LIA.');
+ }else if(!sup){
+  const ios=/iPhone|iPad|iPod/i.test((navigator&&navigator.userAgent)||'');
+  const installed=!!((window&&window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)
+   ||(navigator&&navigator.standalone===true));
+  notifSay(ios&&!installed
+   ?'באייפון צריך קודם להוסיף את LIA למסך הבית (שיתוף ← הוסף למסך הבית) ואז לאשר. עד אז ההודעות ימתינו כאן ב-LIA.'
+   :'הדפדפן הזה לא תומך בהתראות — ההודעות ימתינו כאן ב-LIA.');}
  loadNotifications().catch(function(){});
  openTaskFromUrl();
  if(!window._liaNotifPoll){
