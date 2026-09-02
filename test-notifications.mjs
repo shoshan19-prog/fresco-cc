@@ -319,6 +319,99 @@ function panel(opts = {}) {
      JSON.stringify(!!subscribed));
   ok('the device says which surface it is, so the ledger can tell them apart',
      registered.surface === 'phone', registered.surface);
+  ok('the registration leaves a trail: the registered stage is logged to the server (2.9)',
+     p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'registered' && c.args.ok === true && c.args.surface === 'phone'),
+     JSON.stringify(p.calls.map((c) => [c.name, c.args.stage])));
+}
+
+// ── 2.9 — "APPROVED ON THE PHONE, LIA STILL SAYS no_device": the lie and the trail ──
+{
+  // The server answered with no device (a rejected registration) and the panel
+  // used to say "התראות פעילות" anyway — nothing was registered, nobody knew.
+  const sub = { options: {}, toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'p', auth: 'a' } }) };
+  const nav = { serviceWorker: { register: async () => ({ pushManager: { getSubscription: async () => null, subscribe: async () => sub } }),
+    ready: Promise.resolve(), addEventListener: () => {} } };
+  const p = panel({ navigator: nav, surface: 'phone', window: { PushManager: function () {}, Notification: {} },
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    cap: async (name) => {
+      if (name === 'push_key') return { rows: [{ public_key: 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8' }] };
+      if (name === 'push_subscribe') return { rows: [{ ok: false, error: 'הכתיבה לא נקראה בחזרה' }], source: 'הרשמה נכשלה' };
+      return { rows: [] };
+    } });
+  const okd = await p.api.enableNotifications(true);
+  ok('a registration the server rejected is NOT reported as active — the button stays "אפשר התראות"',
+     okd === false && p.el('notifBtn').textContent === 'אפשר התראות' && /השרת לא רשם/.test(p.el('notifStat').textContent),
+     `${p.el('notifBtn').textContent} | ${p.el('notifStat').textContent}`);
+  ok('and the rejection is on the server trail with its reason',
+     p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'server_rejected' && /לא נקראה/.test(c.args.detail)),
+     JSON.stringify(p.calls.filter((c) => c.name === 'push_register_log').map((c) => c.args)));
+}
+
+{
+  // subscribe() itself throws (the push service refused) — the stage is named.
+  const nav = { serviceWorker: { register: async () => ({ pushManager: { getSubscription: async () => null,
+      subscribe: async () => { const e = new Error('Registration failed - push service error'); e.name = 'AbortError'; throw e; } } }),
+    ready: Promise.resolve(), addEventListener: () => {} } };
+  const p = panel({ navigator: nav, surface: 'phone', window: { PushManager: function () {}, Notification: {} },
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    cap: async (name) => (name === 'push_key' ? { rows: [{ public_key: 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8' }] } : { rows: [] }) });
+  const okd = await p.api.enableNotifications(true);
+  ok('a push service that refuses the subscription is logged as subscribe_failed with the error name',
+     okd === false && p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'subscribe_failed' && /AbortError/.test(c.args.error)),
+     JSON.stringify(p.calls.filter((c) => c.name === 'push_register_log').map((c) => c.args)));
+}
+
+{
+  // A worker that never becomes ready must not hang the registration forever.
+  let subscribed = false;
+  const sub = { options: {}, toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/x', keys: { p256dh: 'p', auth: 'a' } }) };
+  const nav = { serviceWorker: { register: async () => ({ pushManager: { getSubscription: async () => null, subscribe: async () => { subscribed = true; return sub; } } }),
+    ready: new Promise(() => {}), addEventListener: () => {} } };
+  const p = panel({ navigator: nav, surface: 'phone', window: { PushManager: function () {}, Notification: {} },
+    Notification: { permission: 'granted', requestPermission: async () => 'granted' },
+    cap: async (name) => {
+      if (name === 'push_key') return { rows: [{ public_key: 'BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8' }] };
+      if (name === 'push_subscribe') return { rows: [{ ok: true, device_id: 'd2', devices: 1 }] };
+      return { rows: [] };
+    } });
+  const t0 = Date.now();
+  const okd = await p.api.enableNotifications(false);
+  ok('serviceWorker.ready that never resolves is bounded (8s) and the subscription still happens',
+     okd === true && subscribed && Date.now() - t0 >= 7500 && Date.now() - t0 < 12000
+     && p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'sw_not_active'),
+     `${Date.now() - t0}ms subscribed=${subscribed}`);
+}
+
+{
+  // Opened from a push tap (new window): the tap is on the ledger, the task shown.
+  const seen = [];
+  const p = panel({ href: 'https://x/lia.html?task=w9&n=n9', cap: async (name, args) => { seen.push([name, args]);
+    return name === 'work_status' ? { rows: [{ work_id: 'w9', objective: 'משימה', status_line: 'הושלמה' }] } : { rows: [] }; } });
+  p.api.openTaskFromUrl();
+  await new Promise((r) => setTimeout(r, 10));
+  ok('a tap that opened the panel reports push_opened with the task and the notification (deep-link proof)',
+     seen.some(([n, a]) => n === 'push_opened' && a.task_id === 'w9' && a.notification_id === 'n9' && a.via === 'url'), JSON.stringify(seen));
+}
+
+{
+  // A digest knock carries only n: it is marked read and reported, no task lookup.
+  const seen = [];
+  const p = panel({ href: 'https://x/lia.html?n=digest-1', cap: async (name, args) => { seen.push([name, args]); return { rows: [] }; } });
+  p.api.openTaskFromUrl();
+  await new Promise((r) => setTimeout(r, 10));
+  ok('a digest tap (n only) marks the digest read and reports the open — and does not look up a task',
+     seen.some(([n, a]) => n === 'notification_read' && a.notification_id === 'digest-1')
+     && seen.some(([n, a]) => n === 'push_opened' && a.notification_id === 'digest-1' && a.task_id === '')
+     && !seen.some(([n]) => n === 'work_status'), JSON.stringify(seen));
+}
+
+{
+  const p = panel({ navigator: { serviceWorker: { register: async () => ({}), ready: Promise.resolve(), addEventListener: () => {} } },
+    window: { PushManager: function () {}, Notification: {} }, Notification: { permission: 'granted' },
+    cap: async () => ({ rows: [] }) });
+  p.api.initNotifications();
+  ok('on open, the button says "מאמת" until the SERVER confirms — never "פעילות" on faith',
+     p.el('notifBtn').textContent !== 'התראות פעילות', p.el('notifBtn').textContent);
 }
 
 console.log(`\n${total - bad}/${total} passed`);
