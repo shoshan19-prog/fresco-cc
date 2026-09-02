@@ -417,13 +417,26 @@ el("enter").addEventListener("click",enter);
 el("code").addEventListener("keydown",function(e){if(e.key==="Enter")enter();});
 
 (function boot(){
-  var saved=null; try{saved=localStorage.getItem("fresco_code");}catch(e){}
-  if(saved){
-    CODE=saved;
+  /* THE ROOM GATE (David's approved removal, 2.9 — goal-first round). The
+     page shares an origin with lia.html, so the code David already uses
+     every day (lia_code) opens the room too — he taps the link and is
+     INSIDE, no prompt, no rejected code. The candidates are tried in order
+     against the live API; the gate box appears only when none works — a
+     stranger with no code, not David. */
+  var candidates=[];
+  try{
+    var fc=localStorage.getItem("fresco_code"); if(fc)candidates.push(fc);
+    var lc=localStorage.getItem("lia_code"); if(lc&&lc!==fc)candidates.push(lc);
+  }catch(e){}
+  (function tryNext(){
+    var c=candidates.shift();
+    if(!c){ el("gate").hidden=false; return; }
+    CODE=c;
     call({action:"feed"}).then(function(d){
+      try{localStorage.setItem("fresco_code",c);}catch(e){}
       el("room").hidden=false; apply(d);
-    }).catch(function(){CODE=null;el("gate").hidden=false;});
-  } else { el("gate").hidden=false; }
+    }).catch(function(){CODE=null;tryNext();});
+  })();
   setInterval(function(){ if(CODE && !document.hidden) refresh(); }, 300000);
   document.addEventListener("visibilitychange",function(){
     if(!document.hidden && CODE) refresh();
