@@ -954,6 +954,31 @@ function bytesToB64(b){
  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 function notifSay(m){const el=document.getElementById('notifStat');if(el)el.textContent=m;}
 function notifBtn(t){const b=document.getElementById('notifBtn');if(b)b.textContent=t;}
+/* THE REGISTRATION LEAVES A TRAIL (David, 2.9 — "approved on the phone, LIA
+   still says no_device"). Every stage of this flow used to end in a status
+   line inside the ⋯ sheet and nowhere else; the server never learned which
+   of the six steps had failed. Now each outcome is one ledger row the kernel
+   can read (push_register_client). Fire-and-forget — logging never blocks. */
+function pushLog(stage,extra){
+ try{
+  const inst=!!((window&&window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)
+   ||(navigator&&navigator.standalone===true));
+  const o=Object.assign({stage:stage,surface:SURFACE,standalone:inst,
+   ua:String((navigator&&navigator.userAgent)||'').slice(0,160),
+   permission:(typeof Notification!=='undefined'&&Notification&&Notification.permission)||'none'},extra||{});
+  if(CODE)cap('push_register_log',o).catch(function(){});
+ }catch(e){}}
+/* navigator.serviceWorker.ready never rejects: on a page the worker does not
+   control it simply never resolves, and the registration hung there with
+   nothing to show. Race it against the registration's own worker, bounded. */
+function swReady(reg){
+ return new Promise(function(res){
+  let done=false;const fin=function(){if(!done){done=true;res(true);}};
+  try{if(reg&&reg.active){fin();return;}}catch(e){}
+  try{navigator.serviceWorker.ready.then(fin,fin);}catch(e){}
+  try{const w=reg&&(reg.installing||reg.waiting);
+   if(w&&w.addEventListener)w.addEventListener('statechange',function(){if(w.state==='activated')fin();});}catch(e){}
+  setTimeout(function(){if(!done){done=true;res(false);}},8000);});}
 
 async function enableNotifications(explicit){
  if(!pushSupported()){
@@ -967,10 +992,12 @@ async function enableNotifications(explicit){
   notifSay(ios&&!installed
    ?'באייפון צריך קודם להוסיף את LIA למסך הבית (שיתוף ← הוסף למסך הבית) ואז לאשר. עד אז ההודעות ימתינו כאן ב-LIA.'
    :'הדפדפן הזה לא תומך בהתראות — ההודעות ימתינו כאן ב-LIA.');
+  pushLog('unsupported',{ok:false,detail:ios&&!installed?'ios_not_installed':'no_push_api'});
   return false;}
- let reg=null;
- try{reg=await navigator.serviceWorker.register('sw.js',{scope:'./'});}catch(e){reg=null;}
- if(!reg){notifSay('לא הצלחתי להתקין את שירות ההתראות — ההודעות ימתינו כאן ב-LIA.');return false;}
+ let reg=null,regErr=null;
+ try{reg=await navigator.serviceWorker.register('sw.js',{scope:'./'});}catch(e){reg=null;regErr=e;}
+ if(!reg){notifSay('לא הצלחתי להתקין את שירות ההתראות — ההודעות ימתינו כאן ב-LIA.');
+  pushLog('sw_register_failed',{ok:false,error:String((regErr&&(regErr.name+': '+regErr.message))||'')});return false;}
  let perm=Notification.permission;
  /* The prompt is only ever raised by a real click. A permission asked for on
     page load is the request browsers now refuse outright. */
@@ -979,12 +1006,17 @@ async function enableNotifications(explicit){
   notifSay(perm==='denied'
    ?'התראות חסומות בדפדפן — ההודעות ימתינו כאן ב-LIA.'
    :'התראות עדיין לא אושרו — ההודעות ימתינו כאן ב-LIA.');
+  pushLog('permission_'+perm,{ok:false,permission:perm});
   return false;}
+ let stage='key';
  try{
   const k=await cap('push_key',{});
   const pub=k&&k.rows&&k.rows[0]&&k.rows[0].public_key;
-  if(!pub){notifSay('השרת לא החזיר מפתח התראות — ההודעות ימתינו כאן.');return false;}
-  await navigator.serviceWorker.ready;
+  if(!pub){notifSay('השרת לא החזיר מפתח התראות — ההודעות ימתינו כאן.');
+   pushLog('key_missing',{ok:false,detail:String((k&&(k.source||k.error))||'').slice(0,160)});return false;}
+  stage='sw_ready';
+  if(!(await swReady(reg)))pushLog('sw_not_active',{ok:false,detail:'ready did not resolve in 8s — subscribing on the registration anyway'});
+  stage='subscribe';
   let sub=await reg.pushManager.getSubscription();
   /* A subscription made against a different application key can never be
      pushed to again — it must be replaced, not kept and hoped for. */
@@ -993,13 +1025,28 @@ async function enableNotifications(explicit){
    sub=null;}
   if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(pub)});
   const j=sub.toJSON()||{};
-  await cap('push_subscribe',{endpoint:j.endpoint,p256dh:j.keys&&j.keys.p256dh,
+  stage='server';
+  const r=await cap('push_subscribe',{endpoint:j.endpoint,p256dh:j.keys&&j.keys.p256dh,
    auth:j.keys&&j.keys.auth,surface:SURFACE});
+  const row=r&&r.rows&&r.rows[0];
+  /* The server's answer is the registration — not the fact that the call
+     returned. "התראות פעילות" over a rejected row was the lie the phone told. */
+  if(!row||!row.device_id){
+   const why=String((row&&row.error)||(r&&(r.source||r.error))||'').slice(0,160);
+   notifBtn('אפשר התראות');
+   notifSay('השרת לא רשם את המכשיר'+(why?' ('+why+')':'')+' — ההודעות ימתינו כאן ב-LIA.');
+   pushLog('server_rejected',{ok:false,detail:why});
+   return false;}
   notifBtn('התראות פעילות');
-  notifSay('המכשיר הזה ('+(SURFACE==='phone'?'נייד':'מחשב')+') יקבל התראה כשמשימה מסתיימת.');
+  notifSay('המכשיר הזה ('+(SURFACE==='phone'?'נייד':'מחשב')+') יקבל התראה כשמשימה מסתיימת.'
+   +(row.completions_delivered?' נמסרו עכשיו '+row.completions_delivered+' עדכונים שהמתינו.':''));
+  pushLog('registered',{ok:true,detail:'device='+String(row.device_id).slice(0,8)+' devices='+row.devices
+   +' delivered='+(row.completions_delivered||0)+' pending='+(row.completions_pending||0)});
   return true;
  }catch(e){
+  notifBtn('אפשר התראות');
   notifSay('לא הצלחתי לרשום את המכשיר להתראות ('+(e&&e.message||'')+') — ההודעות ימתינו כאן ב-LIA.');
+  pushLog(stage+'_failed',{ok:false,error:String((e&&((e.name?e.name+': ':'')+e.message))||'').slice(0,200)});
   return false;}}
 
 async function loadNotifications(){
@@ -1151,12 +1198,18 @@ async function showTask(id){
   w.blocker?('חסם: '+w.blocker):''].filter(Boolean);
  showAnswer(said((w.objective||'משימה')+'\n'+lines.join('\n'),[],[],[]));}
 
+/* Opened FROM a push: say so on the ledger (push_opened) — the only proof that
+   a knock reached this device and led back to the right task. A digest knock
+   carries only n (no task): it marks the digest read and shows the inbox. */
+function pushOpened(task,n,via){
+ try{if(CODE&&(task||n))cap('push_opened',{task_id:task||'',notification_id:n||'',via:via,surface:SURFACE}).catch(function(){});}catch(e){}}
 function openTaskFromUrl(){
  let task='',n='';
  try{const u=new URL(location.href);task=u.searchParams.get('task')||'';n=u.searchParams.get('n')||'';}catch(e){}
- if(!task)return;
+ if(!task&&!n)return;
  if(n)markNotificationRead(n);
- showTask(task);
+ pushOpened(task,n,'url');
+ if(task)showTask(task);
  /* Clean the address bar: a refresh should not reopen the same task forever. */
  try{history.replaceState({},'',location.pathname);}catch(e){}}
 
@@ -1165,13 +1218,15 @@ if('serviceWorker' in navigator){
   const d=(ev&&ev.data)||{};
   if(d.type!=='lia-open-task')return;
   if(d.notification_id)markNotificationRead(d.notification_id);
+  pushOpened(d.task_id||'',d.notification_id||'','sw');
   if(d.task_id)showTask(d.task_id);});}
 
 function initNotifications(){
  /* Already allowed on this device → re-register silently. A subscription the
-    browser rotated is a knock that never comes, and nothing else would notice. */
+    browser rotated is a knock that never comes, and nothing else would notice.
+    The button says "active" only once the SERVER has the device (2.9). */
  if(pushSupported()&&Notification.permission==='granted'){
-  notifBtn('התראות פעילות');
+  notifBtn('מאמת התראות…');
   enableNotifications(false).catch(function(){});
  }else if(pushSupported()&&Notification.permission==='denied'){
   notifSay('התראות חסומות בדפדפן — ההודעות ימתינו כאן ב-LIA.');}
