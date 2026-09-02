@@ -143,7 +143,7 @@ function panel(opts = {}) {
   const api = new Function(
     'document', 'cap', 'esc', 'showAnswer', 'said', 'SURFACE', 'CODE',
     'navigator', 'Notification', 'location', 'history', 'setInterval', 'window', 'atob', 'btoa',
-    'railsOn', 'renderNeeds',
+    'railsOn', 'renderNeeds', 'LIA_BUILD',
     `${BLOCK}
      return { loadNotifications, renderNotifications, openNotification, markNotificationRead,
               clearNotifications, showTask, openTaskFromUrl, enableNotifications, initNotifications,
@@ -155,7 +155,7 @@ function panel(opts = {}) {
     { href: opts.href || 'https://x/lia.html', pathname: '/lia.html' },
     { replaceState: () => { els._history = true; } }, () => 1,
     opts.window || {}, globalThis.atob, globalThis.btoa,
-    () => !!opts.rails, (row) => needsCalls.push(row));
+    () => !!opts.rails, (row) => needsCalls.push(row), 'test-build');
   return { api, calls, answers, el, needsCalls };
 }
 
@@ -412,6 +412,22 @@ function panel(opts = {}) {
   p.api.initNotifications();
   ok('on open, the button says "מאמת" until the SERVER confirms — never "פעילות" on faith',
      p.el('notifBtn').textContent !== 'התראות פעילות', p.el('notifBtn').textContent);
+  ok('every open leaves ONE row: supported, permission and the panel build (2.9, 19:27Z — the silent branches)',
+     p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'open' && c.args.permission === 'granted'
+       && /supported=true/.test(c.args.detail) && /build=test-build/.test(c.args.detail)),
+     JSON.stringify(p.calls.filter((c) => c.name === 'push_register_log').map((c) => c.args)));
+}
+
+{
+  // The phone that came back twice and said nothing: no push API at all
+  // (an iPhone in Safari, not installed). The open row must still be written.
+  const p = panel({ navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Safari' },
+    window: {}, Notification: undefined, cap: async () => ({ rows: [] }) });
+  p.api.initNotifications();
+  ok('a device without push still logs its open (supported=false) and names the home-screen step on an iPhone',
+     p.calls.some((c) => c.name === 'push_register_log' && c.args.stage === 'open' && /supported=false/.test(c.args.detail))
+     && /מסך הבית/.test(p.el('notifStat').textContent),
+     `${JSON.stringify(p.calls.map((c) => [c.name, c.args.stage]))} | ${p.el('notifStat').textContent}`);
 }
 
 console.log(`\n${total - bad}/${total} passed`);
