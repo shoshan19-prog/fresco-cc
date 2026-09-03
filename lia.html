@@ -602,7 +602,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-02.5';
+const LIA_BUILD='2026-09-02.6';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -982,7 +982,10 @@ function renderNotifCta(state){
   if(btn){btn.style.display='block';btn.textContent='הפעל התראות';}
   box.style.display='block';return 'shown';}
  if(s==='denied'){
-  if(txt)txt.textContent='התראות חסומות לאתר הזה בדפדפן — פתח את הגדרות האתר ואפשר התראות. עד אז ההודעות ימתינו כאן ב-LIA.';
+  /* Chrome/Android auto-blocks a site after three dismissed prompts (measured
+     on David's phone, 20:33Z): from then on no code can ask again — only the
+     site setting can. Say the exact path, not "open the settings". */
+  if(txt)txt.textContent='התראות חסומות לאתר הזה בדפדפן (Chrome חוסם אחרי שלוש דחיות של החלון). לפתיחה: המנעול/ההגדרות בשורת הכתובת ← הרשאות ← התראות ← אפשר, ואז לפתוח את LIA מחדש. עד אז ההודעות ימתינו כאן ב-LIA.';
   if(btn)btn.style.display='none';
   box.style.display='block';return 'blocked';}
  box.style.display='none';return 'hidden';}
