@@ -35,7 +35,7 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError};')();
+  + '\nreturn {LIVE_TOOL, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText};')();
 
 ok('the one tool is ask_lia', P.LIVE_TOOL === 'ask_lia');
 ok('reconnect rule = the server\'s (1s, 2s, 4s; three tries)',
@@ -69,6 +69,9 @@ ok('a user stop is never retried', !P.liveShouldReconnect({ attempt: 0, userStop
 ok('ask_lia with a question runs', JSON.stringify(P.liveToolCall('ask_lia', { question: '  מה  מצב  REAL·LOCATION? ' })) === '{"ok":true,"question":"מה מצב REAL·LOCATION?"}');
 ok('an unknown tool is refused, never run', P.liveToolCall('delete_everything', { question: 'x' }).ok === false && P.liveToolCall('delete_everything', {}).output.error === 'unknown_tool');
 ok('an empty question is refused', P.liveToolCall('ask_lia', {}).output.error === 'empty_question');
+ok('the ear\'s Hebrew is shown as David\'s words', P.liveHeardText('ליה, מה מצב הפרויקט?', 'מה מצב הפרויקט?') === 'ליה, מה מצב הפרויקט?');
+ok('an ear that wrote no Hebrew is replaced by what LIA acted on', P.liveHeardText('Niya, mamycava projekt.', 'ליה, מה מצב הפרויקט?') === 'ליה, מה מצב הפרויקט?');
+ok('…and kept when there is no tool question', P.liveHeardText('Niya, mamycava projekt.', '') === 'Niya, mamycava projekt.');
 ok('latency = end of speech → first sound', P.liveLatency({ speech_stopped: 1000, audio_started: 2750 }) === 1750);
 ok('latency is null without both marks, or out of order', P.liveLatency({ speech_stopped: 1000 }) === null && P.liveLatency({ speech_stopped: 3000, audio_started: 2000 }) === null);
 ok('a refused model is named with the account\'s list — never swapped', /gpt-realtime-2/.test(P.liveMintError({ error: 'mint_failed', reason: 'model_unavailable', model: 'gpt-realtime-2', realtime_models: ['gpt-realtime'] })) && /gpt-realtime\b/.test(P.liveMintError({ reason: 'model_unavailable', model: 'gpt-realtime-2', realtime_models: ['gpt-realtime'] })) && /לא הוחלף/.test(P.liveMintError({ reason: 'model_unavailable' })));
@@ -81,7 +84,7 @@ ok('what goes back to the model is the server\'s voice_output', /output=res\.voi
 ok('the SDP goes to OpenAI with the client secret only', /Authorization:'Bearer '\+mint\.client_secret/.test(live) && !/sk-/.test(live) && !/sk-[A-Za-z0-9_-]{20,}/.test(src));
 ok('the secret is minted by command-center (voice_session), never held in the page', /ccApi\(\{action:'voice_session'\}\)/.test(live) && !/localStorage\.setItem\('[^']*(secret|ek)/.test(live));
 ok('the button exists and starts hidden', /id="live" onclick="liveTap\(\)"[^>]*display:none/.test(html));
-ok('the build is bumped', /const LIA_BUILD='2026-09-04\.2'/.test(src));
+ok('the build is bumped', /const LIA_BUILD='2026-09-04\.3'/.test(src));
 ok('the tap-microphone is shut while live', /function micAllowed\(\)\{return TURN==='IDLE'&&!TTS&&!\(typeof LIVE!=='undefined'&&LIVE\.on\);\}/.test(src));
 ok('the browser speech engine yields while live', /if\(typeof LIVE!=='undefined'&&LIVE\.on\)\{TTS=false;if\(done\)setTimeout\(done,0\);return;\}/.test(src));
 
@@ -139,7 +142,7 @@ async function session(tag, opts = {}) {
     const code = req.headers()['x-fresco-code'] || '';
     calls.push({ ...body, __code: code });
     let json = { ok: true }, status = 200;
-    if (body.action === 'state') json = { queue: [], counts: { active: 0, expired: 0, canonical: 0, pending_notes: 0 }, voice: { available: false }, model: { connected: true, provider: 'openai' }, panel_build_latest: '2026-09-04.2' };
+    if (body.action === 'state') json = { queue: [], counts: { active: 0, expired: 0, canonical: 0, pending_notes: 0 }, voice: { available: false }, model: { connected: true, provider: 'openai' }, panel_build_latest: '2026-09-04.3' };
     else if (body.action === 'voice_session' && body.probe === true) json = { probe: true, model: 'gpt-realtime-2', configured_available: opts.available !== false, realtime_models: ['gpt-realtime-2', 'gpt-realtime'], tool: 'ask_lia' };
     else if (body.action === 'voice_session') {
       if (opts.scoped) { status = 403; json = { error: 'הקוד הזה פתוח לפעולות kernel/state בלבד' }; }
@@ -181,13 +184,14 @@ const stat = (page) => page.textContent('#noteStat');
   await feed(page, { type: 'input_audio_buffer.speech_started' });
   await page.waitForTimeout(20);
   await feed(page, { type: 'input_audio_buffer.speech_stopped' });
-  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'ליה, מה מצב REAL·LOCATION?' });
-  ok('2. what David said is on the screen', await page.evaluate(() => [...document.querySelectorAll('#thread .msg.me .bubble')].some(b => /REAL·LOCATION/.test(b.textContent))));
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'Yeah, mama\'s have the location.' });
+  ok('2. what the ear heard is on the screen at once', await page.evaluate(() => [...document.querySelectorAll('#thread .msg.me .bubble')].some(b => /mama/.test(b.textContent))));
   await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_1', name: 'ask_lia', arguments: JSON.stringify({ question: 'מה מצב REAL·LOCATION?' }) } });
   await page.waitForFunction(() => window.__live.dcs[window.__live.dcs.length - 1].sent.length >= 2, null, { timeout: 5000 });
   const k = calls.filter(c => c.action === 'kernel');
   ok('3. the tool became exactly ONE action:kernel request', k.length === 1, `got ${k.length}`);
   ok('3a. …with the question, voice:true, history, and the same code', k[0] && k[0].body === 'מה מצב REAL·LOCATION?' && k[0].voice === true && Array.isArray(k[0].history) && k[0].__code === 'test-code');
+  ok('2a. a non-Hebrew ear line is replaced by the question LIA acted on', await page.evaluate(() => { const me = SESSION.turns.filter(t => t.role === 'me'); return me.length === 1 && me[0].text === 'מה מצב REAL·LOCATION?'; }));
   const out = sent.find(s => s.type === 'conversation.item.create');
   ok('3b. the function output is the server\'s voice_output, verbatim', !!out && out.item.type === 'function_call_output' && out.item.call_id === 'call_1' && out.item.output === JSON.stringify(KERNEL.voice_output));
   ok('3c. …followed by response.create', sent[sent.indexOf(out) + 1].type === 'response.create');

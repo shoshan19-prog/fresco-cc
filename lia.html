@@ -605,7 +605,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-04.2';
+const LIA_BUILD='2026-09-04.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -2971,6 +2971,14 @@ function liveToolCall(name,args){
  const q=String((args&&args.question)||'').replace(/\s+/g,' ').trim();
  if(!q)return {ok:false,output:{error:'empty_question',message:'לא הועברה שאלה'}};
  return {ok:true,question:q.slice(0,2000)};}
+/* What the screen shows as David's words. The ear (transcription) wins when
+   it heard Hebrew; when it wrote something that is not Hebrew ("Niya,
+   mamycava projekt", measured 4.9) the tool question — the sentence LIA
+   actually acted on — is the honest record. Pure. */
+function liveHeardText(ear,toolQ){
+ const e=String(ear||'').trim(),q=String(toolQ||'').trim();
+ if(/[֐-׿]/.test(e)||!q)return e;
+ return q;}
 /* End of speech → first sound of the reply, in milliseconds. */
 function liveLatency(t){if(!t||!t.speech_stopped||!t.audio_started||t.audio_started<t.speech_stopped)return null;return t.audio_started-t.speech_stopped;}
 /* A refused mint, in David's words — with the provider's evidence attached. */
@@ -2985,7 +2993,7 @@ function liveMintError(j){
 
 const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audio:null,model:'',expires:0,
   attempt:0,userStopped:false,ready:false,speaking:false,interrupted:false,t:{},lat:[],red:null,res:null,
-  timer:null,reconnectTimer:null,tools:0};
+  timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0};
 /* The button appears only when the server can actually mint a session for
    the model David named — a button that fails on tap is worse than none. */
 async function probeLiveVoice(){
@@ -3060,8 +3068,17 @@ function liveOn(ev){
       it had said so far is marked as cut when its transcript lands. */
    if(LIVE.speaking)LIVE.interrupted=true;liveLabel('מקשיבה…');}
   else if(a.kind==='speech_stopped'){if(!LIVE.t.speech_stopped)LIVE.t.speech_stopped=Date.now();liveLabel('חושבת…');}
-  else if(a.kind==='user_said'){addTurn('me',a.text);}
-  else if(a.kind==='tool_call'){liveRunTool(a);}
+  else if(a.kind==='user_said'){
+   /* The ear may land after the tool call: then the question LIA acted on
+      (seconds old) is the record, unless the ear heard Hebrew. */
+   const recent=LIVE.lastQ&&Date.now()-LIVE.lastQAt<15000?LIVE.lastQ:'';
+   addTurn('me',liveHeardText(a.text,recent));LIVE.earIdx=SESSION.turns.length-1;}
+  else if(a.kind==='tool_call'){
+   const d=liveToolCall(a.name,a.args);
+   if(d.ok){LIVE.lastQ=d.question;LIVE.lastQAt=Date.now();
+    const i=LIVE.earIdx;const tr=(i!=null)?SESSION.turns[i]:null;
+    if(tr&&tr.role==='me'&&!/[֐-׿]/.test(tr.text)){tr.text=liveHeardText(tr.text,d.question);saveSession();renderThread();}}
+   liveRunTool(a);}
   else if(a.kind==='audio_started'){
    if(!LIVE.t.audio_started){LIVE.t.audio_started=Date.now();const ms=liveLatency(LIVE.t);if(ms!=null)LIVE.lat.push(ms);
     liveLabel('מדברת'+(ms!=null?' · ⚡ '+(ms/1000).toFixed(1)+' ש׳':''));}
