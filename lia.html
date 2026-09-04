@@ -410,6 +410,8 @@ pre{background:rgba(10,13,24,.8);border-radius:12px;padding:10px;font-size:11px;
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
 #recBar{display:none}
 button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
+button#live.on{background:#1f7a4d;border-color:#1f7a4d;color:#fff}
+button#live.wait{opacity:.6}
 #login{max-width:380px;margin:22vh auto 0}
 #login .brandRow{display:flex;align-items:center;gap:12px;margin-bottom:6px}
 .ansMain{font-size:19px;line-height:1.85}
@@ -525,6 +527,7 @@ button#mic.on{background:#ff4d4f;border-color:#ff4d4f;color:#fff}
   <textarea id="note" rows="1" placeholder="שאל את LIA…"></textarea>
   <button class="ghost" id="clip" onclick="clipTap()" title="צרף תמונה או קובץ">📎</button>
   <button class="ghost" id="mic" onclick="micTap()" style="display:none">🎤</button>
+  <button class="ghost" id="live" onclick="liveTap()" title="שיחה קולית חיה עם LIA" style="display:none">🎧</button>
   <button id="sendBtn" onclick="sendPrimary()" title="שלח">↑</button>
  </div>
  <input type="file" id="filePick" multiple style="display:none">
@@ -602,7 +605,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-04.1';
+const LIA_BUILD='2026-09-04.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -667,7 +670,7 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
- tickClock();loadRails().catch(()=>{});initNotifications();
+ tickClock();loadRails().catch(()=>{});probeLiveVoice().catch(()=>{});initNotifications();
  loadSinceLastHere().catch(()=>{});
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
@@ -1871,7 +1874,9 @@ function setTurn(s){TURN=s;return s;}
 function busy(){return TURN==='PROCESSING'||TURN==='SPEAKING'||TTS;}
 /* The single gate in front of the microphone. Rule 3 lives in the !TTS half:
    while she is speaking the mic cannot open, so she can never hear herself. */
-function micAllowed(){return TURN==='IDLE'&&!TTS;}
+/* 4.9: while the live voice session is on, the tap-microphone stays shut —
+   two ears on one room hear the same sentence twice. */
+function micAllowed(){return TURN==='IDLE'&&!TTS&&!(typeof LIVE!=='undefined'&&LIVE.on);}
 /* One live turn at a time. Returns an id, or null when a turn is already
    running — which is what makes a double tap, a duplicate speech-final event
    and a re-render structurally incapable of producing a second request. */
@@ -2339,6 +2344,7 @@ function recording(){return !!SR||!!(MR&&MR.state==='recording');}
    does nothing, which is the whole of rules 1 and 3 at the door. */
 function micTap(){
  if(recording()){stopRec('user');return;}
+ if(typeof LIVE!=='undefined'&&LIVE.on){stat('שיחה חיה פעילה — לחץ ⏹ לסיים אותה קודם');return;}
  if(!micAllowed()){stat(TTS||TURN==='SPEAKING'?'רגע — אני עוד מדברת. לחץ שוב כשאסיים.':'רגע — אני עוד בודקת.');return;}
  setTurn('LISTENING');
  if(SRC)startSR();else startRecorder();}
@@ -2510,6 +2516,9 @@ function pickVoice(){
      || he[0];}
 function speak(text,done){
  text=speakable(heb(text));LAST_SPOKEN=text;
+ /* ONE VOICE (4.9): while the live voice session is on, the realtime model
+    is LIA's mouth — the browser's speech engine yields, and the turn ends. */
+ if(typeof LIVE!=='undefined'&&LIVE.on){TTS=false;if(done)setTimeout(done,0);return;}
  /* Rule 3, enforced rather than hoped for: nothing is listening while she
     speaks. Not a "pause" — the recognizer is killed, and killed recognizers
     do not submit what they heard. */
@@ -2919,6 +2928,191 @@ function finishAsk(ph,res,spoken,textOverride){
  if(overlapped){setMode('idle');endTurn();}
  else deliverText(spoken);             // → SPEAKING → IDLE. Never → LISTENING.
 }
+
+/* ── LIVE VOICE (David, 4.9): GPT-Realtime as LIA's ears and mouth ─────────
+   Microphone → GPT-Realtime → ask_lia → the SAME action:'kernel' a typed
+   question makes → the existing systems → GPT-Realtime → the speaker.
+   The realtime model is handed exactly one tool and no knowledge of Fresco;
+   every sentence it speaks about the business came back from the kernel with
+   its evidence, through the same code, the same scoped-actions gate and the
+   same authority model as the keyboard. The browser holds only a ten-minute
+   realtime client secret minted by command-center behind the panel's own
+   code — never the OpenAI key. The pure rules come first, so
+   test-voice-live.mjs can run them; the transport follows. */
+const LIVE_URL='https://api.openai.com/v1/realtime/calls';
+const LIVE_TOOL='ask_lia';
+const LIVE_RECONNECT_MAX=3;                      // one rule, shared with the server's voiceSession.ts
+function liveReconnectDelay(a){a=Math.max(1,Math.floor(Number(a)||1));return Math.min(4000,1000*Math.pow(2,a-1));}
+function liveShouldReconnect(st){if(st.userStopped)return false;return (Number(st.attempt)||0)<LIVE_RECONNECT_MAX;}
+/* Which data-channel events matter and what each one means. GA and preview
+   event names are both understood. A function call is reported ONCE per
+   call_id even though the API announces it twice. */
+function liveReduce(ev,st){
+ st=st||{lia:'',calls:{}};st.calls=st.calls||{};
+ const t=(ev&&ev.type)||'';const out=[];
+ const call=(id,name,args)=>{if(!id||st.calls[id])return;st.calls[id]=1;let a={};try{a=typeof args==='string'?(args?JSON.parse(args):{}):(args||{});}catch(e){a={};}out.push({kind:'tool_call',call_id:id,name:String(name||''),args:a});};
+ if(t==='session.created'||t==='session.updated')out.push({kind:'ready'});
+ else if(t==='input_audio_buffer.speech_started')out.push({kind:'speech_started'});
+ else if(t==='input_audio_buffer.speech_stopped'||t==='input_audio_buffer.committed')out.push({kind:'speech_stopped'});
+ else if(t==='conversation.item.input_audio_transcription.completed'){const s=String(ev.transcript||'').trim();if(s)out.push({kind:'user_said',text:s});}
+ else if(t==='response.output_audio_transcript.delta'||t==='response.audio_transcript.delta')st.lia+=String(ev.delta||'');
+ else if(t==='response.output_audio_transcript.done'||t==='response.audio_transcript.done'){const s=String(ev.transcript||st.lia||'').trim();st.lia='';if(s)out.push({kind:'lia_said',text:s});}
+ else if(t==='output_audio_buffer.started'||t==='response.output_audio.delta'||t==='response.audio.delta')out.push({kind:'audio_started'});
+ else if(t==='output_audio_buffer.stopped'||t==='output_audio_buffer.cleared')out.push({kind:'audio_stopped',cleared:/cleared$/.test(t)});
+ else if(t==='response.function_call_arguments.done')call(ev.call_id,ev.name,ev.arguments);
+ else if(t==='response.output_item.done'&&ev.item&&ev.item.type==='function_call')call(ev.item.call_id,ev.item.name,ev.item.arguments);
+ else if(t==='response.done')out.push({kind:'response_done',status:String((ev.response&&ev.response.status)||'')});
+ else if(t==='error')out.push({kind:'error',message:String((ev.error&&ev.error.message)||ev.message||'unknown'),code:String((ev.error&&ev.error.code)||'')});
+ return out;}
+/* The tool gate: the model may ask for exactly one thing, and only with a
+   question in it. Anything else is answered with an error and never run. */
+function liveToolCall(name,args){
+ if(String(name||'')!==LIVE_TOOL)return {ok:false,output:{error:'unknown_tool',message:'הכלי '+String(name||'')+' אינו קיים — רק '+LIVE_TOOL}};
+ const q=String((args&&args.question)||'').replace(/\s+/g,' ').trim();
+ if(!q)return {ok:false,output:{error:'empty_question',message:'לא הועברה שאלה'}};
+ return {ok:true,question:q.slice(0,2000)};}
+/* End of speech → first sound of the reply, in milliseconds. */
+function liveLatency(t){if(!t||!t.speech_stopped||!t.audio_started||t.audio_started<t.speech_stopped)return null;return t.audio_started-t.speech_stopped;}
+/* A refused mint, in David's words — with the provider's evidence attached. */
+function liveMintError(j){
+ j=j||{};
+ if(j.error==='no_key')return 'הקול לא מוגדר בשרת — חסר OPENAI_API_KEY.';
+ if(j.reason==='model_unavailable')return 'המודל '+(j.model||'')+' אינו זמין לחשבון — לא הוחלף מודל. זמינים: '+((j.realtime_models||[]).join(', ')||'אין מודלי realtime')+'.';
+ if(j.reason==='no_api_credit')return 'המפתח תקין, אבל אין יתרה בחשבון OpenAI.';
+ if(j.reason==='bad_key')return 'מפתח OpenAI לא תקף.';
+ if(j.error)return 'הקול נדחה ('+(j.reason||j.error)+'): '+String(j.detail||j.message||'').slice(0,160);
+ return 'הקול לא זמין כרגע.';}
+
+const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audio:null,model:'',expires:0,
+  attempt:0,userStopped:false,ready:false,speaking:false,interrupted:false,t:{},lat:[],red:null,res:null,
+  timer:null,reconnectTimer:null,tools:0};
+/* The button appears only when the server can actually mint a session for
+   the model David named — a button that fails on tap is worse than none. */
+async function probeLiveVoice(){
+ let j=null;try{j=await ccApi({action:'voice_session',probe:true});}catch(e){j=null;}
+ LIVE.probe=j;LIVE.available=!!(j&&j.probe&&j.configured_available);
+ applyLiveVisibility();}
+function applyLiveVisibility(){const b=document.getElementById('live');if(b)b.style.display=(LIVE.available&&window.RTCPeerConnection&&navigator.mediaDevices)?'inline-block':'none';}
+function liveUi(state){
+ const b=document.getElementById('live');
+ if(b){b.classList.toggle('on',state==='on');b.classList.toggle('wait',state==='connecting');
+  b.textContent=state==='on'?'⏹':state==='connecting'?'⏳':'🎧';
+  b.title=state==='on'?'סיים שיחה חיה':state==='connecting'?'מתחברת…':'שיחה קולית חיה עם LIA';}
+ const bar=document.getElementById('recBar');
+ if(state==='off'){if(bar&&!recording())bar.style.display='none';return;}
+ if(bar){bar.style.display='flex';document.getElementById('recTime').textContent='🎧';
+  liveLabel(state==='on'?'שיחה חיה — דבר; לחץ ⏹ לסיום':'מתחברת לקול…');}}
+function liveLabel(s){const l=document.getElementById('recLabel');if(l)l.textContent=s;}
+async function liveTap(){
+ if(LIVE.on||LIVE.pc){liveStop('user');return;}
+ if(recording()){stat('עצור קודם את ההקלטה');return;}
+ if(TTS)shutUp();
+ LIVE.userStopped=false;LIVE.attempt=0;LIVE.lat=[];
+ await liveStart();}
+async function liveStart(){
+ if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.RTCPeerConnection)){stat('הדפדפן לא תומך בשיחה חיה');return;}
+ liveUi('connecting');
+ try{LIVE.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}
+ catch(e){stat(e&&e.name==='NotAllowedError'?'אין הרשאת מיקרופון — אשר בהגדרות הדפדפן':'המיקרופון לא זמין');liveUi('off');return;}
+ /* The speaker element is created inside the tap — autoplay policies
+    require the gesture; the remote track lands on it once the call is up. */
+ if(!LIVE.audio){LIVE.audio=new Audio();LIVE.audio.autoplay=true;}
+ await liveConnect();}
+function liveSend(msg){try{if(LIVE.dc&&LIVE.dc.readyState==='open'){LIVE.dc.send(JSON.stringify(msg));return true;}}catch(e){}return false;}
+async function liveConnect(){
+ let mint;
+ try{mint=await ccApi({action:'voice_session'});}
+ catch(e){liveFail('לא הצלחתי לפתוח קול ('+e.message+')');return;}
+ if(!mint||mint.error||!mint.client_secret){liveFail(liveMintError(mint));return;}
+ LIVE.model=String(mint.model||'');LIVE.expires=Number(mint.expires_at||0)*1000;LIVE.red={lia:'',calls:{}};LIVE.t={};
+ let pc;
+ try{
+  pc=new RTCPeerConnection();LIVE.pc=pc;
+  pc.ontrack=e=>{try{LIVE.audio.srcObject=e.streams[0];const p=LIVE.audio.play();if(p&&p.catch)p.catch(()=>{});}catch(x){}};
+  LIVE.stream.getTracks().forEach(tr=>pc.addTrack(tr,LIVE.stream));
+  const dc=pc.createDataChannel('oai-events');LIVE.dc=dc;
+  dc.onmessage=m=>{let ev;try{ev=JSON.parse(m.data);}catch(e){return;}liveOn(ev);};
+  dc.onopen=()=>{LIVE.ready=true;LIVE.attempt=0;liveUi('on');stat('');};
+  dc.onclose=()=>{if(LIVE.pc===pc&&!LIVE.userStopped)liveDropped('הערוץ נסגר');};
+  pc.onconnectionstatechange=()=>{if(LIVE.pc!==pc)return;const s=pc.connectionState;
+   if(s==='failed'||s==='closed'){if(!LIVE.userStopped)liveDropped(s);}
+   else if(s==='disconnected'){setTimeout(()=>{if(LIVE.pc===pc&&pc.connectionState==='disconnected'&&!LIVE.userStopped)liveDropped('disconnected');},3000);}};
+  const offer=await pc.createOffer();await pc.setLocalDescription(offer);
+  /* The SDP goes to OpenAI with the short-lived client secret only. */
+  let r;
+  try{r=await fetch(LIVE_URL+'?model='+encodeURIComponent(LIVE.model),{method:'POST',
+    headers:{Authorization:'Bearer '+mint.client_secret,'Content-Type':'application/sdp'},body:offer.sdp});}
+  catch(e){liveDropped('רשת: '+e.message);return;}
+  if(!r.ok){const tx=await r.text().catch(()=>'');liveFail('החיבור לקול נדחה ('+r.status+'): '+tx.slice(0,120));return;}
+  await pc.setRemoteDescription({type:'answer',sdp:await r.text()});
+ }catch(e){liveDropped('חיבור: '+(e&&e.message||e));return;}
+ LIVE.on=true;
+ /* The secret expires on its own; the call is renewed before that, on a new
+    secret, so a long conversation never ends on a timer. */
+ clearTimeout(LIVE.timer);
+ const ttl=LIVE.expires-Date.now();
+ if(ttl>0)LIVE.timer=setTimeout(()=>{if(LIVE.on&&!LIVE.userStopped){LIVE.on=false;liveTeardown();liveUi('connecting');liveConnect();}},Math.max(5000,ttl-30000));}
+function liveOn(ev){
+ for(const a of liveReduce(ev,LIVE.red)){
+  if(a.kind==='ready'){LIVE.ready=true;}
+  else if(a.kind==='speech_started'){LIVE.t={speech_started:Date.now()};
+   /* Barge-in: the server stops its own reply the moment David speaks; what
+      it had said so far is marked as cut when its transcript lands. */
+   if(LIVE.speaking)LIVE.interrupted=true;liveLabel('מקשיבה…');}
+  else if(a.kind==='speech_stopped'){if(!LIVE.t.speech_stopped)LIVE.t.speech_stopped=Date.now();liveLabel('חושבת…');}
+  else if(a.kind==='user_said'){addTurn('me',a.text);}
+  else if(a.kind==='tool_call'){liveRunTool(a);}
+  else if(a.kind==='audio_started'){
+   if(!LIVE.t.audio_started){LIVE.t.audio_started=Date.now();const ms=liveLatency(LIVE.t);if(ms!=null)LIVE.lat.push(ms);
+    liveLabel('מדברת'+(ms!=null?' · ⚡ '+(ms/1000).toFixed(1)+' ש׳':''));}
+   LIVE.speaking=true;}
+  else if(a.kind==='audio_stopped'){LIVE.speaking=false;liveLabel('שיחה חיה — דבר; לחץ ⏹ לסיום');}
+  else if(a.kind==='lia_said'){addTurn('lia',(LIVE.interrupted?'(נקטע) ':'')+a.text,LIVE.res);LIVE.res=null;LIVE.interrupted=false;}
+  else if(a.kind==='response_done'){if(a.status==='failed')stat('התשובה הקולית נכשלה — נסה שוב');}
+  else if(a.kind==='error'){stat('שגיאת קול: '+a.message);}
+ }}
+/* THE TOOL: one call, through the kernel, with this panel's own code. The
+   answer the mouth reads is the server's voice_output — LIA's answer and its
+   evidence — never a sentence shaped here. A refused code (401) is what the
+   whole panel does on a refused code: it logs out. */
+async function liveRunTool(a){
+ const d=liveToolCall(a.name,a.args);
+ let output=d.ok?null:d.output;
+ if(d.ok){
+  LIVE.tools++;LIVE.t.tool_started=Date.now();liveLabel('בודקת אצל ליה…');
+  const text=d.question,reqId=uuid();           // the same shape every kernel call in this file has
+  try{
+   const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
+     retracted:retractedForKernel(),request_id:reqId,voice:true});
+   rememberRetracted(res);
+   const shown=unwrapPayload(res);LIVE.res=shown;LAST={q:text,res:shown};
+   output=res.voice_output||{error:'no_voice_output',message:'השרת לא החזיר תשובה קולית'};
+  }catch(e){output={error:e.message==='401'?'unauthorized':'unreachable',
+    message:e.message==='401'?'אין הרשאה — הקוד נדחה':'לא הצלחתי להגיע לליה ('+e.message+')'};}
+  LIVE.t.tool_done=Date.now();
+ }
+ liveSend({type:'conversation.item.create',item:{type:'function_call_output',call_id:a.call_id,output:JSON.stringify(output)}});
+ liveSend({type:'response.create'});}
+function liveTeardown(){
+ clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;
+ const dc=LIVE.dc,pc=LIVE.pc;LIVE.dc=null;LIVE.pc=null;
+ try{if(dc)dc.close();}catch(e){}try{if(pc)pc.close();}catch(e){}
+ if(LIVE.audio){try{LIVE.audio.srcObject=null;}catch(e){}}}
+function liveReleaseMic(){if(LIVE.stream){try{LIVE.stream.getTracks().forEach(t=>t.stop());}catch(e){}LIVE.stream=null;}}
+function liveStop(why){
+ LIVE.userStopped=true;LIVE.on=false;clearTimeout(LIVE.reconnectTimer);LIVE.reconnectTimer=null;
+ liveTeardown();liveReleaseMic();liveUi('off');
+ stat(why==='user'?(LIVE.lat.length?'השיחה הסתיימה · ⚡ ממוצע '+(LIVE.lat.reduce((x,y)=>x+y,0)/LIVE.lat.length/1000).toFixed(1)+' ש׳':''):String(why||''));}
+function liveFail(msg){LIVE.on=false;liveTeardown();liveReleaseMic();liveUi('off');stat(msg);}
+/* A drop David did not ask for: three tries, 1s/2s/4s apart, on a fresh
+   secret each time; then the honest line and the button. */
+function liveDropped(reason){
+ LIVE.on=false;liveTeardown();
+ if(!liveShouldReconnect({attempt:LIVE.attempt,userStopped:LIVE.userStopped})){liveFail('השיחה נותקה ('+reason+') — לחץ 🎧 לחיבור מחדש');return;}
+ LIVE.attempt++;const d=liveReconnectDelay(LIVE.attempt);
+ liveUi('connecting');stat('החיבור נפל ('+reason+') — מתחברת מחדש… ('+LIVE.attempt+'/'+LIVE_RECONNECT_MAX+')');
+ clearTimeout(LIVE.reconnectTimer);
+ LIVE.reconnectTimer=setTimeout(()=>{LIVE.reconnectTimer=null;if(!LIVE.userStopped&&LIVE.stream)liveConnect();},d);}
 
 /* ── the keyless road: the SAME capabilities, called directly ─────────────
    command-center exposes each capability on its own (action:'cap'), so real
