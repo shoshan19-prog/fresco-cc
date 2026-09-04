@@ -106,10 +106,19 @@ check("LIA: the open-orders tile carries David's ruling — total headline, בב
   assert(/סה"כ פתוחות/.test(lia), 'no total line in the detail');
   assert(/r\.open_definition/.test(lia), 'the definition is not surfaced');
 });
-check("LIA: David's 1.9 rulings are recorded on the still-unwired tiles", () => {
+check("LIA: David's rulings are recorded on the tiles' gap details (4.9: unbilled + receivables wired; 1.9: gross profit still honest)", () => {
   const gaps = lia.split('const KPI_GAP_DETAIL')[1].split('};')[0];
-  assert(/לא מציגים חייבים\/פיגור ממקור ישן/.test(gaps), 'the receivables ruling is not recorded');
+  assert(/unbilled:'החוזה מאומת \(הכרעת דוד 4\.9: IVALL=N פעילות בלבד/.test(gaps), 'the unbilled ruling (IVALL=N active only, not leftovers) is not recorded');
+  assert(/receivables:'החוזה מאומת \(הכרעת דוד 4\.9: חשבוניות סופיות פתוחות בפריוריטי/.test(gaps), 'the receivables ruling (open invoices in Priority, customer·amount·age) is not recorded');
   assert(/עד מקור עלות אמין/.test(gaps), 'the gross-profit ruling is not recorded');
+});
+check("LIA: the two scanning KPIs are fetched AFTER the fast tiles paint, and their tiles read the contract rows", () => {
+  assert(/function loadScanKpis\(\)/.test(lia) && /intent:'unbilled'/.test(lia) && /intent:'receivables'/.test(lia), 'the rail never fetches the two contracts');
+  assert(/renderRails\(\);renderKpis\(\);renderOrg\(\);\s*\/\*[\s\S]*?\*\/\s*loadScanKpis\(\);\}/.test(lia), 'the scans must start after the first paint, not inside the blocking Promise.all');
+  assert(/function unbilledKpiText\(/.test(lia) && /function receivablesKpiText\(/.test(lia), 'no headline builders for the two tiles');
+  assert(/unbilledKpiText\(k\.unbilled\)/.test(lia) && /receivablesKpiText\(k\.receivables\)/.test(lia), 'the tiles do not read RAILS.kpis');
+  assert(/r\.excluded\.billed_via_order/.test(lia) && /r\.aging\[b\]/.test(lia) && /בפיגור \(פריוריטי\)/.test(lia), 'the details do not show what was excluded / the aging / Priority\'s own overdue');
+  assert(/function kpiAgeLine\(/.test(lia) && /r\.cached\?'מהמטמון/.test(lia), 'a cached row must say so and how old it is');
 });
 
 // ── YAELI: the microphone and the same non-blocking asks ───────────────────
