@@ -84,7 +84,7 @@ ok('what goes back to the model is the server\'s voice_output', /output=res\.voi
 ok('the SDP goes to OpenAI with the client secret only', /Authorization:'Bearer '\+mint\.client_secret/.test(live) && !/sk-/.test(live) && !/sk-[A-Za-z0-9_-]{20,}/.test(src));
 ok('the secret is minted by command-center (voice_session), never held in the page', /ccApi\(\{action:'voice_session'\}\)/.test(live) && !/localStorage\.setItem\('[^']*(secret|ek)/.test(live));
 ok('the button exists and starts hidden', /id="live" onclick="liveTap\(\)"[^>]*display:none/.test(html));
-ok('the build is bumped', /const LIA_BUILD='2026-09-04\.3'/.test(src));
+ok('the build is bumped', /const LIA_BUILD='2026-09-07\.1'/.test(src));
 ok('the tap-microphone is shut while live', /function micAllowed\(\)\{return TURN==='IDLE'&&!TTS&&!\(typeof LIVE!=='undefined'&&LIVE\.on\);\}/.test(src));
 ok('the browser speech engine yields while live', /if\(typeof LIVE!=='undefined'&&LIVE\.on\)\{TTS=false;if\(done\)setTimeout\(done,0\);return;\}/.test(src));
 
