@@ -73,6 +73,14 @@ async function session(tag) {
   const calls = [];
   await page.route('**/functions/v1/**', async (route) => {
     const body = JSON.parse(route.request().postData() || '{}');
+    /* 7.9: conversation persistence (the canonical cross-device thread) is
+       ambient — every shown turn is queued to the server by design. It is
+       not a QUERY, so the "queried nothing" asserts must not see it. */
+    if (body.action === 'chat_sync' || body.action === 'chat_new') {
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ conversation_id: 'test-conv', messages: [], cursor: '', canon_switched: false }) });
+      return;
+    }
     calls.push(body);
     if (body.action === 'kernel' && hold) return;          // left hanging: the turn stays in PROCESSING
     let json = {};

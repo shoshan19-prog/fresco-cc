@@ -605,7 +605,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-04.3';
+const LIA_BUILD='2026-09-07.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -679,7 +679,14 @@ function boot(st){document.getElementById('login').style.display='none';document
     beat — cross-device state changes (a WORK finished on the computer, an
     alert acknowledged there) do not need 8s freshness to feel live. */
  if(!window._liaRails){window._liaRails=setInterval(()=>{tickClock();loadRails().catch(()=>{});},60000);}
- if(!window._liaState){window._liaState=setInterval(()=>{loadSinceLastHere().catch(()=>{});},60000);}}
+ if(!window._liaState){window._liaState=setInterval(()=>{loadSinceLastHere().catch(()=>{});},60000);}
+ /* Canonical conversation: adopt on boot (with one-time migration of local
+    history), then keep in step — after each send (queueChatTurn), on focus,
+    and on a one-minute beat. */
+ initChatContinuity();
+ if(!window._liaChat){window._liaChat=setInterval(()=>{if(CODE)chatSync().catch(()=>{});},60000);}
+ if(!window._liaChatFocus){window._liaChatFocus=1;
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CODE)chatSync().catch(()=>{});});}}
 let MODEL_ON=false;
 /* One source of truth for connection wording, in David's terms: Fresco LIA runs
    on GPT, so that is what the panel says. The provider adapter underneath still
@@ -738,6 +745,9 @@ function saveSession(){
  for(const s of idx.slice(20))localStorage.removeItem('lia_s_'+s.id);
  jset(SKEY,idx.slice(0,20));}
 function newSession(){localStorage.removeItem(SCUR);openSession();closePanel();
+ /* An explicit "שיחה חדשה" is the ONE way a second thread is born (David,
+    7.9) — the server moves the canonical pointer, both devices follow. */
+ chatNewConversation();
  const ta=document.getElementById('note');if(ta)ta.focus();}
 function renderSessions(){
  const el=document.getElementById('sessions');if(!el)return;
@@ -779,9 +789,13 @@ function addTurn(role,text,res,atts){
  const ex=(role==='me'&&isExecPrompt(text))?execSummaryOf(text):null;
  /* atts = descriptors only, never bytes — localStorage holds a conversation,
     not a file system. The bytes live in ATT_BYTES for this tab only. */
- SESSION.turns.push({role,text:String(text||''),at:Date.now(),res:res||null,
-                     exec:ex||undefined,
-                     atts:(atts&&atts.length)?atts:undefined});
+ const turn={role,text:String(text||''),at:Date.now(),res:res||null,
+             exec:ex||undefined,
+             atts:(atts&&atts.length)?atts:undefined};
+ SESSION.turns.push(turn);
+ /* Every turn a device shows is queued to the canonical conversation —
+    this single funnel is what makes phone and desktop the same LIA. */
+ queueChatTurn(turn);
  if(SESSION.turns.length>60)SESSION.turns=SESSION.turns.slice(-60);
  saveSession();renderThread();
  /* CONTEXTUAL OPEN: only on the turn that just arrived, never on a re-render
@@ -804,6 +818,7 @@ function resolvePendingTurn(ph,text,res){
  const i=SESSION.turns.indexOf(ph);
  if(i<0){addTurn('lia',text,res);return;}
  ph.text=String(text||'');ph.res=res||null;ph.pending=false;ph.at=Date.now();
+ queueChatTurn(ph);   /* the resolved answer reaches the canonical thread too */
  saveSession();renderThread();
  if(typeof maybeAutoOpenCard==='function')maybeAutoOpenCard(i);}
 
@@ -825,6 +840,99 @@ function rememberRetracted(res){
  SESSION.retracted=have.slice(-8);
  saveSession();}
 function retractedForKernel(){return (SESSION.retracted||[]).slice(-8);}
+
+/* ── CROSS-DEVICE CONVERSATION CONTINUITY (David, 7.9) ────────────────────
+   David met two different LIAs — one on the phone, one on the desktop —
+   because the conversation lived ONLY in this browser's localStorage. The
+   fix inverts the ownership: the SERVER holds the one canonical conversation
+   per user (action chat_sync/chat_new in command-center), and localStorage
+   is demoted to a UI cache — instant paint, offline queue, nothing more.
+   Every turn a device shows is queued to the server (idempotent by
+   message_id, so a retry can never duplicate); every sync pulls what the
+   OTHER device said since this device's cursor. Sync runs after each send,
+   on focus, and once a minute — no realtime channel exists in this static
+   page, and a minute is the honest budget. */
+const DEVICE_ID=(function(){try{let d=localStorage.getItem('lia_device');
+ if(!d){d=uuid();localStorage.setItem('lia_device',d);}return d;}catch(e){return 'mem';}})();
+let CHAT=Object.assign({conv:'',cursor:''},jget('lia_chat_state',{}));
+CHAT.outbox=jget('lia_chat_outbox',[]);CHAT.syncing=false;CHAT.timer=0;
+function chatSaveState(){jset('lia_chat_state',{conv:CHAT.conv,cursor:CHAT.cursor});}
+function queueChatTurn(t){
+ if(!t||t.pending||!t.text||t.fromServer)return;
+ t.mid=t.mid||uuid();
+ CHAT.outbox.push({message_id:t.mid,role:t.role==='lia'?'lia':'me',
+  content:String(t.text).slice(0,8000),created_at:new Date(t.at||Date.now()).toISOString()});
+ CHAT.outbox=CHAT.outbox.slice(-100);jset('lia_chat_outbox',CHAT.outbox);
+ /* Debounced: a question and its answer ride one request. */
+ clearTimeout(CHAT.timer);CHAT.timer=setTimeout(()=>{chatSync().catch(()=>{});},400);}
+async function chatSync(migrate){
+ if(CHAT.syncing||!CODE)return;CHAT.syncing=true;
+ try{
+  const push=CHAT.outbox.slice(0,50);
+  const j=await api({action:'chat_sync',device_id:DEVICE_ID,conversation_id:CHAT.conv||'',
+   after:CHAT.cursor||'',messages:push,migrate:!!migrate});
+  if(!j||!j.conversation_id)return;
+  CHAT.outbox=CHAT.outbox.filter(m=>!push.some(p=>p.message_id===m.message_id));
+  jset('lia_chat_outbox',CHAT.outbox);
+  const fresh=!CHAT.conv||CHAT.conv!==j.conversation_id||j.canon_switched;
+  CHAT.conv=j.conversation_id;
+  applyServerMessages(j.messages||[],fresh);
+  if(j.cursor)CHAT.cursor=j.cursor;
+  chatSaveState();
+  if(CHAT.outbox.length)setTimeout(()=>{chatSync().catch(()=>{});},500);
+ }finally{CHAT.syncing=false;}}
+function applyServerMessages(msgs,fresh){
+ if(!msgs.length&&!fresh)return;
+ /* fresh = this device adopts the canonical thread (first sync, or the
+    conversation moved under it). Local rich turn objects (cards, evidence)
+    are kept by message_id — the server text never downgrades a card this
+    device already rendered. A fresh rebuild happens only when the server
+    actually has messages; an empty server never erases a local view. */
+ if(fresh&&msgs.length){
+  const old=new Map(SESSION.turns.filter(t=>t&&t.mid).map(t=>[t.mid,t]));
+  SESSION.turns=msgs.map(m=>old.get(m.message_id)||{role:m.role==='lia'?'lia':'me',
+   text:m.content,at:Date.parse(m.created_at)||Date.now(),res:null,mid:m.message_id,fromServer:true});
+ }else if(msgs.length){
+  const known=new Set(SESSION.turns.map(t=>t&&t.mid).filter(Boolean));
+  for(const m of msgs){
+   if(known.has(m.message_id))continue;
+   SESSION.turns.push({role:m.role==='lia'?'lia':'me',text:m.content,
+    at:Date.parse(m.created_at)||Date.now(),res:null,mid:m.message_id,fromServer:true});
+  }
+ }else return;
+ if(SESSION.turns.length>60)SESSION.turns=SESSION.turns.slice(-60);
+ saveSession();renderThread();}
+async function initChatContinuity(){
+ try{
+  const j=await api({action:'chat_sync',device_id:DEVICE_ID,conversation_id:CHAT.conv||'',
+   after:'',messages:[]});
+  if(!j||!j.conversation_id)return;
+  const serverMsgs=j.messages||[];
+  const fresh=!CHAT.conv||CHAT.conv!==j.conversation_id||j.canon_switched;
+  CHAT.conv=j.conversation_id;
+  /* MIGRATION (one-time per device): local turns that never reached the
+     server — everything from before this feature — are pushed as one
+     chronological batch. Nothing is deleted locally; the archive panel keeps
+     the old sessions. Then the canonical thread (server + migrated) becomes
+     the view. */
+  const unsynced=SESSION.turns.filter(t=>t&&!t.pending&&t.text&&!t.mid&&!t.fromServer).slice(-50);
+  if(unsynced.length){
+   for(const t of unsynced){t.mid=uuid();
+    CHAT.outbox.push({message_id:t.mid,role:t.role==='lia'?'lia':'me',
+     content:String(t.text).slice(0,8000),created_at:new Date(t.at||Date.now()).toISOString()});}
+   jset('lia_chat_outbox',CHAT.outbox);
+   CHAT.cursor='';chatSaveState();
+   await chatSync(true);
+  }else{
+   applyServerMessages(serverMsgs,fresh);
+   if(j.cursor)CHAT.cursor=j.cursor;
+   chatSaveState();
+  }
+ }catch(e){}}
+async function chatNewConversation(){
+ try{const j=await api({action:'chat_new',device_id:DEVICE_ID});
+  if(j&&j.conversation_id){CHAT.conv=j.conversation_id;CHAT.cursor='';chatSaveState();}
+ }catch(e){}}
 function historyForKernel(currentText){
  const out=[];let q=null;
  for(const t of SESSION.turns){
