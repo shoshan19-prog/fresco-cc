@@ -605,7 +605,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-07.1';
+const LIA_BUILD='2026-09-07.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -869,8 +869,18 @@ async function chatSync(migrate){
  if(CHAT.syncing||!CODE)return;CHAT.syncing=true;
  try{
   const push=CHAT.outbox.slice(0,50);
+  /* FORENSIC (7.9): the last sync request/response are kept verbatim-shaped
+     so a real device can report exactly what it sent and what came back. */
+  CHAT.diag=CHAT.diag||{};
+  CHAT.diag.last_req={at:new Date().toISOString(),conversation_id:CHAT.conv||'',
+   after:CHAT.cursor||'',pushed:push.length,migrate:!!migrate};
   const j=await api({action:'chat_sync',device_id:DEVICE_ID,conversation_id:CHAT.conv||'',
    after:CHAT.cursor||'',messages:push,migrate:!!migrate});
+  CHAT.diag.last_resp=j?{at:new Date().toISOString(),conversation_id:j.conversation_id||null,
+   canon_switched:!!j.canon_switched,messages:(j.messages||[]).length,cursor:j.cursor||'',
+   accepted:j.accepted??null,error:j.error||null}:{at:new Date().toISOString(),null_response:true};
+  if(j&&j.canon_switched)CHAT.diag.canon_switched_seen=true;
+  jset('lia_chat_diag',CHAT.diag);
   if(!j||!j.conversation_id)return;
   CHAT.outbox=CHAT.outbox.filter(m=>!push.some(p=>p.message_id===m.message_id));
   jset('lia_chat_outbox',CHAT.outbox);
@@ -921,6 +931,9 @@ async function initChatContinuity(){
     CHAT.outbox.push({message_id:t.mid,role:t.role==='lia'?'lia':'me',
      content:String(t.text).slice(0,8000),created_at:new Date(t.at||Date.now()).toISOString()});}
    jset('lia_chat_outbox',CHAT.outbox);
+   /* FORENSIC (7.9): what this device migrated, kept for the report. */
+   jset('lia_chat_mig',{at:new Date().toISOString(),uploaded:unsynced.length,
+    conv:CHAT.conv,mids:unsynced.slice(0,10).map(t=>t.mid)});
    CHAT.cursor='';chatSaveState();
    await chatSync(true);
   }else{
@@ -928,11 +941,44 @@ async function initChatContinuity(){
    if(j.cursor)CHAT.cursor=j.cursor;
    chatSaveState();
   }
- }catch(e){}}
+ }catch(e){}
+ /* the forensic snapshot rides every boot, after adoption/migration settled */
+ setTimeout(()=>{uploadChatForensic();},1500);}
 async function chatNewConversation(){
  try{const j=await api({action:'chat_new',device_id:DEVICE_ID});
   if(j&&j.conversation_id){CHAT.conv=j.conversation_id;CHAT.cursor='';chatSaveState();}
  }catch(e){}}
+/* ── FORENSIC SELF-REPORT (David, 7.9) ────────────────────────────────────
+   The real phone and the real desktop still diverged after the synthetic
+   acceptance passed. Every boot now uploads this device's full continuity
+   snapshot to the server (action chat_diag), so the two real clients can be
+   compared without David opening developer tools. Read-only about the
+   conversation itself — it changes nothing. */
+async function chatForensicReport(){
+ let sw={supported:'serviceWorker' in navigator,script:null,state:null};
+ try{const reg=await navigator.serviceWorker.getRegistration();
+  if(reg){const w=reg.active||reg.waiting||reg.installing;
+   sw.script=w&&w.scriptURL||null;sw.state=w&&w.state||null;}}catch(e){sw.err=String(e&&e.message||e).slice(0,80);}
+ const turns=SESSION.turns.filter(t=>t&&!t.pending);
+ return {
+  build:LIA_BUILD,device_id:DEVICE_ID,surface:(typeof SURFACE!=='undefined'?SURFACE:null),
+  local_conversation_id:CHAT.conv||'',cursor:CHAT.cursor||'',outbox:CHAT.outbox.length,
+  session_id:(SESSION&&SESSION.id)||null,sessions_in_archive:jget('lia_sessions',[]).length,
+  last_rendered:turns.slice(-10).map(t=>({mid:t.mid||null,role:t.role,at:t.at,
+   head:String(t.text||'').slice(0,40)})),
+  rendered_total:turns.length,
+  service_worker:sw,
+  migration:jget('lia_chat_mig',null),
+  last_req:(CHAT.diag&&CHAT.diag.last_req)||null,
+  last_resp:(CHAT.diag&&CHAT.diag.last_resp)||null,
+  canon_switched_seen:!!(CHAT.diag&&CHAT.diag.canon_switched_seen),
+  page_loaded_at:new Date().toISOString(),
+ };}
+async function uploadChatForensic(){
+ try{const rep=await chatForensicReport();
+  await api({action:'chat_diag',device_id:DEVICE_ID,report:rep});
+ }catch(e){}}
+if(typeof window!=='undefined')window.chatForensic=uploadChatForensic;
 function historyForKernel(currentText){
  const out=[];let q=null;
  for(const t of SESSION.turns){
