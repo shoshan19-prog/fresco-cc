@@ -550,6 +550,7 @@ button#live.wait{opacity:.6}
 <div class="row" style="justify-content:space-between;margin:0">
  <b>LIA — הגדרות ופנקס</b><button class="ghost" onclick="closePanel()">סגור</button></div>
 <p class="dim" id="sub" style="margin-top:6px">הפנקס של דוד</p>
+<p class="dim" id="chatSyncStat" style="margin-top:2px;font-size:11px"></p>
 
 <div class="card"><b>שיחות קודמות</b><div id="sessions" style="margin-top:8px"></div></div>
 
@@ -605,7 +606,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-07.2';
+const LIA_BUILD='2026-09-08.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -684,9 +685,11 @@ function boot(st){document.getElementById('login').style.display='none';document
     history), then keep in step — after each send (queueChatTurn), on focus,
     and on a one-minute beat. */
  initChatContinuity();
- if(!window._liaChat){window._liaChat=setInterval(()=>{if(CODE)chatSync().catch(()=>{});},60000);}
+ if(!window._liaChat){window._liaChat=setInterval(()=>{if(CODE){chatSync().catch(()=>{});
+  if(!(CHAT.diag&&CHAT.diag.uploaded_ok))uploadChatForensic();}},60000);}
  if(!window._liaChatFocus){window._liaChatFocus=1;
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CODE)chatSync().catch(()=>{});});}}
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CODE){chatSync().catch(()=>{});
+   if(!(CHAT.diag&&CHAT.diag.uploaded_ok))uploadChatForensic();}});}}
 let MODEL_ON=false;
 /* One source of truth for connection wording, in David's terms: Fresco LIA runs
    on GPT, so that is what the panel says. The provider adapter underneath still
@@ -865,6 +868,26 @@ function queueChatTurn(t){
  CHAT.outbox=CHAT.outbox.slice(-100);jset('lia_chat_outbox',CHAT.outbox);
  /* Debounced: a question and its answer ride one request. */
  clearTimeout(CHAT.timer);CHAT.timer=setTimeout(()=>{chatSync().catch(()=>{});},400);}
+/* ── VISIBLE CONTINUITY DIAGNOSTIC (David, 8.9) ───────────────────────────
+   The real desktop provably ran build .2 while the canonical conversation
+   stayed empty and no self-report ever landed — every failure path was a
+   silent catch{}. This strip puts the truth on the SCREEN: which build this
+   device runs, which conversation it holds, and the exact error when sync or
+   the report upload fails. Temporary forensic instrumentation, not a feature. */
+function paintChatStat(){
+ try{
+  const el=document.getElementById('chatSyncStat');if(!el)return;
+  const d=CHAT.diag||{};
+  let s='שיחה · build '+LIA_BUILD+' · מכשיר '+String(DEVICE_ID).slice(0,8)
+    +' · conv '+(CHAT.conv?String(CHAT.conv).slice(0,8):'—');
+  if(d.last_resp&&!d.last_resp.null_response&&typeof d.last_resp.messages==='number')
+   s+=' · '+d.last_resp.messages+' הודעות מהשרת';
+  const err=d.sync_err||d.init_err;
+  if(err)s='⚠ סנכרון שיחה נכשל: '+String(err.err||'').slice(0,80)+' · build '+LIA_BUILD;
+  if(d.upload_err)s+=' · ⚠ דוח אבחון לא עלה: '+String(d.upload_err.err||'').slice(0,60);
+  else if(d.uploaded_ok)s+=' · דוח אבחון עלה ✓';
+  el.textContent=s;
+ }catch(e){}}
 async function chatSync(migrate){
  if(CHAT.syncing||!CODE)return;CHAT.syncing=true;
  try{
@@ -888,9 +911,14 @@ async function chatSync(migrate){
   CHAT.conv=j.conversation_id;
   applyServerMessages(j.messages||[],fresh);
   if(j.cursor)CHAT.cursor=j.cursor;
+  delete CHAT.diag.sync_err;jset('lia_chat_diag',CHAT.diag);
   chatSaveState();
   if(CHAT.outbox.length)setTimeout(()=>{chatSync().catch(()=>{});},500);
- }finally{CHAT.syncing=false;}}
+ }catch(e){
+  CHAT.diag=CHAT.diag||{};
+  CHAT.diag.sync_err={at:new Date().toISOString(),err:String(e&&e.message||e).slice(0,200)};
+  try{jset('lia_chat_diag',CHAT.diag);}catch(_){}
+ }finally{CHAT.syncing=false;paintChatStat();}}
 function applyServerMessages(msgs,fresh){
  if(!msgs.length&&!fresh)return;
  /* fresh = this device adopts the canonical thread (first sync, or the
@@ -941,7 +969,12 @@ async function initChatContinuity(){
    if(j.cursor)CHAT.cursor=j.cursor;
    chatSaveState();
   }
- }catch(e){}
+ }catch(e){
+  CHAT.diag=CHAT.diag||{};
+  CHAT.diag.init_err={at:new Date().toISOString(),err:String(e&&e.message||e).slice(0,200)};
+  try{jset('lia_chat_diag',CHAT.diag);}catch(_){}
+ }
+ paintChatStat();
  /* the forensic snapshot rides every boot, after adoption/migration settled */
  setTimeout(()=>{uploadChatForensic();},1500);}
 async function chatNewConversation(){
@@ -972,12 +1005,22 @@ async function chatForensicReport(){
   last_req:(CHAT.diag&&CHAT.diag.last_req)||null,
   last_resp:(CHAT.diag&&CHAT.diag.last_resp)||null,
   canon_switched_seen:!!(CHAT.diag&&CHAT.diag.canon_switched_seen),
+  sync_err:(CHAT.diag&&CHAT.diag.sync_err)||null,
+  init_err:(CHAT.diag&&CHAT.diag.init_err)||null,
+  upload_err:(CHAT.diag&&CHAT.diag.upload_err)||null,
   page_loaded_at:new Date().toISOString(),
  };}
 async function uploadChatForensic(){
  try{const rep=await chatForensicReport();
   await api({action:'chat_diag',device_id:DEVICE_ID,report:rep});
- }catch(e){}}
+  CHAT.diag=CHAT.diag||{};CHAT.diag.uploaded_ok=new Date().toISOString();
+  delete CHAT.diag.upload_err;try{jset('lia_chat_diag',CHAT.diag);}catch(_){}
+ }catch(e){
+  CHAT.diag=CHAT.diag||{};
+  CHAT.diag.upload_err={at:new Date().toISOString(),err:String(e&&e.message||e).slice(0,200)};
+  try{jset('lia_chat_diag',CHAT.diag);}catch(_){}
+ }
+ paintChatStat();}
 if(typeof window!=='undefined')window.chatForensic=uploadChatForensic;
 function historyForKernel(currentText){
  const out=[];let q=null;
