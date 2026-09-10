@@ -140,14 +140,38 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .orgWrap summary .car{font-size:13px;transition:transform .18s}
 .orgWrap[open] summary .car{transform:rotate(90deg)}
 .orgList{margin-top:12px;display:flex;flex-direction:column;gap:0}
-.orgItem{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+/* ORGANIZATION rows (David, 10.9): the WHOLE row is a navigation target, not
+   the dot. Same affordance language as the header above (bg swap on hover),
+   the global pressed scale, a visible keyboard focus ring. Negative margin
+   offsets the added side padding so the resting box is unchanged. */
+.orgItem{display:flex;align-items:center;gap:9px;padding:9px 6px;margin:0 -6px;border-top:1px solid var(--line);
+ font-size:13px;cursor:pointer;border-radius:var(--rs);user-select:none;
+ transition:background .15s ease,color .15s ease,transform .1s ease}
 .orgItem:first-child{border-top:0}
+.orgItem:hover{background:var(--card2);color:var(--txt)}
+.orgItem:active{transform:scale(.985)}
+.orgItem:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.orgItem[data-open="true"]{background:var(--card2)}
 .orgItem .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--dim)}
 .orgItem.s-LIVE .dot{background:var(--ok,#4caf82)}
 .orgItem.s-HIDDEN .dot,.orgItem.s-MISSING .dot{background:var(--warn,#e0a63c)}
 .orgItem.s-BLOCKED .dot{background:#ff6b6b}
 .orgItem .nm{flex:1;min-width:0}
 .orgItem .met{font-size:11.5px;color:var(--dim);white-space:nowrap}
+.orgItem .orgChev{flex:0 0 auto;font-size:12px;color:var(--dim);transition:transform .18s}
+.orgItem[data-open="true"] .orgChev{transform:rotate(90deg)}
+/* Touch: a ~44px tap target wherever a finger is the pointer. */
+@media(pointer:coarse){.orgItem{min-height:44px}}
+/* Inline detail — the department's own state/metrics/stuck/next/commands from
+   the SAME tower payload the row is drawn from; one line-builder shared with
+   the phone drawer, never a second copy of the Control Tower. */
+.orgDetail{display:none;margin:0 -6px 2px;padding:8px 6px 10px 23px;font-size:11.5px;line-height:1.55;color:var(--dim)}
+.orgDetail.on{display:block}
+.orgDetail p{margin:0 0 3px}
+.orgDetail b{color:var(--txt);font-weight:600}
+.orgDetail .stuck{color:#ff6b6b}
+.orgDetail .ceo{color:var(--warn,#e0a63c);font-weight:600}
+.orgDetail .cmds{direction:ltr;text-align:right;word-break:break-all;opacity:.8}
 
 /* PRIORITIES — ranked, compact, never a wall */
 .prio{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:13.5px;
@@ -611,7 +635,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-10.1';
+const LIA_BUILD='2026-09-10.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -676,7 +700,7 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
- tickClock();loadRails().catch(()=>{});probeLiveVoice().catch(()=>{});initNotifications();
+ tickClock();loadRails().catch(()=>{}).then(bootOrgRoute);probeLiveVoice().catch(()=>{});initNotifications();
  loadSinceLastHere().catch(()=>{});
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
@@ -1861,8 +1885,51 @@ function renderActiveWork(row){
  setRailSummary('activeWorkSummary',running.length+' פעילות');
 }
 /* ackAlert already exists (compact-strip detail list) — reused here verbatim. */
+/* ── ORGANIZATION ROUTES (David, 10.9) ──────────────────────────────────
+   ONE table, keyed by the department's STABLE backend key (DEPTS in
+   command-center — the id every row already carries), never by its label.
+   Two route kinds, both EXISTING surfaces — nothing new is built:
+     kpi — the department already has a card on this page (מכירות → the
+           sales_today KPI tile): open/expand that tile and scroll to it.
+     org — no separate screen exists (and none is created): open the
+           department's OWN detail that the tower payload already carries
+           (state · metrics · stuck · next · ceo · commands) — inline under the
+           row on the desktop rail, in the shared drawer on the phone.
+   David's semantic names: content_marketing = branding · finance = capital.
+   Deep-link: #org/<key> — pushed on open, so Back closes; bookmarkable. */
+const ORGANIZATION_ROUTES={
+ branding:   {kind:'org',key:'branding'},     // שיווק תוכן (content_marketing)
+ marketing:  {kind:'org',key:'marketing'},    // שיווק
+ advertising:{kind:'org',key:'advertising'},  // פרסום
+ sales:      {kind:'kpi',key:'sales_today'},  // מכירות → the existing KPI tile
+ purchasing: {kind:'org',key:'purchasing'},   // רכש
+ operations: {kind:'org',key:'operations'},   // תפעול
+ rnd:        {kind:'org',key:'rnd'},          // מו"פ
+ capital:    {kind:'org',key:'capital'},      // כספים (finance)
+};
 const DEPT_LABEL={branding:'שיווק תוכן',marketing:'שיווק',advertising:'פרסום',sales:'מכירות',
  purchasing:'רכש',operations:'תפעול',rnd:'מו"פ',capital:'כספים'};
+const ORG_STATE_HE={LIVE:'חי',HIDDEN:'קיים ולא חשוף',BLOCKED:'חסום',MISSING:'חסר'};
+let ORG_OPEN='';
+function orgHashKey(){const m=/^#org\/([a-z_]+)$/.exec(location.hash||'');return m?m[1]:'';}
+function orgDept(key){return (RAILS.org||[]).find(d=>d&&d.key===key)||null;}
+/* One line-builder for both surfaces (inline + drawer) — the Control Tower's
+   own department card (index.html renderTower): same fields, same wording. */
+function orgDetailLines(key){
+ const d=orgDept(key);
+ if(!d)return ['<p class="dim">מצב המחלקה עדיין לא נטען.</p>'];
+ const lines=['<p><b>מצב:</b> '+esc(ORG_STATE_HE[d.state]||d.state||'')+'</p>'];
+ for(const m of (d.metrics||[])){
+  const v=(m.value==='MISSING'||m.value==='לא-מדיד')?'לא-מדיד':m.value;
+  lines.push('<p><b>'+esc(String(m.label||''))+':</b> '+esc(String(v))+'</p>');
+ }
+ if(d.stuck)lines.push('<p class="stuck">תקוע: '+esc(d.stuck)+'</p>');
+ if(d.next)lines.push('<p>הבא: '+esc(d.next)+'</p>');
+ if(d.ceo)lines.push('<p class="ceo">דורש החלטה שלך: '+esc(d.ceo)+'</p>');
+ if(d.note)lines.push('<p class="dim">'+esc(d.note)+'</p>');
+ if((d.cmds||[]).length)lines.push('<p class="cmds">'+esc(d.cmds.join(' · '))+'</p>');
+ return lines;
+}
 function renderOrg(){
  const el=document.getElementById('orgList');if(!el)return;
  const list=RAILS.org;
@@ -1870,11 +1937,103 @@ function renderOrg(){
  el.innerHTML=list.map(d=>{
   const m=(d.metrics||[])[0];
   const metTxt=m?(m.value+' '+m.label):'';
-  return '<div class="orgItem s-'+esc(d.state||'')+'"><span class="dot"></span>'
+  const r=ORGANIZATION_ROUTES[d.key]||{kind:'org',key:d.key};
+  const inline=r.kind==='org';
+  /* data-org only — the row carries its route id, never its own navigation. */
+  return '<div class="orgItem s-'+esc(d.state||'')+'" data-org="'+esc(d.key)+'" role="button" tabindex="0"'
+   +(inline?' aria-expanded="false" aria-controls="orgDetail_'+esc(d.key)+'"':'')
+   +'><span class="dot"></span>'
    +'<span class="nm">'+esc(DEPT_LABEL[d.key]||d.name)+'</span>'
-   +'<span class="met">'+esc(metTxt)+'</span></div>';
+   +'<span class="met">'+esc(metTxt)+'</span><span class="orgChev" aria-hidden="true">▸</span></div>'
+   +(inline?'<div class="orgDetail" id="orgDetail_'+esc(d.key)+'"></div>':'');
  }).join('');
+ /* the rail re-renders every refresh — what the URL says is open stays open */
+ const k=orgHashKey();
+ if(k&&ORGANIZATION_ROUTES[k]&&ORGANIZATION_ROUTES[k].kind==='org')showOrgInline(k,false);
 }
+function showOrgInline(key,scroll){
+ const row=document.querySelector('.orgItem[data-org="'+key+'"]');
+ const det=document.getElementById('orgDetail_'+key);
+ if(!row||!det)return false;
+ document.querySelectorAll('.orgItem[data-open="true"]').forEach(r=>{
+  if(r!==row){r.setAttribute('data-open','false');r.setAttribute('aria-expanded','false');}});
+ document.querySelectorAll('.orgDetail.on').forEach(x=>{if(x!==det)x.classList.remove('on');});
+ det.innerHTML=orgDetailLines(key).join('');det.classList.add('on');
+ row.setAttribute('data-open','true');row.setAttribute('aria-expanded','true');
+ const wrap=document.getElementById('orgWrap');if(wrap&&!wrap.open)wrap.open=true;
+ if(scroll)row.scrollIntoView({block:'center',behavior:'smooth'});
+ return true;
+}
+/* The phone never runs loadRails (no rail) — a deep-link there fetches the
+   SAME tower read the desktop rail uses, once, on demand. */
+async function ensureOrgData(){
+ if(RAILS.org&&RAILS.org.length)return;
+ const tw=await ccApi({action:'tower'}).catch(()=>null);
+ RAILS.org=(tw&&tw.departments)||null;
+}
+function collapseOrgInline(){
+ document.querySelectorAll('.orgItem[data-open="true"]').forEach(r=>{
+  r.setAttribute('data-open','false');r.setAttribute('aria-expanded','false');});
+ document.querySelectorAll('.orgDetail.on').forEach(x=>x.classList.remove('on'));
+}
+/* THE one resolver every row goes through. History model: the FIRST department
+   opened pushes one entry; switching departments replaces it — so Back always
+   returns to the page exactly as it was before the ORGANIZATION navigation
+   began, never through a stack of departments. */
+async function openOrgRoute(key,opts){
+ opts=opts||{};
+ const r=ORGANIZATION_ROUTES[key];if(!r)return;
+ if(!opts.fromHistory&&location.hash!=='#org/'+key){
+  try{
+   if(orgHashKey())history.replaceState({org:key},'','#org/'+key);
+   else history.pushState({org:key},'','#org/'+key);
+  }catch(e){}
+ }
+ collapseOrgInline();
+ ORG_OPEN=key;
+ if(r.kind==='kpi'){openKpiDetail(r.key);return;}
+ if(railsOn()){
+  if(!showOrgInline(key,true)){await ensureOrgData();renderOrg();showOrgInline(key,true);}
+  return;
+ }
+ await ensureOrgData();
+ openDrawer(orgDetailLines(key).join(''),DEPT_LABEL[key]||key);
+}
+function closeOrgDetail(){
+ collapseOrgInline();
+ if(ORG_OPEN&&!railsOn())closeEv();
+ ORG_OPEN='';
+}
+/* Leave an open route the way it was entered: Back when we pushed the entry,
+   a plain close + clean URL when the page was opened straight on the link. */
+function leaveOrg(){
+ if(history.state&&history.state.org){history.back();return;}
+ closeOrgDetail();
+ try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+}
+/* Delegated handlers — Enter / Space activate exactly like a click. */
+(function wireOrgList(){
+ const el=document.getElementById('orgList');if(!el)return;
+ const keyOf=e=>{const row=e.target&&e.target.closest?e.target.closest('.orgItem[data-org]'):null;return row?row.getAttribute('data-org'):'';};
+ const act=(e)=>{const k=keyOf(e);if(!k)return;e.preventDefault();
+  const r=ORGANIZATION_ROUTES[k];
+  if(ORG_OPEN===k&&r&&r.kind==='org'){leaveOrg();return;}
+  openOrgRoute(k);};
+ el.addEventListener('click',act);
+ el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')act(e);});
+})();
+/* Back / forward: the hash IS the state. Leaving #org/<key> closes; landing
+   on one opens it — a deep-link on first load and on the phone included. */
+window.addEventListener('popstate',()=>{
+ const k=orgHashKey();
+ if(k&&ORGANIZATION_ROUTES[k])openOrgRoute(k,{fromHistory:true});else if(ORG_OPEN)closeOrgDetail();});
+/* Closing the drawer by hand (scrim / סגור) must not leave a lying URL. */
+(function syncOrgOnDrawerClose(){
+ const fix=()=>{if(ORG_OPEN&&orgHashKey()===ORG_OPEN&&!railsOn())leaveOrg();};
+ const sc=document.getElementById('evScrim');if(sc)sc.addEventListener('click',fix);
+ const btn=document.querySelector('#evHead button');if(btn)btn.addEventListener('click',fix);
+})();
+function bootOrgRoute(){const k=orgHashKey();if(k&&ORGANIZATION_ROUTES[k])openOrgRoute(k,{fromHistory:true});}
 function renderThread(){
  const el=document.getElementById('thread');if(!el)return;
  const stick=nearBottom();
