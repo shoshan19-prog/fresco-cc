@@ -62,7 +62,18 @@ async function device(tag, preSeed) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${tag} pageerror: ${e.message}`));
   await page.route('**/functions/v1/**', async (route) => {
+    const url = route.request().url();
     const body = JSON.parse(route.request().postData() || '{}');
+    // MIRROR PRODUCTION (10.9): chat_sync/chat_new/chat_diag exist ONLY on
+    // command-center. The real `lia` function answers them "unknown action",
+    // 400, plain text — this is the exact shape that let the wrong-endpoint
+    // bug (api() instead of ccApi()) ship silently: a route that answered
+    // every /functions/v1/** URL identically, by action alone, could never
+    // catch a client that knocked on the wrong door.
+    if (['chat_sync', 'chat_new', 'chat_diag'].includes(body.action) && !url.includes('/command-center')) {
+      await route.fulfill({ status: 400, contentType: 'text/plain', body: 'unknown action' });
+      return;
+    }
     let json = { ok: true };
     if (body.action === 'state') json = { ok: true, items: [], objects: [], queue: [], model: true,
       counts: { active: 0, canonical: 0, pending_notes: 0, expired: 0 } };
@@ -153,6 +164,9 @@ ok('server turns are never re-queued (no echo loop)', /t\.fromServer\)return/.te
 ok('sync runs after send, on focus, and on a beat',
   /visibilitychange/.test(SRC) && /_liaChat=setInterval/.test(SRC) && /CHAT\.timer=setTimeout/.test(SRC));
 ok('an empty server never erases a local view', /an empty server never erases a local view/.test(SRC));
+ok('chat_sync/chat_new/chat_diag are sent via ccApi (command-center) — the lia function has no such action',
+  /ccApi\(\{action:'chat_sync'/.test(SRC) && /ccApi\(\{action:'chat_new'/.test(SRC) && /ccApi\(\{action:'chat_diag'/.test(SRC)
+  && !/[^c]api\(\{action:'chat_(sync|new|diag)'/.test(SRC));
 
 await browser.close();
 console.log(`${total - bad}/${total} chat-sync asserts passed`);
