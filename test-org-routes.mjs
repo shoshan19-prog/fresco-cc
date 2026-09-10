@@ -25,7 +25,12 @@ const DEPARTMENTS = [
   { key: 'branding', name: 'מיתוג', state: 'HIDDEN', metrics: [M('נכסי מותג שנוצרו', 18)], stuck: '', next: 'לחשוף את council', ceo: null, cmds: ['council'], note: 'n' },
   { key: 'marketing', name: 'שיווק', state: 'HIDDEN', metrics: [M('פרויקטים', 3)], stuck: 'הזדמנות אחת בלבד', next: 'להריץ opps', ceo: 'איזה שוק פעיל', cmds: ['opps'], note: 'n' },
   { key: 'advertising', name: 'פרסום', state: 'MISSING', metrics: [M('קמפיינים', 'MISSING')], stuck: 'אין מנוע פרסום', next: 'מחוץ ל-V1', ceo: 'גישה לחשבונות', cmds: ['wp'], note: 'n' },
-  { key: 'sales', name: 'מכירות', state: 'LIVE', metrics: [M('הזמנות החודש', 81)], stuck: 'כרטיסי-שיחה', next: 'dormant', ceo: 'האצלה לסוכן', cmds: ['dormant'], note: 'n' },
+  /* sales carries the server's `management` block (10.9); the others do not —
+     the panel must build the same eight fields from what they carry. */
+  { key: 'sales', name: 'מכירות', state: 'LIVE', metrics: [M('הזמנות החודש', 81)], stuck: 'כרטיסי-שיחה', next: 'dormant', ceo: 'האצלה לסוכן', cmds: ['dormant'], note: 'n',
+    management: { status: 'LIVE', goal: null, owner: null, kpi: [M('הזמנות החודש', 81)],
+      active_work: { count: 2, top: [{ id8: 'ac70431b', status: 'RUNNING', head: '31 תעודות המשלוח שלא חויבו' }] },
+      blocker: 'כרטיסי-שיחה', next_action: 'dormant', needs_david: 'האצלה לסוכן' } },
   { key: 'purchasing', name: 'רכש', state: 'MISSING', metrics: [M('ספקים בפנקס', 'MISSING')], stuck: 'יכולת אחת', next: 'מחוץ ל-V1 במפורש', ceo: null, cmds: ['import_independence'], note: 'n' },
   { key: 'operations', name: 'ייצור ותפעול', state: 'LIVE', metrics: [M('תעודות משלוח', 43580)], stuck: null, next: 'סנכרון אינקרמנטלי', ceo: null, cmds: ['sync'], note: 'n' },
   { key: 'rnd', name: 'מו"פ', state: 'HIDDEN', metrics: [M('נכסי ידע', 12)], stuck: 'דרגת "מוכח" חסומה', next: 'להריץ completeness', ceo: 'תעודת תקן חתומה', cmds: ['lab'], note: 'n' },
@@ -80,9 +85,12 @@ ok('ORGANIZATION_ROUTES is one table with exactly the eight keys', table.join(',
 await d.page.click('.orgItem[data-org="rnd"] .nm');
 await d.page.waitForTimeout(150);
 ok('clicking the row text opens the department', await openRow(d.page, 'rnd'));
-ok('the detail is real content from the tower payload',
-  /תקוע: דרגת "מוכח" חסומה/.test(await d.page.$eval('#orgDetail_rnd', (x) => x.textContent)) &&
-  /הבא: להריץ completeness/.test(await d.page.$eval('#orgDetail_rnd', (x) => x.textContent)));
+const rndTxt = await d.page.$eval('#orgDetail_rnd', (x) => x.textContent);
+ok('the detail is real content from the tower payload, on the management fields',
+  /חסם: דרגת "מוכח" חסומה/.test(rndTxt) && /הפעולה הבאה: להריץ completeness/.test(rndTxt) && /דורש דוד: תעודת תקן חתומה/.test(rndTxt), rndTxt.slice(0, 220));
+ok('the eight management fields render in David\'s order, even without a server `management` block',
+  /מצב:[\s\S]*מטרה:[\s\S]*אחראי:[\s\S]*KPI:[\s\S]*עבודה פעילה:[\s\S]*חסם:[\s\S]*הפעולה הבאה:[\s\S]*דורש דוד:/.test(rndTxt), rndTxt.slice(0, 220));
+ok('fields the system does not hold say לא מוגדר (goal, owner, active work here)', (rndTxt.match(/לא מוגדר/g) || []).length >= 3, rndTxt);
 ok('the route id is a stable deep-link', await hash(d.page) === '#org/rnd', await hash(d.page));
 ok('the ORGANIZATION card is open so the row is visible', await d.page.$eval('#orgWrap', (x) => x.open));
 const inView = await d.page.$eval('.orgItem[data-org="rnd"]', (x) => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
@@ -112,15 +120,16 @@ ok('Space opens the focused row', await openRow(d.page, 'operations'));
 ok('opening another row closes the previous one (single open detail)', !(await openRow(d.page, 'marketing')) && (await openDetails(d.page)) === 1);
 ok('a focus ring is defined for keyboard users', /\.orgItem:focus-visible\{outline/.test(SRC));
 
-// ── 3 + 5: sales → the EXISTING KPI tile on this page, expanded + scrolled ──
+// ── 3 + 5 (10.9): מכירות opens the SAME management card as every department ──
 await d.page.click('.orgItem[data-org="sales"]');
-await d.page.waitForTimeout(400);
-const tile = await d.page.$eval('.kpiTile[data-kpi="sales_today"]', (x) => ({
-  open: x.getAttribute('data-open'), inView: (() => { const r = x.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })() }));
-ok('מכירות routes to the existing sales_today KPI tile and expands it', tile.open === 'true', JSON.stringify(tile));
-ok('the KPI tile is scrolled into view', tile.inView);
-ok('the sales route is a deep-link too', await hash(d.page) === '#org/sales');
-ok('no second sales screen was created', (await d.page.$$eval('.kpiTile[data-kpi="sales_today"]', (xs) => xs.length)) === 1 && (await openDetails(d.page)) === 0);
+await d.page.waitForTimeout(200);
+const salesTxt = await d.page.$eval('#orgDetail_sales', (x) => x.textContent);
+ok('מכירות opens inline like every other department, as a deep-link', await openRow(d.page, 'sales') && (await hash(d.page)) === '#org/sales', await hash(d.page));
+ok('the management card carries the server block: status, KPI, blocker, next action, needs David',
+  /מצב: חי/.test(salesTxt) && /הזמנות החודש: 81/.test(salesTxt) && /חסם: כרטיסי-שיחה/.test(salesTxt) && /הפעולה הבאה: dormant/.test(salesTxt) && /דורש דוד: האצלה לסוכן/.test(salesTxt), salesTxt.slice(0, 260));
+ok('goal and owner — which no system holds — say לא מוגדר, not a guess', (salesTxt.match(/לא מוגדר/g) || []).length === 2, salesTxt);
+ok('active work is real package data, never project-map prose', /2 חבילות/.test(salesTxt) && /ac70431b · RUNNING/.test(salesTxt) && !/פרויקטים תקועים|מפת הפרויקטים/.test(salesTxt), salesTxt);
+ok('no second sales screen was created', (await openDetails(d.page)) === 1);
 
 // ── the rail re-renders every minute — the open detail must survive ─────────
 await d.page.click('.orgItem[data-org="capital"]');
@@ -149,11 +158,26 @@ await dl.ctx.close();
    A deep-link as the tab's very first entry has nothing before it; Back there
    leaves the page, which is the browser's own correct behavior. */
 const m = await device({ tag: 'phone', ctx: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } });
+/* 10.9: ORGANIZATION renders on the phone DIRECTLY — no deep-link needed. */
+await m.page.waitForSelector('#orgListMobile .orgItem[data-org]', { timeout: 5000 }).catch(() => {});
+const mobileRows = await m.page.$$eval('#orgListMobile .orgItem', (xs) => xs.map((x) => x.getAttribute('data-org'))).catch(() => []);
+ok('ORGANIZATION is visible on the phone without any deep-link, with the eight rows',
+  (await m.page.$eval('#orgMobile', (x) => getComputedStyle(x).display !== 'none')) && mobileRows.join(',') === KEYS.join(','), mobileRows.join(','));
+ok('the desktop rail is NOT rendered on the phone (one card, two homes, no duplicate screens)', (await m.page.$$eval('#orgList .orgItem', (xs) => xs.length)) === 0);
+await m.page.tap('#orgListMobile .orgItem[data-org="sales"]');
+await m.page.waitForSelector('#evDrawer.on', { timeout: 5000 }).catch(() => {});
+const mBody = await m.page.$eval('#evBody', (x) => x.textContent);
+ok('tapping a department opens the drawer titled with it', (await m.page.$eval('#evHead b', (x) => x.textContent)) === 'מכירות');
+ok('the drawer shows the management fields', /מצב:[\s\S]*מטרה:[\s\S]*אחראי:[\s\S]*KPI:[\s\S]*עבודה פעילה:[\s\S]*חסם:[\s\S]*הפעולה הבאה:[\s\S]*דורש דוד:/.test(mBody) && /ac70431b/.test(mBody), mBody.slice(0, 200));
+ok('the tap is a deep-link too', (await hash(m.page)) === '#org/sales');
+await m.page.goBack(); await m.page.waitForTimeout(150);
+ok('Back closes the drawer after a tap', !(await m.page.$eval('#evDrawer', (x) => x.classList.contains('on'))) && (await hash(m.page)) === '');
+// the deep-link still works on the phone
 await m.page.evaluate(() => { location.hash = '#org/rnd'; });
 await m.page.waitForSelector('#evDrawer.on', { timeout: 5000 }).catch(() => {});
-ok('on the phone the route opens the existing drawer (no rail, no new screen)', await m.page.$eval('#evDrawer', (x) => x.classList.contains('on')));
+ok('on the phone a deep-link opens the existing drawer (no rail, no new screen)', await m.page.$eval('#evDrawer', (x) => x.classList.contains('on')));
 ok('the drawer is titled with the department', (await m.page.$eval('#evHead b', (x) => x.textContent)) === 'מו"פ');
-ok('the drawer carries the same detail lines', /הבא: להריץ completeness/.test(await m.page.$eval('#evBody', (x) => x.textContent)));
+ok('the drawer carries the same detail lines', /הפעולה הבאה: להריץ completeness/.test(await m.page.$eval('#evBody', (x) => x.textContent)));
 await m.page.goBack(); await m.page.waitForTimeout(150);
 ok('Back closes the drawer on the phone', !(await m.page.$eval('#evDrawer', (x) => x.classList.contains('on'))));
 await m.ctx.close();

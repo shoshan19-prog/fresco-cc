@@ -170,6 +170,17 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .orgDetail p{margin:0 0 3px}
 .orgDetail b{color:var(--txt);font-weight:600}
 .orgDetail .stuck{color:#ff6b6b}
+/* ORGANIZATION on the phone (10.9): the rail is desktop-only — this section
+   carries the same rows above the thread; the drawer shows the card. */
+.orgMobile{margin:0 12px 8px;padding:8px 12px 2px;background:var(--card,#fff);border:1px solid var(--line);border-radius:var(--rs)}
+.orgMobileHead{display:flex;align-items:center;justify-content:space-between;font-size:10.5px;letter-spacing:2.2px;font-weight:700;color:var(--dim)}
+.orgMobileHead .dim{letter-spacing:0;font-weight:400;font-size:11px}
+.orgMobile .orgList{margin-top:4px}
+@media(min-width:1100px){.orgMobile{display:none!important}}
+/* the management card: eight fixed fields; "לא מוגדר" is a fact, shown dimmed */
+.orgDetail .mf,#evBody .mf{margin:0 0 5px;line-height:1.5}
+.orgDetail .nd,#evBody .nd{color:var(--dim);font-style:italic}
+#evBody .mf b{font-weight:600}
 .orgDetail .ceo{color:var(--warn,#e0a63c);font-weight:600}
 .orgDetail .cmds{direction:ltr;text-align:right;word-break:break-all;opacity:.8}
 
@@ -543,6 +554,13 @@ button#live.wait{opacity:.6}
      fell into: a line behind a tap does not exist. This one sits above the
      thread on BOTH layouts, proven visible in David's two screenshots. -->
 <div id="chatSyncLine" dir="rtl" style="display:none;margin:0 0 6px;padding:4px 10px;font-size:11px;color:#666;background:#f4f4f2;border-radius:8px"></div>
+<!-- ORGANIZATION on the phone (David, 10.9): the rail is desktop-only, so the
+     same eight rows sit above the thread here; a tap opens the shared drawer
+     with the management card. Hidden on the desktop, where the rail has it. -->
+<section id="orgMobile" class="orgMobile" aria-label="ORGANIZATION" style="display:none">
+ <div class="orgMobileHead"><span>ORGANIZATION</span><span class="dim">מחלקות · הקש לכרטיס</span></div>
+ <div class="orgList" id="orgListMobile"></div>
+</section>
 <main id="thread"></main>
 </div>
 
@@ -635,7 +653,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-10.2';
+const LIA_BUILD='2026-09-10.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -700,7 +718,7 @@ function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
- tickClock();loadRails().catch(()=>{}).then(bootOrgRoute);probeLiveVoice().catch(()=>{});initNotifications();
+ tickClock();loadRails().catch(()=>{}).then(bootOrgRoute);loadOrgMobile().catch(()=>{});probeLiveVoice().catch(()=>{});initNotifications();
  loadSinceLastHere().catch(()=>{});
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
@@ -708,7 +726,7 @@ function boot(st){document.getElementById('login').style.display='none';document
     once a minute instead of riding it. The state strip rides the same slow
     beat — cross-device state changes (a WORK finished on the computer, an
     alert acknowledged there) do not need 8s freshness to feel live. */
- if(!window._liaRails){window._liaRails=setInterval(()=>{tickClock();loadRails().catch(()=>{});},60000);}
+ if(!window._liaRails){window._liaRails=setInterval(()=>{tickClock();loadRails().catch(()=>{});loadOrgMobile().catch(()=>{});},60000);}
  if(!window._liaState){window._liaState=setInterval(()=>{loadSinceLastHere().catch(()=>{});},60000);}
  /* Canonical conversation: adopt on boot (with one-time migration of local
     history), then keep in step — after each send (queueChatTurn), on focus,
@@ -1240,7 +1258,11 @@ function checkPanelBuild(st){
  const latest=st&&st.panel_build_latest;if(!newerBuild(latest,LIA_BUILD))return false;
  try{const ss=window&&window.sessionStorage;if(ss&&ss.getItem('lia_reloaded_for')===latest)return false;if(ss)ss.setItem('lia_reloaded_for',latest);}catch(e){}
  try{if(CODE)cap('push_register_log',{stage:'reload_for_build',ok:true,surface:SURFACE,detail:'mine='+LIA_BUILD+' latest='+latest}).catch(function(){});}catch(e){}
- try{location.reload();}catch(e){}
+ /* Reload WITH a cache-buster (10.9): a plain reload can be answered with the
+    cached old document again — David's phone did exactly that and stayed on
+    08.2 for hours while newer builds were live. */
+ try{const u=new URL(location.href);u.searchParams.set('b',latest);location.replace(u.toString());}
+ catch(e){try{location.reload();}catch(_){}}
  return true;}
 /* THE REGISTRATION LEAVES A TRAIL (David, 2.9 — "approved on the phone, LIA
    still says no_device"). Every stage of this flow used to end in a status
@@ -1901,7 +1923,7 @@ const ORGANIZATION_ROUTES={
  branding:   {kind:'org',key:'branding'},     // שיווק תוכן (content_marketing)
  marketing:  {kind:'org',key:'marketing'},    // שיווק
  advertising:{kind:'org',key:'advertising'},  // פרסום
- sales:      {kind:'kpi',key:'sales_today'},  // מכירות → the existing KPI tile
+ sales:      {kind:'org',key:'sales'},        // מכירות — the same management card as every department (10.9); the KPI tile stays one click away on the rail
  purchasing: {kind:'org',key:'purchasing'},   // רכש
  operations: {kind:'org',key:'operations'},   // תפעול
  rnd:        {kind:'org',key:'rnd'},          // מו"פ
@@ -1913,40 +1935,92 @@ const ORG_STATE_HE={LIVE:'חי',HIDDEN:'קיים ולא חשוף',BLOCKED:'חס�
 let ORG_OPEN='';
 function orgHashKey(){const m=/^#org\/([a-z_]+)$/.exec(location.hash||'');return m?m[1]:'';}
 function orgDept(key){return (RAILS.org||[]).find(d=>d&&d.key===key)||null;}
-/* One line-builder for both surfaces (inline + drawer) — the Control Tower's
-   own department card (index.html renderTower): same fields, same wording. */
+/* THE MANAGEMENT CARD (David, 10.9): one uniform card per department —
+   STATUS · GOAL · OWNER · KPI · ACTIVE WORK · BLOCKER · NEXT ACTION · NEEDS
+   DAVID — from the tower's `management` block (command-center,
+   departmentCards.ts). A field the system does not hold says "לא מוגדר":
+   never a guess, never project-map prose. One builder for both surfaces —
+   inline on the desktop rail, the shared drawer on the phone. */
+const MGMT_FIELDS=[['status','מצב'],['goal','מטרה'],['owner','אחראי'],['kpi','KPI'],['active_work','עבודה פעילה'],
+ ['blocker','חסם'],['next_action','הפעולה הבאה'],['needs_david','דורש דוד']];
+const NOT_DEFINED='לא מוגדר';
+function orgManagement(d){
+ /* an older server answers without `management` — the same eight fields are
+    built from the department fields it does carry; goal/owner stay undefined */
+ if(d.management)return d.management;
+ return {status:d.state||null,goal:null,owner:null,kpi:d.metrics||[],active_work:null,
+  blocker:d.stuck||null,next_action:d.next||null,needs_david:d.ceo||null};
+}
 function orgDetailLines(key){
  const d=orgDept(key);
  if(!d)return ['<p class="dim">מצב המחלקה עדיין לא נטען.</p>'];
- const lines=['<p><b>מצב:</b> '+esc(ORG_STATE_HE[d.state]||d.state||'')+'</p>'];
- for(const m of (d.metrics||[])){
-  const v=(m.value==='MISSING'||m.value==='לא-מדיד')?'לא-מדיד':m.value;
-  lines.push('<p><b>'+esc(String(m.label||''))+':</b> '+esc(String(v))+'</p>');
+ const m=orgManagement(d);
+ const nd='<span class="nd">'+NOT_DEFINED+'</span>';
+ const val=(v)=>(v===null||v===undefined||String(v).trim()==='')?nd:esc(String(v));
+ const lines=[];
+ for(const [f,label] of MGMT_FIELDS){
+  let html;
+  if(f==='status')html=m.status?esc(ORG_STATE_HE[m.status]||m.status):nd;
+  else if(f==='kpi'){
+   const parts=(m.kpi||[]).map(x=>{const v=(x.value==='MISSING'||x.value==='לא-מדיד')?'לא-מדיד':x.value;
+    return esc(String(x.label||''))+': '+esc(String(v));});
+   /* מכירות: the panel already holds the VERIFIED live Priority contracts —
+      the same lines the KPI tiles show, never a second computation */
+   if(key==='sales'&&RAILS.kpis){
+    for(const k of ['sales_today','sales_month','open_orders']){
+     if(RAILS.kpis[k]){const t=kpiDetailLines(k).slice(0,1).join('').replace(/<[^>]+>/g,'').trim();if(t)parts.push(esc(t));}
+    }
+   }
+   html=parts.length?parts.map(p=>'<span class="kv">'+p+'</span>').join(' · '):nd;
+  }
+  else if(f==='active_work'){
+   const aw=m.active_work;
+   if(!aw)html=nd;
+   else if(!aw.count)html='אין חבילת WORK חיה משויכת (0)';
+   else html=esc(aw.count+' חבילות')+(aw.top||[]).map(w=>'<br><span class="dim">'+esc(w.id8)+' · '+esc(w.status)+' · '+esc(w.head)+'</span>').join('');
+  }
+  else html=val(m[f]);
+  lines.push('<p class="mf mf-'+f+'"><b>'+label+':</b> '+html+'</p>');
  }
- if(d.stuck)lines.push('<p class="stuck">תקוע: '+esc(d.stuck)+'</p>');
- if(d.next)lines.push('<p>הבא: '+esc(d.next)+'</p>');
- if(d.ceo)lines.push('<p class="ceo">דורש החלטה שלך: '+esc(d.ceo)+'</p>');
  if(d.note)lines.push('<p class="dim">'+esc(d.note)+'</p>');
  if((d.cmds||[]).length)lines.push('<p class="cmds">'+esc(d.cmds.join(' · '))+'</p>');
  return lines;
+}
+/* One row builder for both homes of the card (rail + phone). data-org only —
+   the row carries its route id, never its own navigation. */
+function orgRowHtml(d){
+ const m=(d.metrics||[])[0];
+ const metTxt=m?(m.value+' '+m.label):'';
+ const r=ORGANIZATION_ROUTES[d.key]||{kind:'org',key:d.key};
+ const inline=r.kind==='org'&&railsOn();
+ return '<div class="orgItem s-'+esc(d.state||'')+'" data-org="'+esc(d.key)+'" role="button" tabindex="0"'
+  +(inline?' aria-expanded="false" aria-controls="orgDetail_'+esc(d.key)+'"':'')
+  +'><span class="dot"></span>'
+  +'<span class="nm">'+esc(DEPT_LABEL[d.key]||d.name)+'</span>'
+  +'<span class="met">'+esc(metTxt)+'</span><span class="orgChev" aria-hidden="true">▸</span></div>'
+  +(inline?'<div class="orgDetail" id="orgDetail_'+esc(d.key)+'"></div>':'');
+}
+/* ORGANIZATION ON THE PHONE (David, 10.9): the rail does not render under
+   1100px, so the card gets its own compact home above the thread — the same
+   rows, the same route table, the same drawer; no deep-link needed. */
+function renderOrgMobile(){
+ const box=document.getElementById('orgMobile'),el=document.getElementById('orgListMobile');if(!box||!el)return;
+ const list=RAILS.org;
+ if(railsOn()||!list||!list.length){box.style.display='none';return;}
+ el.innerHTML=list.map(orgRowHtml).join('');
+ box.style.display='block';
+}
+async function loadOrgMobile(){
+ if(railsOn()||!CODE)return;
+ const tw=await ccApi({action:'tower'}).catch(()=>null);
+ if(tw&&tw.departments)RAILS.org=tw.departments;
+ renderOrgMobile();
 }
 function renderOrg(){
  const el=document.getElementById('orgList');if(!el)return;
  const list=RAILS.org;
  if(!list||!list.length){el.innerHTML='<p class="railEmpty">מצב הארגון עדיין לא נטען.</p>';return;}
- el.innerHTML=list.map(d=>{
-  const m=(d.metrics||[])[0];
-  const metTxt=m?(m.value+' '+m.label):'';
-  const r=ORGANIZATION_ROUTES[d.key]||{kind:'org',key:d.key};
-  const inline=r.kind==='org';
-  /* data-org only — the row carries its route id, never its own navigation. */
-  return '<div class="orgItem s-'+esc(d.state||'')+'" data-org="'+esc(d.key)+'" role="button" tabindex="0"'
-   +(inline?' aria-expanded="false" aria-controls="orgDetail_'+esc(d.key)+'"':'')
-   +'><span class="dot"></span>'
-   +'<span class="nm">'+esc(DEPT_LABEL[d.key]||d.name)+'</span>'
-   +'<span class="met">'+esc(metTxt)+'</span><span class="orgChev" aria-hidden="true">▸</span></div>'
-   +(inline?'<div class="orgDetail" id="orgDetail_'+esc(d.key)+'"></div>':'');
- }).join('');
+ el.innerHTML=list.map(orgRowHtml).join('');
  /* the rail re-renders every refresh — what the URL says is open stays open */
  const k=orgHashKey();
  if(k&&ORGANIZATION_ROUTES[k]&&ORGANIZATION_ROUTES[k].kind==='org')showOrgInline(k,false);
@@ -2013,14 +2087,17 @@ function leaveOrg(){
 }
 /* Delegated handlers — Enter / Space activate exactly like a click. */
 (function wireOrgList(){
- const el=document.getElementById('orgList');if(!el)return;
  const keyOf=e=>{const row=e.target&&e.target.closest?e.target.closest('.orgItem[data-org]'):null;return row?row.getAttribute('data-org'):'';};
  const act=(e)=>{const k=keyOf(e);if(!k)return;e.preventDefault();
   const r=ORGANIZATION_ROUTES[k];
-  if(ORG_OPEN===k&&r&&r.kind==='org'){leaveOrg();return;}
+  if(ORG_OPEN===k&&r&&r.kind==='org'&&railsOn()){leaveOrg();return;}
   openOrgRoute(k);};
- el.addEventListener('click',act);
- el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')act(e);});
+ /* both homes of the card — the desktop rail and the phone section */
+ for(const id of ['orgList','orgListMobile']){
+  const el=document.getElementById(id);if(!el)continue;
+  el.addEventListener('click',act);
+  el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')act(e);});
+ }
 })();
 /* Back / forward: the hash IS the state. Leaving #org/<key> closes; landing
    on one opens it — a deep-link on first load and on the phone included. */
