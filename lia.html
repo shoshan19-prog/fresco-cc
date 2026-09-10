@@ -611,7 +611,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-08.2';
+const LIA_BUILD='2026-09-10.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -895,6 +895,13 @@ function paintChatStat(){
   const line=document.getElementById('chatSyncLine');
   if(line){line.textContent=s;line.style.display='block';}
  }catch(e){}}
+/* ROOT CAUSE (10.9): chat_sync/chat_new/chat_diag were wired through api() —
+   the `lia` function's endpoint — which has no such actions and answers 400
+   "unknown action" every single call. The comment above (7.9) already named
+   the right home: command-center, reached through ccApi(). This is why the
+   visible diagnostic strip never showed a working sync — the client was
+   knocking on the wrong door the whole time. Fixed below (and in
+   chatNewConversation): ccApi(), not api(). */
 async function chatSync(migrate){
  if(CHAT.syncing||!CODE)return;CHAT.syncing=true;
  try{
@@ -904,7 +911,7 @@ async function chatSync(migrate){
   CHAT.diag=CHAT.diag||{};
   CHAT.diag.last_req={at:new Date().toISOString(),conversation_id:CHAT.conv||'',
    after:CHAT.cursor||'',pushed:push.length,migrate:!!migrate};
-  const j=await api({action:'chat_sync',device_id:DEVICE_ID,conversation_id:CHAT.conv||'',
+  const j=await ccApi({action:'chat_sync',device_id:DEVICE_ID,conversation_id:CHAT.conv||'',
    after:CHAT.cursor||'',messages:push,migrate:!!migrate});
   CHAT.diag.last_resp=j?{at:new Date().toISOString(),conversation_id:j.conversation_id||null,
    canon_switched:!!j.canon_switched,messages:(j.messages||[]).length,cursor:j.cursor||'',
@@ -949,7 +956,7 @@ function applyServerMessages(msgs,fresh){
  saveSession();renderThread();}
 async function initChatContinuity(){
  try{
-  const j=await api({action:'chat_sync',device_id:DEVICE_ID,conversation_id:CHAT.conv||'',
+  const j=await ccApi({action:'chat_sync',device_id:DEVICE_ID,conversation_id:CHAT.conv||'',
    after:'',messages:[]});
   if(!j||!j.conversation_id)return;
   const serverMsgs=j.messages||[];
@@ -985,7 +992,7 @@ async function initChatContinuity(){
  /* the forensic snapshot rides every boot, after adoption/migration settled */
  setTimeout(()=>{uploadChatForensic();},1500);}
 async function chatNewConversation(){
- try{const j=await api({action:'chat_new',device_id:DEVICE_ID});
+ try{const j=await ccApi({action:'chat_new',device_id:DEVICE_ID});
   if(j&&j.conversation_id){CHAT.conv=j.conversation_id;CHAT.cursor='';chatSaveState();}
  }catch(e){}}
 /* ── FORENSIC SELF-REPORT (David, 7.9) ────────────────────────────────────
@@ -1019,7 +1026,7 @@ async function chatForensicReport(){
  };}
 async function uploadChatForensic(){
  try{const rep=await chatForensicReport();
-  await api({action:'chat_diag',device_id:DEVICE_ID,report:rep});
+  await ccApi({action:'chat_diag',device_id:DEVICE_ID,report:rep});
   CHAT.diag=CHAT.diag||{};CHAT.diag.uploaded_ok=new Date().toISOString();
   delete CHAT.diag.upload_err;try{jset('lia_chat_diag',CHAT.diag);}catch(_){}
  }catch(e){
