@@ -126,6 +126,7 @@ ok('D. re-sync adds no rows on the server', SERVER.rows.size === before, `rows $
 ok('D2. re-sync adds no turns on the device', (await turns(desktop.page)).length === 3);
 
 // ── E: "שיחה חדשה" is the ONE way a second thread is born — on both ─────────
+desktop.page.once('dialog', (d) => d.accept());   // ✎ asks first (11.9) — the user confirms
 await desktop.page.evaluate(() => newSession());
 await desktop.page.waitForTimeout(300);
 await syncNow(phone.page); await phone.page.waitForTimeout(300);

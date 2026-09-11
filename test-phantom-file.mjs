@@ -87,7 +87,7 @@ ok('srcDesc reads the conversation registry', /function srcDesc\(id\)\{return \(
 ok('the honesty gate fires on NAMED sources only', /const named=srcs\.filter\(s=>s&&s\.filename\);/.test(SRC) && /if\(named\.length&&!kernelSawSources\(res\)\)\{/.test(SRC));
 ok('the honest answer is built from the named ones', /eyesNotLiveAnswer\(pend\.length\?pend:named\)/.test(SRC));
 ok('eyesNotLiveAnswer can never say "קובץ: undefined"', /atts=\(atts\|\|\[\]\)\.filter\(a=>a&&a\.filename\);/.test(SRC));
-ok('build 2026-09-11.2', /const LIA_BUILD='2026-09-11\.2';/.test(SRC));
+ok('build 2026-09-11.3', /const LIA_BUILD='2026-09-11\.3';/.test(SRC));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\nPASS — all ${total} checks`);
 process.exit(bad ? 1 : 0);

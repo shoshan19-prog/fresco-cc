@@ -53,7 +53,7 @@ check('kernel history keeps the MOST RECENT exchanges', M2.historyForKernel()[3]
 check('the visible thread keeps everything', M2.SESSION.turns.length === 16);
 
 // a new conversation does not destroy the old one
-M2.newSession();
+M2.newSession(true);   // force: no confirm() outside a browser (11.9 — ✎ asks first)
 check('new session starts empty', M2.SESSION.turns.length === 0);
 check('new session has a new id', M2.SESSION.id !== first);
 const idx = JSON.parse(store['lia_sessions']);
