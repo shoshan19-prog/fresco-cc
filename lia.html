@@ -653,7 +653,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-10.3';
+const LIA_BUILD='2026-09-11.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -779,7 +779,13 @@ function openSession(id){
     (reload, closed tab, a request that never returned). Left as-is it spins
     "חושבת על זה…" forever, which is exactly the stuck bubble David
     photographed on 1.9. Restoring = closing it honestly. */
- for(const t of SESSION.turns)if(t&&t.pending){t.pending=false;
+ for(const t of SESSION.turns)if(t&&t.pending){
+  /* DURABLE TURN (10.9 #2): a bubble that named its turn is owned by the
+     SERVER, not by the dead page — it keeps waiting, and initChatContinuity
+     re-arms its wait; the reply lands through chat_sync. Only the timers of
+     the dead page are dropped (their ids mean nothing here). */
+  if(t.turn_id){delete t.__wd;delete t.__await;continue;}
+  t.pending=false;
   t.text='⚠️ השאלה הזו נשארה בלי תשובה — הדף נסגר או שהבקשה מתה באמצע. שאל אותי שוב.';}
  localStorage.setItem(SCUR,SESSION.id);
  if(!idx.some(s=>s.id===SESSION.id))saveSession();
@@ -915,6 +921,50 @@ function queueChatTurn(t){
  CHAT.outbox=CHAT.outbox.slice(-100);jset('lia_chat_outbox',CHAT.outbox);
  /* Debounced: a question and its answer ride one request. */
  clearTimeout(CHAT.timer);CHAT.timer=setTimeout(()=>{chatSync().catch(()=>{});},400);}
+/* ── DURABLE TURN — the client half (David, 10.9 #2) ──────────────────────
+   A long cellular turn died as "server unreachable" while the server may
+   have finished after the socket dropped: the browser's HTTP request was the
+   ownership boundary. Now the request names its turn (turn_id = the request
+   id) and its conversation, and the SERVER owns it: it runs to completion
+   whether or not this socket survives, and persists the reply into the
+   canonical conversation under a message id DERIVED from the turn id —
+   lia-<sha256("reply:"+turn_id)[0:32]>, computed here as well. So a bubble
+   whose request died keeps waiting, polls chat_sync, and the reply lands in
+   THAT bubble once: never a second bubble, never a second execution, never
+   "ask again". A re-send of the same turn id is answered by the server with
+   "pending" or the saved reply — it can never run twice. */
+const TURN_AWAIT_POLL_MS=5000,TURN_AWAIT_MAX_MS=10*60*1000;
+async function replyIdFor(turnId){
+ try{const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('reply:'+turnId));
+  return 'lia-'+Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);}
+ catch(e){return '';}}
+/* the bubble still waiting for the turn this server message answers, if any */
+function awaitingTurnFor(m){
+ if(!m)return null;
+ return SESSION.turns.find(t=>t&&t.pending&&t.turn_id&&((m.turn_id&&m.turn_id===t.turn_id)||(t.reply_mid&&t.reply_mid===m.message_id)))||null;}
+async function turnAwait(ph,turnId,replyMid,note){
+ if(!ph||!ph.pending)return;
+ ph.turn_id=turnId;ph.reply_mid=replyMid||ph.reply_mid||await replyIdFor(turnId);
+ ph.awaiting_since=ph.awaiting_since||Date.now();
+ ph.text='⏳ '+note;
+ if(ph.__wd){clearTimeout(ph.__wd);delete ph.__wd;}   /* the 150s socket watchdog no longer applies: the server owns the turn */
+ saveSession();renderThread();
+ const tick=async()=>{
+  if(!ph.pending)return;
+  if(Date.now()-ph.awaiting_since>TURN_AWAIT_MAX_MS){
+   finishAsk(ph,null,'השרת לא החזיר תשובה לתור הזה תוך 10 דקות — שאל שוב.');return;}
+  try{await chatSync();}catch(e){}
+  if(ph.pending)ph.__await=setTimeout(tick,TURN_AWAIT_POLL_MS);
+ };
+ if(ph.__await)clearTimeout(ph.__await);
+ ph.__await=setTimeout(tick,TURN_AWAIT_POLL_MS);}
+/* the server's persisted reply IS this bubble's answer — same message id, so
+   it is never pushed back and never shown twice */
+function landServerReply(ph,m){
+ if(ph.__await){clearTimeout(ph.__await);delete ph.__await;}
+ ph.mid=m.message_id;ph.fromServer=true;
+ const res={answer:String(m.content||''),__durable:true,confidence:'',sources:[],missing_information:[]};
+ finishAsk(ph,res,heb(res.answer));}
 /* ── VISIBLE CONTINUITY DIAGNOSTIC (David, 8.9) ───────────────────────────
    The real desktop provably ran build .2 while the canonical conversation
    stayed empty and no self-report ever landed — every failure path was a
@@ -977,6 +1027,9 @@ async function chatSync(migrate){
  }finally{CHAT.syncing=false;paintChatStat();}}
 function applyServerMessages(msgs,fresh){
  if(!msgs.length&&!fresh)return;
+ /* DURABLE TURN (10.9 #2): a reply the server persisted for a turn this
+    device is still waiting on lands in THAT bubble — once. */
+ for(const m of msgs){const w=awaitingTurnFor(m);if(w)landServerReply(w,m);}
  /* fresh = this device adopts the canonical thread (first sync, or the
     conversation moved under it). Local rich turn objects (cards, evidence)
     are kept by message_id — the server text never downgrades a card this
@@ -1031,6 +1084,9 @@ async function initChatContinuity(){
   try{jset('lia_chat_diag',CHAT.diag);}catch(_){}
  }
  paintChatStat();
+ /* a bubble still waiting for a server-owned reply when the page reloaded
+    keeps waiting — the reply lands through chat_sync (10.9 #2) */
+ try{for(const t of SESSION.turns)if(t&&t.pending&&t.turn_id)turnAwait(t,t.turn_id,t.reply_mid||'','ממשיכה להמתין לתשובת השרת על התור…');}catch(e){}
  /* the forensic snapshot rides every boot, after adoption/migration settled */
  setTimeout(()=>{uploadChatForensic();},1500);}
 async function chatNewConversation(){
@@ -3306,6 +3362,11 @@ async function doAsk(text,turnId,atts){
    .filter(rid=>!pend.some(a=>a.source_id===rid));
  const srcs=sourcesForKernel(pend,refs,attBytes);
  if(INFLIGHT===1)speak(filler());   // one voice; overlapping asks think silently
+ /* DURABLE TURN (David, 10.9 #2): once this device holds its canonical
+    conversation, the request names its turn and its conversation, so the
+    SERVER owns the turn past this socket — see turnAwait above. */
+ const durable=!!CHAT.conv;
+ if(durable)ph.turn_id=reqId;
  try{
   /* `let`, not `const`. This binding is genuinely REPLACED below — unwrapPayload
      returns a new object — and a const that is reassigned throws
@@ -3315,7 +3376,16 @@ async function doAsk(text,turnId,atts){
      ever mutated (res.__plain=...), which const permits. */
   let res=await ccApi(Object.assign({action:'kernel',body:text,history:historyForKernel(text),
     retracted:retractedForKernel(),request_id:reqId},
+    durable?{turn_id:reqId,conversation_id:CHAT.conv,device_id:DEVICE_ID}:{},
     srcs.length?{sources:srcs}:{}));
+  /* The server is still running this very turn (a re-send met a RUNNING
+     row): wait for its persisted reply instead of asking again. */
+  if(res&&res.pending===true&&res.turn_id){
+   turnAwait(ph,reqId,res.reply_message_id||'','השרת עדיין עובד על התור — התשובה תופיע כאן כשתהיה מוכנה.');return;}
+  /* The server persisted this reply under reply_message_id: this bubble IS
+     that row, so the push that follows is a no-op and a later sync never
+     shows it twice. */
+  if(res&&res.reply_message_id){ph.mid=res.reply_message_id;ph.turn_id=reqId;}
   /* THE HONESTY GATE. Files went out; unless the kernel proves it saw them
      (sources_seen), a text-only answer about an image is an invention — rule
      15. She says what she has and what is missing, and never fakes sight. */
@@ -3355,8 +3425,17 @@ async function doAsk(text,turnId,atts){
   rememberRetracted(res);          // a withdrawn claim does not come back next turn
   LAST={q:text,res:res};
   finishAsk(ph,res,spokenAnswer(res));
- }catch(e){stat('לא הצלחתי להגיע למערכת ('+e.message+')');
-  finishAsk(ph,null,'לא הצלחתי להגיע למערכת כרגע.','לא הצלחתי להגיע למערכת ('+e.message+')');}}
+ }catch(e){
+  /* THE CONNECTION DIED, NOT THE TURN (10.9 #2): on a durable turn a dropped
+     socket or a gateway 5xx means the server may still be working — and it
+     persists the reply either way. This bubble waits for it through
+     chat_sync instead of ending as "לא הצלחתי להגיע". */
+  const msg=String(e&&e.message||'');const st=Number((msg.match(/server (\d+)/)||[])[1]||0);
+  if(durable&&ph.pending&&(/unreachable/.test(msg)||st>=500)){
+   stat('החיבור נפל — השרת ממשיך ('+msg+')');
+   turnAwait(ph,reqId,'','החיבור נפל באמצע — השרת ממשיך לעבוד על התור; התשובה תופיע כאן כשהחיבור יחזור.');return;}
+  stat('לא הצלחתי להגיע למערכת ('+msg+')');
+  finishAsk(ph,null,'לא הצלחתי להגיע למערכת כרגע.','לא הצלחתי להגיע למערכת ('+msg+')');}}
 
 /* One exit for every ask: the pending bubble becomes THIS answer; the turn
    machine is released only when the LAST in-flight ask resolves; the voice
@@ -3944,6 +4023,11 @@ async function doExecute(text,turnId){
   const intake=await ccApi({action:'cap',name:'work_intake',
     args:{text:text,requested_by:'david',source:'david'}});
   const w=(intake.rows||[])[0];
+  if(w&&w.action==='READ_ONLY'){
+   /* READ-ONLY MUST NEVER CREATE WORK (David, 10.9 #5): the server refused a
+      package for a verification / status / readback order — it is a READ,
+      answered through the kernel, which holds the same law on every call. */
+   return doAsk(text,id);}
   if(!w||!w.work_id){
    /* No row means no promise. Say what is missing instead of claiming to have
       started — the failure this protocol replaces was a confident sentence
