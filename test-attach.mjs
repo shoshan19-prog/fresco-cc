@@ -94,16 +94,19 @@ ok('a source both pending and referenced is sent once', (() => {
   const s = api.sourcesForKernel(
     [{source_id: 'a', kind: 'image', filename: 'x.png', data_b64: 'AAA'}], ['a'], () => null);
   return s.length === 1; })());
-ok('a reference with no bytes left still names itself', (() => {
+ok('a reference the registry cannot NAME is a phantom — never sent (11.9)', (() => {
   const s = api.sourcesForKernel([], ['gone'], () => null);
-  return s.length === 1 && s[0].source_id === 'gone' && s[0].data_b64 === null; })());
+  return s.length === 0; })());
+ok('a named reference whose bytes are gone still travels named, without bytes', (() => {
+  const s = api.sourcesForKernel([], ['gone'], () => null, (id) => id === 'gone' ? {source_id: 'gone', kind: 'image', filename: 'תקלה1.png'} : null);
+  return s.length === 1 && s[0].source_id === 'gone' && s[0].filename === 'תקלה1.png' && s[0].data_b64 === null && s[0].resolved_from === 'conversation'; })());
 ok('kernelSawSources demands the proof field',
   api.kernelSawSources({sources_seen: []}) === true
   && api.kernelSawSources({answer: 'ראיתי את התמונה'}) === false);
 
 // ── 6. the wiring that must exist in the page itself ────────────────────
-ok('honesty gate guards the send path',
-  /srcs\.length&&!kernelSawSources\(res\)/.test(SRC));
+ok('honesty gate guards the send path — on NAMED sources only (11.9)',
+  /named\.length&&!kernelSawSources\(res\)/.test(SRC) && /const named=srcs\.filter\(s=>s&&s\.filename\)/.test(SRC));
 ok('the honest answer names the real blocker, not a fake failure',
   /טרם נפרס/.test(SRC) && /eyesNotLiveAnswer/.test(SRC));
 ok('attachments force the ASK road — never filed as a note',

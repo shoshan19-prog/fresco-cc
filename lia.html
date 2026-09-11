@@ -653,7 +653,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-11.1';
+const LIA_BUILD='2026-09-11.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -2473,9 +2473,18 @@ function sourceDescriptor(a){
 const SRC_DISMISS=/(?:עזבי|תעזבי|עזוב|תעזוב|בלי|די עם|מספיק עם|תפסיקי|תשכחי מ|לא\s+(?:על\s+)?ה?תמונה|(?:שוב|עוד\s+פעם|כל\s+פעם)\s+(?:עם\s+)?ה?תמונה)/;
 const SRC_ASK=/(?:מה\s+(?:יש|רואים|כתוב|מופיע)|תסתכלי|תסתכל|תראי\s+(?:לי\s+)?(?:מה|את)|תנתחי|תקראי|נתחי|קראי|מי\s+חתום|תשווי|השווי|תתארי|מה\s+זה\s+ה?(?:תמונה|קובץ|מסמך))/;
 const ENTITY_Q=/(?:מה\s+(?:קורה|המצב|הסטטוס|הסיפור)\s+(?:עם|של|ב)|איפה\s+עומד|סטטוס\s+|למה\s+|מה\s+כדאי\s+לעשות\s+עם)/;
+/* TEXT WINS OVER A PHANTOM ATTACHMENT (David, 11.9). Live failure 07:56Z:
+   his 1,800-character snapshot definition said "תמונת המצב" (a snapshot,
+   read here as a picture) and "כמה" (read as a question about it), so a
+   STALE descriptor from the registry was re-attached nameless; the server
+   dropped it and the honesty gate below replaced the real answer with
+   "קובץ: undefined". Two laws: the phrase "תמונת מצב" is blanked before any
+   type word is read, and a long paste (a spec, a report, an instruction)
+   never re-attaches an old file unless it ASKS about one. */
 function resolveSourceRef(text,sources){
- const t=String(text||'');const all=sources||[];
+ const t=String(text||'').replace(/תמונת[\s-]*ה?מצב/g,' ');const all=sources||[];
  if(SRC_DISMISS.test(t))return [];                       // "leave the picture" leaves it
+ if((t.length>300||t.split('\n').length>=3)&&!SRC_ASK.test(t))return [];   // a long paste is text, not a request to look again
  if(ENTITY_Q.test(t)&&!SRC_ASK.test(t))return [];        // an entity question is not about old files
  let pool=null;
  if(/תמונ|צילום|סקרינשוט|צילומי/.test(t))pool=all.filter(s=>s.kind==='image');
@@ -2496,7 +2505,7 @@ function resolveSourceRef(text,sources){
 /* The kernel payload: this turn's attachments travel with bytes; sources David
    referred to from earlier turns travel as descriptors (bytes re-attached from
    the in-memory store when still present). */
-function sourcesForKernel(pending,refIds,bytesOf){
+function sourcesForKernel(pending,refIds,bytesOf,descOf){
  const out=[];const seen={};
  for(const a of (pending||[])){
   seen[a.source_id]=1;
@@ -2504,8 +2513,13 @@ function sourcesForKernel(pending,refIds,bytesOf){
  for(const r of (refIds||[])){
   if(seen[r])continue;
   const d=(bytesOf&&bytesOf(r))||null;
-  out.push(Object.assign({},d?d.desc:{source_id:r},
-    {data_b64:d?d.b64:null,resolved_from:'conversation'}));}
+  const desc=d?d.desc:((descOf&&descOf(r))||null);
+  /* A reference the registry cannot NAME is a phantom — never sent (11.9):
+     the server drops a nameless descriptor and the honesty gate would then
+     blame a file that does not exist. A named source whose bytes are gone
+     still travels named: the server says it is unopened, which is the truth. */
+  if(!desc||!desc.filename)continue;
+  out.push(Object.assign({},desc,{data_b64:d?d.b64:null,resolved_from:'conversation'}));}
  return out;}
 /* THE LOOP BRAKE (25.8, after the Orna hour): when an answer is essentially
    the same as one of the last two, something upstream is stuck — and every
@@ -2527,6 +2541,8 @@ function kernelSawSources(res){return !!(res&&Array.isArray(res.sources_seen));}
 let ATTACH=[];                        // pending for the NEXT turn only
 const ATT_BYTES=new Map();            // source_id → {b64,mime,desc,preview} — this tab only
 function attBytes(id){const v=ATT_BYTES.get(id);return v?{b64:v.b64,desc:v.desc}:null;}
+/* The conversation registry names a source whose bytes this tab no longer holds. */
+function srcDesc(id){return (SESSION.sources||[]).find(s=>s&&s.source_id===id)||null;}
 function clipTap(){document.getElementById('filePick').click();}
 async function addFiles(files){
  for(const f of Array.from(files||[])){
@@ -2577,6 +2593,7 @@ function renderAttachBar(){
    +'<button class="x" onclick="removeAtt(\''+a.source_id+'\')">✕</button></span>';}).join('');}
 /* What she says while the server side has no eyes yet — prepared, not faked. */
 function eyesNotLiveAnswer(atts){
+ atts=(atts||[]).filter(a=>a&&a.filename);   // never "קובץ: undefined" — a file with no name is no file (11.9)
  const names=atts.map(a=>a.filename).join(', ');
  return said('קיבלתי את '+(atts.length>1?'הקבצים':'הקובץ')+' ('+names+'), אבל אני עדיין לא יכולה '
   +'לראות אותם — צד השרת של העיניים מוכן בקוד וטרם נפרס. שמרתי אותם לשיחה הזאת, '
@@ -3360,7 +3377,7 @@ async function doAsk(text,turnId,atts){
  const pend=atts||[];
  const refs=resolveSourceRef(text,SESSION.sources||[])
    .filter(rid=>!pend.some(a=>a.source_id===rid));
- const srcs=sourcesForKernel(pend,refs,attBytes);
+ const srcs=sourcesForKernel(pend,refs,attBytes,srcDesc);
  if(INFLIGHT===1)speak(filler());   // one voice; overlapping asks think silently
  /* DURABLE TURN (David, 10.9 #2): once this device holds its canonical
     conversation, the request names its turn and its conversation, so the
@@ -3389,8 +3406,9 @@ async function doAsk(text,turnId,atts){
   /* THE HONESTY GATE. Files went out; unless the kernel proves it saw them
      (sources_seen), a text-only answer about an image is an invention — rule
      15. She says what she has and what is missing, and never fakes sight. */
-  if(srcs.length&&!kernelSawSources(res)){
-   const r=eyesNotLiveAnswer(pend.length?pend:srcs);
+  const named=srcs.filter(s=>s&&s.filename);   // TEXT WINS (11.9): only a REAL, named file can make her say she cannot see it
+  if(named.length&&!kernelSawSources(res)){
+   const r=eyesNotLiveAnswer(pend.length?pend:named);
    LAST={q:text,res:r};finishAsk(ph,r,heb(r.answer||''));return;}
   /* The loop brake: a repeated answer is stopped and SAID, not delivered as
      if it were new. David hears it on the first repeat, not after an hour. */
