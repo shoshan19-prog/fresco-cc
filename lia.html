@@ -177,6 +177,20 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .orgMobileHead .dim{letter-spacing:0;font-weight:400;font-size:11px}
 .orgMobile .orgList{margin-top:4px}
 @media(min-width:1100px){.orgMobile{display:none!important}}
+/* THE THREAD IS THE PAGE (David, 11.9 — "לא רואה את הצאט"): on his phone the
+   eight ORGANIZATION rows filled the viewport and #thread{flex:1;min-height:0}
+   collapsed to a sliver under the composer. The list now scrolls inside a
+   bounded box, the head collapses it, and the thread keeps a real height. */
+@media(max-width:1099px){
+ .orgMobile{flex:0 1 auto;min-height:0;flex-direction:column}
+ .orgMobile .orgList{max-height:min(30vh,360px);min-height:0;overflow-y:auto;overscroll-behavior:contain}
+ .orgMobile[data-collapsed="true"] .orgList{display:none}
+ .orgMobileHead{cursor:pointer;min-height:32px;user-select:none;flex:0 0 auto}
+ .orgMobileHead .chev{font-size:12px;display:inline-block;transition:transform .2s}
+ .orgMobile[data-collapsed="true"] .orgMobileHead .chev{transform:rotate(-90deg)}
+ /* #center>#thread outranks the base #thread{min-height:0} rule that follows below */
+ #center>#thread{min-height:42vh}
+}
 /* the management card: eight fixed fields; "לא מוגדר" is a fact, shown dimmed */
 .orgDetail .mf,#evBody .mf{margin:0 0 5px;line-height:1.5}
 .orgDetail .nd,#evBody .nd{color:var(--dim);font-style:italic}
@@ -558,7 +572,7 @@ button#live.wait{opacity:.6}
      same eight rows sit above the thread here; a tap opens the shared drawer
      with the management card. Hidden on the desktop, where the rail has it. -->
 <section id="orgMobile" class="orgMobile" aria-label="ORGANIZATION" style="display:none">
- <div class="orgMobileHead"><span>ORGANIZATION</span><span class="dim">מחלקות · הקש לכרטיס</span></div>
+ <div class="orgMobileHead" onclick="toggleOrgMobile()" role="button" aria-controls="orgListMobile" aria-expanded="true"><span>ORGANIZATION <span class="chev">▾</span></span><span class="dim">מחלקות · הקש לכרטיס</span></div>
  <div class="orgList" id="orgListMobile"></div>
 </section>
 <main id="thread"></main>
@@ -653,7 +667,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-11.2';
+const LIA_BUILD='2026-09-11.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -800,7 +814,14 @@ function saveSession(){
     localStorage cannot grow without bound. */
  for(const s of idx.slice(20))localStorage.removeItem('lia_s_'+s.id);
  jset(SKEY,idx.slice(0,20));}
-function newSession(){localStorage.removeItem(SCUR);openSession();closePanel();
+function newSession(force){
+ /* ✎ moves the canonical pointer for EVERY device (David, 7.9). Measured 11.9:
+    tapped three times in one day from the phone — each tap emptied the thread
+    on the phone AND the desktop and hid the morning's conversation behind a
+    pointer nobody could move back ("לא רואה את הצאט"). It is now a deliberate
+    act with a named way back (⋯ → שיחות קודמות). Tests pass force=true. */
+ if(force!==true&&!confirm('להתחיל שיחה חדשה?\nהשיחה הנוכחית נשמרת ב-⋯ → "שיחות קודמות" ותיעלם מהמסך בכל המכשירים.'))return;
+ localStorage.removeItem(SCUR);openSession();closePanel();
  /* An explicit "שיחה חדשה" is the ONE way a second thread is born (David,
     7.9) — the server moves the canonical pointer, both devices follow. */
  chatNewConversation();
@@ -810,7 +831,30 @@ function renderSessions(){
  const idx=jget(SKEY,[]).filter(s=>s.id!==SESSION.id);
  el.innerHTML=idx.length?idx.map(s=>'<div class="obj"><button class="det" onclick="openSession(\''+s.id+'\');closePanel()">'
    +esc(s.title||'שיחה')+'</button> <span class="dim">· '+new Date(s.at).toLocaleDateString('he-IL')+'</span></div>').join('')
-  :'<p class="dim">אין עדיין שיחות קודמות.</p>';}
+  :'<p class="dim">אין עדיין שיחות קודמות.</p>';
+ /* THE SERVER'S LIST (11.9): the conversations David actually has — every
+    device, every day — each reopenable in one tap. The local archive above is
+    the offline fallback only; once the server answers, its list is the truth. */
+ chatListConversations().then(list=>{
+  if(!list||!list.length)return;
+  el.innerHTML=list.slice(0,12).map(c=>'<div class="obj"><button class="det" data-conv="'+esc(c.conversation_id)+'"'
+    +(c.canonical?' disabled':' onclick="chatOpenConversation(this.getAttribute(\'data-conv\'))"')+'>'
+    +esc(c.title||'שיחה')+'</button> <span class="dim">· '+c.count+' הודעות · '
+    +new Date(c.last_at).toLocaleDateString('he-IL')+(c.canonical?' · פתוחה עכשיו':'')+'</span></div>').join('');
+ }).catch(()=>{});}
+async function chatListConversations(){
+ try{const j=await ccApi({action:'chat_list',device_id:DEVICE_ID});return (j&&j.conversations)||null;}catch(e){return null;}}
+/* Reopen a conversation from the server: the pointer moves back to it (every
+   device follows on its next sync), a fresh local session adopts its rows. */
+async function chatOpenConversation(id){
+ try{const j=await ccApi({action:'chat_open',device_id:DEVICE_ID,conversation_id:id});
+  if(!j||!j.conversation_id)return false;
+  localStorage.removeItem(SCUR);openSession();
+  CHAT.conv=j.conversation_id;CHAT.cursor='';chatSaveState();
+  applyServerMessages(j.messages||[],true);
+  if(j.cursor)CHAT.cursor=j.cursor;chatSaveState();
+  closePanel();paintChatStat();scrollThread(true);return true;
+ }catch(e){return false;}}
 const CTX_RE=/(?:לקוח(?:ה)?|פרויקט|מוצר)\s+(?:ה)?([\u0590-\u05FFA-Za-z][\u0590-\u05FFA-Za-z0-9\-' ]{1,24})/;
 function updateCtx(text){
  const m=String(text||'').match(CTX_RE);
@@ -951,10 +995,17 @@ async function turnAwait(ph,turnId,replyMid,note){
  saveSession();renderThread();
  const tick=async()=>{
   if(!ph.pending)return;
+  /* SYNC FIRST (11.9): the live phone came back from the background after
+     31 minutes, the deadline had passed, and the bubble said "השרת לא החזיר
+     תשובה תוך 10 דקות" — while the pulse answer had been on the server since
+     15:04. The deadline is judged only AFTER one more pull; a sync already
+     in flight is waited for, never skipped. */
+  if(CHAT.syncing){ph.__await=setTimeout(tick,500);return;}
+  try{await chatSync();}catch(e){}
+  if(!ph.pending)return;                                   // the pull landed it
   if(Date.now()-ph.awaiting_since>TURN_AWAIT_MAX_MS){
    finishAsk(ph,null,'השרת לא החזיר תשובה לתור הזה תוך 10 דקות — שאל שוב.');return;}
-  try{await chatSync();}catch(e){}
-  if(ph.pending)ph.__await=setTimeout(tick,TURN_AWAIT_POLL_MS);
+  ph.__await=setTimeout(tick,TURN_AWAIT_POLL_MS);
  };
  if(ph.__await)clearTimeout(ph.__await);
  ph.__await=setTimeout(tick,TURN_AWAIT_POLL_MS);}
@@ -2064,7 +2115,18 @@ function renderOrgMobile(){
  const list=RAILS.org;
  if(railsOn()||!list||!list.length){box.style.display='none';return;}
  el.innerHTML=list.map(orgRowHtml).join('');
- box.style.display='block';
+ /* the card never squeezes the chat out (11.9): collapsed state is the phone's own choice, remembered */
+ let collapsed=false;try{collapsed=localStorage.getItem('rail:orgMobile')==='1';}catch(e){}
+ box.setAttribute('data-collapsed',collapsed?'true':'false');
+ const head=box.querySelector('.orgMobileHead');if(head)head.setAttribute('aria-expanded',collapsed?'false':'true');
+ box.style.display='flex';   // a flex column: the list is the part that gives way, never the thread
+}
+function toggleOrgMobile(){
+ const box=document.getElementById('orgMobile');if(!box)return;
+ const collapsed=box.getAttribute('data-collapsed')==='true';
+ box.setAttribute('data-collapsed',collapsed?'false':'true');
+ const head=box.querySelector('.orgMobileHead');if(head)head.setAttribute('aria-expanded',collapsed?'true':'false');
+ try{localStorage.setItem('rail:orgMobile',collapsed?'0':'1');}catch(e){}
 }
 async function loadOrgMobile(){
  if(railsOn()||!CODE)return;
