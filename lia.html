@@ -667,7 +667,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-11.3';
+const LIA_BUILD='2026-09-12.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1684,41 +1684,55 @@ function askLia(text){
  ta.value=text;sendPrimary();return true;}
 async function loadRails(){
  if(!railsOn()||!CODE)return;
- /* Four read-only calls: sales/next_decision feed TODAY+PRIORITIES as before;
-    business_query gives the two KPIs that are actually VERIFIED live Priority
-    contracts (sales_today/sales_month — CINVOICES, never ORDERS-as-sales);
-    tower gives the same department-health computation the Control Tower
-    shows, reused here rather than rebuilt. */
- const [sales,dec,st,sm,oo,tw]=await Promise.all([
+ /* ONE CANONICAL ENGINE (David, 12.9). The KPI tiles read fresco_snapshot —
+    the SAME engine the chat answers "מה מצב פרסקו" / "פולס פרסקו" / "איפה
+    אנחנו עומדים בפרסקו" from, and the phone. Until 12.9 the six tiles were
+    five separate business_query contracts with their own definitions
+    (open orders at the ORIGINAL order value, unbilled over 90 days) and the
+    chat could show different numbers than the dashboard. Now there is one
+    row, adapted to the tile shapes below (kpisFromSnapshot) — no per-tile
+    contract, no second cache, no second definition of any number.
+    sales/next_decision still feed TODAY+PRIORITIES; tower feeds ORGANIZATION. */
+ const [sales,dec,snap,tw]=await Promise.all([
   api({action:'sales'}).catch(()=>({error:'unreachable'})),
   cap('next_decision').catch(()=>({rows:[]})),
-  cap('business_query',{intent:'sales_today'}).catch(()=>null),
-  cap('business_query',{intent:'sales_month'}).catch(()=>null),
-  cap('business_query',{intent:'open_orders'}).catch(()=>null),
+  cap('fresco_snapshot',{}).catch(()=>null),
   ccApi({action:'tower'}).catch(()=>null)]);
  RAILS.sales=sales;
  RAILS.decisions=(dec&&dec.rows)||[];
- RAILS.kpis={sales_today:(st&&st.rows&&st.rows[0])||null,sales_month:(sm&&sm.rows&&sm.rows[0])||null,
-  open_orders:(oo&&oo.rows&&oo.rows[0]&&typeof oo.rows[0].headline_count==='number')?oo.rows[0]:null};
+ const s=(snap&&snap.rows&&snap.rows[0])||null;
+ RAILS.snapshot=s;
+ RAILS.kpis=kpisFromSnapshot(s);
  RAILS.org=(tw&&tw.departments)||null;
- renderRails();renderKpis();renderOrg();
- /* THE TWO SCANNING KPIs (David's rulings, 4.9): unbilled and receivables each
-    scan 90 / 365 days of Priority pages, so they are fetched AFTER the fast
-    tiles have painted — the panel never waits for them — and the backend
-    serves them from a 30-minute cache once warmed (the row says as_of). */
- loadScanKpis();}
-let SCAN_KPI_INFLIGHT=false;
-async function loadScanKpis(){
- if(SCAN_KPI_INFLIGHT||!railsOn()||!CODE)return;
- SCAN_KPI_INFLIGHT=true;
- try{
-  const [ub,rc]=await Promise.all([
-   cap('business_query',{intent:'unbilled'}).catch(()=>null),
-   cap('business_query',{intent:'receivables'}).catch(()=>null)]);
-  const row=(x)=>(x&&x.rows&&x.rows[0]&&typeof x.rows[0].headline_count==='number')?x.rows[0]:null;
-  RAILS.kpis=Object.assign({},RAILS.kpis||{},{unbilled:row(ub),receivables:row(rc)});
-  renderKpis();
- }finally{SCAN_KPI_INFLIGHT=false;}
+ renderRails();renderKpis();renderOrg();}
+/* The snapshot row → the tile rows the existing helpers already render.
+   Every number below is the engine's own field, copied — never recomputed,
+   never a second definition. A field the engine did not verify stays null
+   and the tile says "לא מאומת" (§9). */
+function kpisFromSnapshot(s){
+ const d=s&&s.snapshot;if(!d)return {};
+ const cachedAt=((s.evidence||[]).map(e=>/מהמטמון — חושב ב-(\S+)/.exec(String(e))).find(Boolean)||[])[1]||null;
+ const asOf=cachedAt||new Date().toISOString();
+ const ENGINE='fresco_snapshot · מנוע קנוני אחד (הפולס, תמונת המצב, הדשבורד, הצ\'אט והמובייל)';
+ const sales=(a)=>a?{headline_count:a.count,sums:{QPRICE:a.net,TOTPRICE:a.gross},canonical_source:ENGINE,as_of:asOf,cached:!!cachedAt,window:''}:null;
+ const oo=d.open_orders,ub=d.unbilled,rc=d.receivables;
+ return {
+  sales_today:sales(d.invoices&&d.invoices.today),
+  sales_month:sales(d.invoices&&d.invoices.mtd),
+  open_orders:oo?{headline_count:oo.count,remaining:oo.all_verified?oo.open_value:null,original:oo.original_value,
+   all_verified:!!oo.all_verified,unverified_lines:oo.unverified_lines||0,unverified_orders:oo.unverified_orders||0,framework:oo.framework||null,
+   open_definition:'פתוחה = BOOLCLOSED ריק (הכרעת דוד 1.9) · יתרה לספק = TBALANCE × DISPRICE (= PRICEBAL של פריוריטי) · הזמנה מקורית = QPRICE',
+   engine:'fresco_snapshot',canonical_source:ENGINE,as_of:asOf,cached:!!cachedAt}:null,
+  unbilled:ub?{headline_count:ub.count,sums:{TOTPRICE:ub.gross,QPRICE:(ub.net!=null?ub.net:undefined)},excluded:ub.excluded||null,
+   window:ub.window?(ub.window.from+'..'+ub.window.to):'',oldest_days:ub.age?ub.age.max_days:undefined,prev_month:ub.prev_month||null,current_month:ub.current_month||null,
+   definition:'תעודות משלוח IVALL=N מה-1 של החודש הקודם (הכרעת דוד 4.9 · תמונת המצב 11.9)',canonical_source:ENGINE,as_of:asOf,cached:!!cachedAt}:null,
+  receivables:rc?{headline_count:rc.count,sums:{TOTPRICE:rc.total,QPRICE:rc.net},aging:rc.aging||{},
+   top_customers:(rc.top||[]).map(c=>({CDES:c.customer,sum:c.sum,oldest_days:c.oldest_days,count:null})),
+   window:rc.window||'',as_of:rc.as_of||asOf,cached:true,definition:'חשבוניות סופיות פתוחות בפריוריטי (הכרעת דוד 4.9) — KPI מאומת ≤24 שעות, אותו מקור לפולס ולתמונת המצב',canonical_source:ENGINE}:null,
+  gross_profit:d.gross_profit||null,
+  verdict:s.verdict||null,
+  status:s.verdict?{verdict:s.verdict,snapshot_today:d.today,rate:d.rate,as_of:asOf,cached:!!cachedAt,canonical_source:ENGINE}:null,
+ };
 }
 
 /* ── FRESCO EXECUTIVE (David, 31.8) — the right rail becomes a real business
@@ -1767,6 +1781,37 @@ function kpiDetailLines(key){
  const r=(RAILS.kpis||{})[key];
  if(!r)return ['<p class="dim">'+esc(KPI_GAP_DETAIL[key]||KPI_UNVERIFIED_NOTE[key]||'אין עדיין נתון מאומת.')+'</p>'];
  const lines=[];
+ /* STATUS (12.9): the engine's verdict — score, direction, backlog cover,
+    stuck money, pace vs last year, forecast, the one priority action. */
+ if(key==='status'&&r.verdict){
+  const v=r.verdict;const rate=r.rate||{};
+  lines.push('<p><b>ציון:</b> '+(v.status?v.status.emoji+' ':'')+(v.score==null?'לא מדיד':v.score+'/100')+(v.status?' · '+esc(v.status.word):'')+'</p>');
+  lines.push('<p><b>הדבר הכי חשוב עכשיו:</b> '+esc(v.action||'')+'</p>');
+  if(rate.projected_month!=null)lines.push('<p><b>תחזית סוף חודש:</b> '+esc(money(rate.projected_month))+' נטו'+(v.month_vs_ly!=null?' ('+(v.month_vs_ly>=0?'+':'')+v.month_vs_ly+'% מול אשתקד)':'')+' · ביטחון '+esc(String(rate.confidence||''))+'</p>');
+  if(v.year&&v.year.projected_year!=null)lines.push('<p><b>תחזית סוף שנה:</b> '+esc(money(v.year.projected_year))+' נטו'+(v.year.vs_ly!=null?' ('+(v.year.vs_ly>=0?'+':'')+v.year.vs_ly+'% מול אשתקד)':'')+'</p>');
+  lines.push('<p><b>מול אשתקד (תקופה שקולה):</b> מכירות '+(v.sales_pct==null?'לא מאומת':(v.sales_pct>=0?'+':'')+v.sales_pct+'%')+' · הזמנות '+(v.orders_pct==null?'לא מאומת':(v.orders_pct>=0?'+':'')+v.orders_pct+'%')+'</p>');
+  if(v.backlog_cover_pct!=null)lines.push('<p><b>כיסוי צבר:</b> '+v.backlog_cover_pct+'% מחודש מכירות צפוי — '+(v.backlog_strong?'חזק':'חלש')+'</p>');
+  for(const p of (v.parts||[]))lines.push('<p class="dim">'+esc(p.label)+': '+p.points+'/'+p.max+' — '+esc(p.why)+'</p>');
+  if(v.omitted&&v.omitted.length)lines.push('<p class="dim">לא אומת והושמט מהציון: '+esc(v.omitted.join(', '))+'</p>');
+  if(r.canonical_source)lines.push('<p class="dim">מקור: '+esc(r.canonical_source)+'</p>');
+  lines.push(kpiAgeLine(r));
+  return lines;
+ }
+ /* OPEN ORDERS from the snapshot engine (12.9): the TRUE open backlog —
+    remaining value per line (TBALANCE × DISPRICE = PRICEBAL), the original
+    order value beside it, framework original/drawn/remaining. */
+ if(r.engine==='fresco_snapshot'&&('remaining' in r)){
+  lines.push('<p><b>הזמנות פתוחות:</b> '+r.headline_count+'</p>');
+  lines.push('<p><b>יתרה לספק (צבר אמיתי):</b> '+(r.remaining!=null?esc(money(r.remaining)):'לא מאומת — '+r.unverified_lines+' שורות ב-'+r.unverified_orders+' הזמנות ללא יתרה/מחיר מאומתים')+'</p>');
+  if(r.original!=null)lines.push('<p><b>הזמנה מקורית:</b> '+esc(money(r.original))+'</p>');
+  const f=r.framework;
+  if(f&&f.count)lines.push('<p><b>הזמנות מסגרת:</b> '+f.count+(f.unverified===0?' · מקורית '+esc(money(f.original))+' · נמשך '+esc(money(f.drawn))+' · <b>נותר '+esc(money(f.remaining))+'</b>':' · סכומים לא מאומתים ('+f.unverified+' עם שורה לא מאומתת)')+'</p>');
+  else lines.push('<p><b>הזמנות מסגרת:</b> 0</p>');
+  if(r.open_definition)lines.push('<p class="dim">'+esc(r.open_definition)+'</p>');
+  if(r.canonical_source)lines.push('<p class="dim">מקור: '+esc(r.canonical_source)+'</p>');
+  lines.push(kpiAgeLine(r));
+  return lines;
+ }
  /* OPEN ORDERS (הכרעת דוד 1.9): פתוחה = BOOLCLOSED ריק; מציגים בביצוע · טיוטא
     · סה"כ — וכל סטטוס פתוח אחר בפירוט, כדי שהסכום תמיד יתאזן מול הסה"כ. */
  if(r.by_status){
@@ -1786,8 +1831,10 @@ function kpiDetailLines(key){
   if(r.sums&&r.sums.TOTPRICE!=null)lines.push('<p><b>כולל מע"מ:</b> '+esc(money(r.sums.TOTPRICE))+(r.sums.QPRICE!=null?' · <b>לפני:</b> '+esc(money(r.sums.QPRICE)):'')+'</p>');
   lines.push('<p><b>הוחרגו:</b> '+(r.excluded.billed_via_order||0)+' שההזמנה כבר חויבה · '+(r.excluded.zero_price||0)+' ללא מחיר · '+(r.excluded.not_final||0)+' לא סופית</p>');
   if(typeof r.oldest_days==='number')lines.push('<p><b>הוותיקה ביותר:</b> לפני '+r.oldest_days+' יום</p>');
-  for(const c of (r.top_customers||[]).slice(0,5))lines.push('<p>'+esc(c.CDES||c.CUSTNAME)+': '+esc(money(c.sum))+' · '+c.count+' תעודות</p>');
+  if(r.prev_month&&r.current_month)lines.push('<p><b>מחודש קודם:</b> '+r.prev_month.count+' ('+esc(money(r.prev_month.gross))+') · <b>מהחודש:</b> '+r.current_month.count+' ('+esc(money(r.current_month.gross))+')</p>');
+  for(const c of (r.top_customers||[]).slice(0,5))lines.push('<p>'+esc(c.CDES||c.CUSTNAME)+': '+esc(money(c.sum))+(c.count!=null?' · '+c.count+' תעודות':'')+'</p>');
   if(r.definition)lines.push('<p class="dim">'+esc(r.definition)+'</p>');
+  if(r.canonical_source)lines.push('<p class="dim">מקור: '+esc(r.canonical_source)+'</p>');
   lines.push(kpiAgeLine(r));
   return lines;
  }
@@ -1798,10 +1845,11 @@ function kpiDetailLines(key){
   for(const b of ['0-30','31-60','61-90','90+']){const x=r.aging[b]||{count:0,sum:0};lines.push('<p>'+esc(b)+' יום: '+x.count+' · '+esc(money(x.sum))+'</p>');}
   for(const c of (r.top_customers||[]).slice(0,5)){
    const o=c.obligo;
-   lines.push('<p>'+esc(c.CDES||c.CUSTNAME)+': '+esc(money(c.sum))+' · '+c.count+' חשבוניות · הוותיקה '+c.oldest_days+' יום'
+   lines.push('<p>'+esc(c.CDES||c.CUSTNAME)+': '+esc(money(c.sum))+(c.count!=null?' · '+c.count+' חשבוניות':'')+' · הוותיקה '+c.oldest_days+' יום'
     +(o&&o.overdue!=null?' · <b>בפיגור (פריוריטי):</b> '+esc(money(o.overdue))+(o.future!=null?' · טרם הגיע מועד: '+esc(money(o.future)):''):'')+'</p>');
   }
   if(r.definition)lines.push('<p class="dim">'+esc(r.definition)+'</p>');
+  if(r.canonical_source)lines.push('<p class="dim">מקור: '+esc(r.canonical_source)+'</p>');
   lines.push(kpiAgeLine(r));
   return lines;
  }
@@ -1816,18 +1864,21 @@ function kpiDetailLines(key){
  return lines.length?lines:['<p class="dim">אין עדיין נתון מאומת.</p>'];
 }
 const KPI_LABEL={sales_today:'מכירות היום',sales_month:'מכירות החודש',open_orders:'הזמנות פתוחות',
- unbilled:'תעודות משלוח לחיוב',receivables:'חייבים / בפיגור',gross_profit:'רווח גולמי משוער'};
-const KPI_UNVERIFIED_NOTE={open_orders:'אוצר סטטוסים טרם אומת',unbilled:'נטען מפריוריטי (סריקת 90 יום)',
- receivables:'נטען מפריוריטי (סריקת 12 חודשים)',gross_profit:'טרם חובר חוזה'};
+ unbilled:'תעודות משלוח לחיוב',receivables:'חייבים / בפיגור',gross_profit:'רווח גולמי משוער',status:'מצב פרסקו'};
+const KPI_UNVERIFIED_NOTE={open_orders:'מנוע תמונת המצב לא ענה',unbilled:'מנוע תמונת המצב לא ענה',
+ receivables:'אין KPI חייבים מאומת ≤24 שעות',gross_profit:'לא מאומת — עד מקור עלות אמין (הכרעת דוד 1.9)',status:'מנוע תמונת המצב לא ענה'};
 /* THE GAP, NAMED (David, 1.9 — "תפטור את החסרים בתוך המסך"): an unwired tile
    used to dead-end at "טרם חובר חוזה". The tile stays honest — no invented
    number — but its detail now says exactly WHAT is missing and WHO owns the
    next step, read from the same contract reality the backend declares. */
 const KPI_GAP_DETAIL={
- open_orders:'החוזה מאומת (הכרעת דוד 1.9: פתוחה = BOOLCLOSED ריק) — אבל הקריאה הזו לא חזרה. רענן; אם זה נמשך, פריוריטי או הפונקציה לא זמינות.',
- unbilled:'החוזה מאומת (הכרעת דוד 4.9: IVALL=N פעילות בלבד — ההזמנה עדיין ללא חשבונית ב-90 הימים האחרונים; שאריות לא נספרות) — אבל הקריאה הזו לא חזרה. רענן; הסריקה נשמרת במטמון 30 דקות.',
- receivables:'החוזה מאומת (הכרעת דוד 4.9: חשבוניות סופיות פתוחות בפריוריטי — ללא תאריך התאמה — לפי לקוח, סכום וגיל; פיגור מגיול פריוריטי) — אבל הקריאה הזו לא חזרה. רענן; הסריקה נשמרת במטמון 30 דקות.',
- gross_profit:'הכרעת דוד (1.9): נשאר לא-מאומת עד מקור עלות אמין. לא ממציאה מספר.'};
+ sales_today:'מנוע תמונת המצב (fresco_snapshot) לא ענה — רענן; אם זה נמשך, פריוריטי או הפונקציה לא זמינות.',
+ sales_month:'מנוע תמונת המצב (fresco_snapshot) לא ענה — רענן; אם זה נמשך, פריוריטי או הפונקציה לא זמינות.',
+ open_orders:'הצבר האמיתי (הכרעת דוד 1.9: פתוחה = BOOLCLOSED ריק; יתרה לספק = TBALANCE × DISPRICE) מחושב במנוע תמונת המצב — והקריאה הזו לא חזרה, או שהמנוע לא אימת את ההזמנות הפתוחות. רענן; המנוע נשמר במטמון 10 דקות.',
+ unbilled:'תעודות משלוח IVALL=N מה-1 של החודש הקודם (הכרעת דוד 4.9 · תמונת המצב 11.9) מחושבות במנוע תמונת המצב — והקריאה הזו לא חזרה, או שהמנוע לא אימת את התעודות. רענן; המנוע נשמר במטמון 10 דקות.',
+ receivables:'חייבים = KPI מאומת של חוזה receivables (הכרעת דוד 4.9), שמנוע תמונת המצב קורא רק כשהוא טרי ≤24 שעות. אין KPI טרי — אין מספר. רענון מתקבל דרך "חייבים" בצ\'אט (הסריקה 365 יום).',
+ gross_profit:'הכרעת דוד (1.9, חזרה 12.9): נשאר לא-מאומת עד מקור עלות אמין. לא ממציאה מספר.',
+ status:'הציון, התחזית והפעולה הבאה מגיעים ממנוע תמונת המצב — והקריאה הזו לא חזרה. רענן.'};
 function kpiTile(key,label,text,note,colorClass){
  const nv=(text===null||text===undefined);
  const open=isKpiOpen(key);
@@ -1840,10 +1891,33 @@ function kpiTile(key,label,text,note,colorClass){
 }
 function openOrdersKpiText(r){
  if(!r||typeof r.headline_count!=='number')return null;
- // David's ruling (1.9): open = BOOLCLOSED empty. The headline is the total;
- // the ruling's separate בביצוע/טיוטא numbers live in the note and the detail.
- // The live status value is "בבצוע" (no yud) — the label follows David's word.
+ // David's ruling (1.9): open = BOOLCLOSED empty. Since 12.9 the row is the
+ // snapshot engine's: the headline carries the TRUE open backlog (remaining
+ // value, TBALANCE × DISPRICE) when every line verified; otherwise the count
+ // alone, and the detail says which lines did not verify (§9: no number).
+ if(r.engine==='fresco_snapshot')return r.headline_count+' פתוחות'+(r.remaining!=null?' · '+money(r.remaining)+' יתרה':'');
  return r.headline_count+' פתוחות'+(r.at_cap?' לפחות':'');
+}
+function openOrdersKpiNote(r){
+ if(!r)return KPI_UNVERIFIED_NOTE.open_orders;
+ if(r.engine==='fresco_snapshot'){
+  const f=r.framework;
+  if(r.remaining==null)return 'יתרה לא מאומתת: '+r.unverified_lines+' שורות';
+  return f&&f.count?('מסגרת '+f.count+(f.unverified===0?' · נותר '+money(f.remaining):' · סכום לא מאומת')):'מקורית '+money(r.original)+' · מסגרת 0';
+ }
+ return r.by_status?('בביצוע '+(r.by_status['בבצוע']||0)+' · טיוטא '+(r.by_status['טיוטא']||0)):KPI_UNVERIFIED_NOTE.open_orders;
+}
+/* STATUS (12.9): the engine's verdict on one tile — score + word; the note
+   is the month forecast. Detail: forecast, YoY, the one priority action. */
+function statusKpiText(r){
+ if(!r||!r.verdict||!r.verdict.status)return null;
+ const v=r.verdict;
+ return v.status.emoji+' '+(v.score==null?'לא מדיד':v.score+'/100')+' · '+v.status.word;
+}
+function statusKpiNote(r){
+ if(!r||!r.verdict)return KPI_UNVERIFIED_NOTE.status;
+ const rate=r.rate||{};
+ return rate.projected_month!=null?('סוף חודש '+money(rate.projected_month)+(r.verdict.month_vs_ly!=null?' ('+(r.verdict.month_vs_ly>=0?'+':'')+r.verdict.month_vs_ly+'%)':'')):'תחזית לא מאומתת';
 }
 /* UNBILLED (הכרעת דוד 4.9): פעילה = IVALL=N · סופית · ההזמנה עדיין ללא חשבונית
    ב-90 הימים האחרונים. הכותרת = הסכום לחיוב כולל מע"מ + מספר התעודות. */
@@ -1854,6 +1928,7 @@ function unbilledKpiText(r){
 }
 function unbilledKpiNote(r){
  if(!r||!r.excluded)return KPI_UNVERIFIED_NOTE.unbilled;
+ if(r.prev_month&&r.current_month)return 'מחודש קודם '+r.prev_month.count+' · מהחודש '+r.current_month.count+(typeof r.oldest_days==='number'?' · הוותיקה '+r.oldest_days+' יום':'');
  return 'הוחרגו: '+(r.excluded.billed_via_order||0)+' שההזמנה חויבה · '+(r.excluded.zero_price||0)+' ללא מחיר';
 }
 /* RECEIVABLES (הכרעת דוד 4.9): חשבוניות סופיות פתוחות (ללא תאריך התאמה), סכום
@@ -1884,20 +1959,20 @@ function salesKpiText(r){
 function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
  const k=RAILS.kpis||{};
+ /* All seven tiles are ONE engine's row (12.9): fresco_snapshot. The status
+    tile is the engine's verdict — the same score the chat's Pulse shows. */
  const rows=[
+  ['status','מצב פרסקו',statusKpiText(k.status),statusKpiNote(k.status),'c-status'],
   ['sales_today','מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday'],
   ['sales_month','מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth'],
-  ['open_orders','הזמנות פתוחות',openOrdersKpiText(k.open_orders),
-   k.open_orders&&k.open_orders.by_status
-    ?('בביצוע '+(k.open_orders.by_status['בבצוע']||0)+' · טיוטא '+(k.open_orders.by_status['טיוטא']||0))
-    :KPI_UNVERIFIED_NOTE.open_orders,'c-openOrders'],
+  ['open_orders','הזמנות פתוחות',openOrdersKpiText(k.open_orders),openOrdersKpiNote(k.open_orders),'c-openOrders'],
   ['unbilled','תעודות משלוח לחיוב',unbilledKpiText(k.unbilled),unbilledKpiNote(k.unbilled),'c-unbilled'],
   ['receivables','חייבים / בפיגור',receivablesKpiText(k.receivables),receivablesKpiNote(k.receivables),'c-receivables'],
   ['gross_profit','רווח גולמי משוער',null,KPI_UNVERIFIED_NOTE.gross_profit,'c-grossProfit'],
  ];
  el.innerHTML=rows.map(r=>kpiTile(r[0],r[1],r[2],r[3],r[4])).join('');
  const verified=rows.filter(r=>r[2]!==null&&r[2]!==undefined).length;
- setRailSummary('kpiSummary',verified+' מאומתים · '+(rows.length-verified)+' ממתינים');
+ setRailSummary('kpiSummary',verified+' מאומתים · '+(rows.length-verified)+' ממתינים · מנוע אחד');
 }
 /* CHAT → CARD ROUTING (David, 31.8). No backend change: every kernel answer
    already carries capabilities_used (finalize() in command-center adds it
@@ -1913,6 +1988,9 @@ const CARD_ROUTES=[
  {test:r=>/^contract unbilled\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'unbilled'},
  {test:r=>/^contract receivables\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'receivables'},
  {test:r=>/^contract open_orders\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'open_orders'},
+ /* 12.9: a Pulse / Snapshot answer routes to the status tile — the SAME engine
+    (engine:'fresco_snapshot' rides every such answer) the tiles were built from. */
+ {test:r=>r.engine==='fresco_snapshot'||(r.capabilities_used||[]).some(c=>c==='fresco_snapshot'||c==='fresco_pulse'),kind:'kpi',key:'status'},
  {test:r=>(r.capabilities_used||[]).includes('work_status'),kind:'card',id:'activeWorkCard'},
  {test:r=>(r.capabilities_used||[]).some(c=>c==='alerts'||c==='alert_ack'),kind:'card',id:'needsCard'},
  {test:r=>(r.capabilities_used||[]).includes('next_decision'),kind:'card',id:'prioCard'},

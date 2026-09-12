@@ -198,7 +198,7 @@ ok('SRC: ✎ confirms unless forced', /if\(force!==true&&!confirm\(/.test(SRC) &
 ok('SRC: the tick syncs first and judges the deadline after', /if\(CHAT\.syncing\)\{ph\.__await=setTimeout\(tick,500\);return;\}\s*try\{await chatSync\(\);\}catch\(e\)\{\}\s*if\(!ph\.pending\)return;[^\n]*\n\s*if\(Date\.now\(\)-ph\.awaiting_since>TURN_AWAIT_MAX_MS\)/.test(SRC));
 ok('SRC: the ORGANIZATION list is bounded and the thread keeps 42vh on the phone', /\.orgMobile \.orgList\{max-height:min\(30vh,360px\);min-height:0;overflow-y:auto/.test(SRC) && /#center>#thread\{min-height:42vh\}/.test(SRC));
 ok('SRC: chat_list and chat_open go through ccApi (command-center)', /ccApi\(\{action:'chat_list'/.test(SRC) && /ccApi\(\{action:'chat_open'/.test(SRC));
-ok('SRC: build 2026-09-11.3', /const LIA_BUILD='2026-09-11\.3';/.test(SRC));
+ok('SRC: build 2026-09-12.1', /const LIA_BUILD='2026-09-12\.1';/.test(SRC));
 ok('no page errors', errors.length === 0, errors.join('\n'));
 
 await browser.close();
