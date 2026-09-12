@@ -95,8 +95,9 @@ check('LIA: an unwired KPI names its gap instead of dead-ending', () => {
     assert(new RegExp(key + ':').test(map), `${key} has no named gap`);
   }
 });
-check("LIA: the open-orders tile carries David's ruling — total headline, בביצוע/טיוטא split, full tally in detail", () => {
-  assert(/intent:'open_orders'/.test(lia), 'the rail never fetches the open_orders contract');
+check("LIA: the open-orders tile carries David's rulings — 1.9: open = BOOLCLOSED empty (בביצוע/טיוטא tally for a contract row); 12.9: the headline is the TRUE remaining backlog from the one engine", () => {
+  assert(/r\.engine==='fresco_snapshot'\)return r\.headline_count\+' פתוחות'\+\(r\.remaining!=null\?' · '\+money\(r\.remaining\)\+' יתרה':''\)/.test(lia), 'the engine row must headline the remaining backlog (null → count only, §9)');
+  assert(/יתרה לספק \(צבר אמיתי\)/.test(lia) && /הזמנות מסגרת:/.test(lia), 'the engine detail must show the remaining value, the original, and the framework remaining');
   assert(/function openOrdersKpiText\(/.test(lia) && /פתוחות'\+\(r\.at_cap\?' לפחות':''\)/.test(lia),
     'the headline is not the honest total (with the page-cap floor)');
   // The live status value is "בבצוע" (no yud); the display label is David's
@@ -108,13 +109,22 @@ check("LIA: the open-orders tile carries David's ruling — total headline, בב
 });
 check("LIA: David's rulings are recorded on the tiles' gap details (4.9: unbilled + receivables wired; 1.9: gross profit still honest)", () => {
   const gaps = lia.split('const KPI_GAP_DETAIL')[1].split('};')[0];
-  assert(/unbilled:'החוזה מאומת \(הכרעת דוד 4\.9: IVALL=N פעילות בלבד/.test(gaps), 'the unbilled ruling (IVALL=N active only, not leftovers) is not recorded');
-  assert(/receivables:'החוזה מאומת \(הכרעת דוד 4\.9: חשבוניות סופיות פתוחות בפריוריטי/.test(gaps), 'the receivables ruling (open invoices in Priority, customer·amount·age) is not recorded');
+  assert(/unbilled:'תעודות משלוח IVALL=N מה-1 של החודש הקודם \(הכרעת דוד 4\.9/.test(gaps), 'the unbilled ruling (IVALL=N, from the 1st of the previous month since the 11.9 snapshot) is not recorded');
+  assert(/receivables:'חייבים = KPI מאומת של חוזה receivables \(הכרעת דוד 4\.9\)/.test(gaps), 'the receivables ruling (the verified KPI, read only when ≤24h fresh) is not recorded');
   assert(/עד מקור עלות אמין/.test(gaps), 'the gross-profit ruling is not recorded');
 });
-check("LIA: the two scanning KPIs are fetched AFTER the fast tiles paint, and their tiles read the contract rows", () => {
-  assert(/function loadScanKpis\(\)/.test(lia) && /intent:'unbilled'/.test(lia) && /intent:'receivables'/.test(lia), 'the rail never fetches the two contracts');
-  assert(/renderRails\(\);renderKpis\(\);renderOrg\(\);\s*\/\*[\s\S]*?\*\/\s*loadScanKpis\(\);\}/.test(lia), 'the scans must start after the first paint, not inside the blocking Promise.all');
+check("LIA (12.9): ONE CANONICAL ENGINE — the tiles read fresco_snapshot (the engine the chat's Pulse/Snapshot answer from), never per-tile contracts or a second cache", () => {
+  const rails = lia.slice(lia.indexOf('async function loadRails(){'), lia.indexOf('function kpisFromSnapshot('));
+  assert(/cap\('fresco_snapshot',\{\}\)/.test(rails), 'the rail does not read the canonical engine');
+  assert(!/cap\('business_query'/.test(rails) && !/loadScanKpis/.test(lia) && !/intent:'unbilled'/.test(lia) && !/intent:'receivables'/.test(lia) && !/intent:'open_orders'/.test(lia), 'a per-tile contract or the old scan path is still fetched');
+  assert(/RAILS\.kpis=kpisFromSnapshot\(s\);/.test(rails) && /function kpisFromSnapshot\(s\)/.test(lia), 'the snapshot row is not adapted to the tiles');
+  const adapt = lia.slice(lia.indexOf('function kpisFromSnapshot('), lia.indexOf('const HARNESS_RE='));
+  assert(adapt.length > 200 && adapt.length < 6000, `adapter slice ${adapt.length}`);
+  assert(/remaining:oo\.all_verified\?oo\.open_value:null/.test(adapt), 'open orders must carry the TRUE remaining backlog, null when a line did not verify (§9)');
+  assert(/receivables:rc\?\{headline_count:rc\.count,sums:\{TOTPRICE:rc\.total/.test(adapt) && /gross_profit:d\.gross_profit\|\|null/.test(adapt), 'receivables / gross profit are the engine\'s fields, copied — never recomputed');
+  assert(/status:s\.verdict\?\{verdict:s\.verdict/.test(adapt), 'the verdict (score, forecast, action) must reach a tile');
+  assert(/\['status','מצב פרסקו',statusKpiText\(k\.status\),statusKpiNote\(k\.status\)/.test(lia), 'no status tile');
+  assert(/r\.engine==='fresco_snapshot'\|\|\(r\.capabilities_used\|\|\[\]\)\.some\(c=>c==='fresco_snapshot'\|\|c==='fresco_pulse'\)/.test(lia), 'a Pulse/Snapshot chat answer does not route to the status tile');
   assert(/function unbilledKpiText\(/.test(lia) && /function receivablesKpiText\(/.test(lia), 'no headline builders for the two tiles');
   assert(/unbilledKpiText\(k\.unbilled\)/.test(lia) && /receivablesKpiText\(k\.receivables\)/.test(lia), 'the tiles do not read RAILS.kpis');
   assert(/r\.excluded\.billed_via_order/.test(lia) && /r\.aging\[b\]/.test(lia) && /בפיגור \(פריוריטי\)/.test(lia), 'the details do not show what was excluded / the aging / Priority\'s own overdue');
