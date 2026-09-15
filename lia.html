@@ -1693,16 +1693,18 @@ async function loadRails(){
     row, adapted to the tile shapes below (kpisFromSnapshot) — no per-tile
     contract, no second cache, no second definition of any number.
     sales/next_decision still feed TODAY+PRIORITIES; tower feeds ORGANIZATION. */
- const [sales,dec,snap,tw]=await Promise.all([
+ const [sales,dec,snap,tw,kq]=await Promise.all([
   api({action:'sales'}).catch(()=>({error:'unreachable'})),
   cap('next_decision').catch(()=>({rows:[]})),
   cap('fresco_snapshot',{}).catch(()=>null),
-  ccApi({action:'tower'}).catch(()=>null)]);
+  ccApi({action:'tower'}).catch(()=>null),
+  cap('kpi_read',{key:'quotes_to_orders_60d'}).catch(()=>null)]);
  RAILS.sales=sales;
  RAILS.decisions=(dec&&dec.rows)||[];
  const s=(snap&&snap.rows&&snap.rows[0])||null;
  RAILS.snapshot=s;
  RAILS.kpis=kpisFromSnapshot(s);
+ RAILS.kpis.kpi_quotes_to_orders_60d=(kq&&kq.rows&&kq.rows[0]&&kq.rows[0].text)||null;
  RAILS.org=(tw&&tw.departments)||null;
  renderRails();renderKpis();renderOrg();}
 /* The snapshot row → the tile rows the existing helpers already render.
@@ -1965,6 +1967,7 @@ function renderKpis(){
   ['status','מצב פרסקו',statusKpiText(k.status),statusKpiNote(k.status),'c-status'],
   ['sales_today','מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday'],
   ['sales_month','מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth'],
+  ['kpi_quotes_to_orders_60d','הצעות מחיר → הזמנות · 60 הימים האחרונים',k.kpi_quotes_to_orders_60d||null,null,'c-salesMonth'],
   ['open_orders','הזמנות פתוחות',openOrdersKpiText(k.open_orders),openOrdersKpiNote(k.open_orders),'c-openOrders'],
   ['unbilled','תעודות משלוח לחיוב',unbilledKpiText(k.unbilled),unbilledKpiNote(k.unbilled),'c-unbilled'],
   ['receivables','חייבים / בפיגור',receivablesKpiText(k.receivables),receivablesKpiNote(k.receivables),'c-receivables'],
