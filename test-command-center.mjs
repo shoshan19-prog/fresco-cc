@@ -59,13 +59,18 @@ ok('needs-David is the orange tone, not green', S.deriveRow({ state: 'WAITING_AP
 ok('a park word on a non-parked row does not need him (the server decides parked_for_david)', !S.deriveRow(live({ disposition: 'NEEDS_DAVID_DECISION' })).needs);
 ok('needs-David beats MOVING in the label', S.deriveRow(live({ approval_required: true })).key === 'NEEDS_DAVID');
 
-// ── GREEN only for VERIFIED completion ────────────────────────────────────
-ok('DONE + an independent PASS = verified, green', (() => { const d = S.deriveRow({ state: 'DONE', verifications: [{ result: 'PASS' }] }); return d.key === 'VERIFIED' && d.verified === true && d.tone === 'ok'; })());
-ok('DONE + complete completion evidence = verified', S.deriveRow({ state: 'DONE', completion_evidence: { complete: true } }).verified === true);
-ok('DONE alone = not verified, grey, and says so', (() => { const d = S.deriveRow({ state: 'DONE' }); return d.key === 'DONE_UNVERIFIED' && d.verified === false && d.tone === 'dim' && /אין אימות/.test(d.note); })());
-ok('DONE + a FAILED verification = not verified', S.deriveRow({ state: 'DONE', verifications: [{ result: 'FAIL' }] }).verified === false);
-ok('DONE + evidence that is not complete = not verified, with the evidence\'s own reason', (() => { const d = S.deriveRow({ state: 'DONE', completion_evidence: { complete: false, detail: 'התוכן קטוע' } }); return d.verified === false && d.note === 'התוכן קטוע'; })());
-ok('a string "true" is not verification', S.deriveRow({ state: 'DONE', completion_evidence: { complete: 'true' } }).verified === false);
+// ── the DONE word is the server's closure, never the page's inference (28.9) ──
+const cl = (key, over = {}) => ({ key, label: { DONE_VERIFIED: 'הושלם · אומת', DONE_COMPLETE: 'הושלם · לא אומת', DONE_UNVERIFIED: 'הושלם · נדרש אימות', DONE_HOLLOW: 'הושלם · אין תוצר' }[key],
+  presence: key === 'DONE_HOLLOW' ? 'MISSING' : 'PRESENT', presence_detail: key === 'DONE_HOLLOW' ? 'התוצר המוצהר לא נקרא חזרה' : 'קיים', progress: null, stage: 'DONE',
+  verified_by: key === 'DONE_VERIFIED' ? 'INDEPENDENT' : 'NONE', verification_required: key === 'DONE_UNVERIFIED', evidence_ref: key === 'DONE_VERIFIED' ? 'check:contract#pr:9@abc' : null,
+  product: { kind: 'self_result', ref: null, declared: false }, delivery: { result: 'התוצאה', ref: null, ref_kind: null, notice: 'SENT', interface_complete: true }, ...over });
+ok('DONE_VERIFIED from the server = verified, green, its own label', (() => { const d = S.deriveRow({ state: 'DONE', closure: cl('DONE_VERIFIED') }); return d.key === 'VERIFIED' && d.verified === true && d.tone === 'ok' && d.label === 'הושלם · אומת'; })());
+ok('readback-only completion (DONE_COMPLETE) is never "אומת" — even with complete evidence on the row', (() => { const d = S.deriveRow({ state: 'DONE', completion_evidence: { complete: true }, closure: cl('DONE_COMPLETE') }); return d.verified === false && d.tone === 'dim' && d.label === 'הושלם · לא אומת' && /לא נדרש/.test(d.note); })());
+ok('a PASS record on the row does not make it verified — only the closure does', S.deriveRow({ state: 'DONE', verifications: [{ result: 'PASS' }], closure: cl('DONE_UNVERIFIED') }).verified === false);
+ok('verification required and missing = warn, and says so', (() => { const d = S.deriveRow({ state: 'DONE', closure: cl('DONE_UNVERIFIED') }); return d.tone === 'warn' && /נדרש אימות/.test(d.note); })());
+ok('DONE with no product = warn, with the server\'s own reason', (() => { const d = S.deriveRow({ state: 'DONE', closure: cl('DONE_HOLLOW') }); return d.key === 'DONE_HOLLOW' && d.tone === 'warn' && d.note === 'התוצר המוצהר לא נקרא חזרה'; })());
+ok('no closure from the server = "הושלם", never a guess either way', (() => { const d = S.deriveRow({ state: 'DONE', verifications: [{ result: 'PASS' }], completion_evidence: { complete: true } }); return d.key === 'DONE_UNKNOWN' && d.label === 'הושלם' && d.verified === null && /לא הגיע/.test(d.note); })());
+ok('a closure without a key is no closure', S.deriveRow({ state: 'DONE', closure: { label: 'הושלם · אומת' } }).key === 'DONE_UNKNOWN');
 ok('FAILED and CANCELLED are grey history, never verified', ['FAILED', 'CANCELLED'].every((st) => { const d = S.deriveRow({ state: st }); return d.tone === 'dim' && d.verified === null; }));
 ok('a tool success on a live row never turns it green', S.deriveRow(live({ result: 'ok', outcome: 'done' })).tone === 'ok' ? true : true); // MOVING is green by liveness, not by result
 ok('a live row with result text but a dead lease is still stale', S.deriveRow({ state: 'RUNNING', result: 'ok', outcome: 'done', lease_alive: false }).key === 'STALE');
@@ -80,22 +85,29 @@ ok('a structured wait is read too', S.deriveRow({ state: 'WAITING_EXTERNAL', wai
 ok('WAITING_INTERNAL reads the blocker, then the liveness reason', S.deriveRow({ state: 'WAITING_INTERNAL', liveness: { why: 'המתנה עד 16:00' } }).note === 'המתנה עד 16:00');
 
 // ── PROGRESS: never invented ──────────────────────────────────────────────
-ok('a percentage comes only from real sub-items', (() => { const p = S.progressOf({ progress: { done: 3, total: 5 } }); return p && p.pct === 60 && p.text === '3/5' && p.source === 'items'; })());
-eq('no items → no percentage', S.progressOf({ current_step: 'בודקת' }), null);
-eq('a zero total → no percentage', S.progressOf({ progress: { done: 0, total: 0 } }), null);
-eq('a malformed progress → no percentage', S.progressOf({ progress: { done: '3', total: 'x' } }), null);
-eq('never above 100', S.progressOf({ progress: { done: 9, total: 5 } }).pct, 100);
+ok('a percentage comes only from the closure\'s real denominator', (() => { const p = S.progressOf({ closure: cl('DONE_VERIFIED', { progress: { done: 3, total: 5, source: 'ACCEPTANCE' } }) }); return p && p.pct === 60 && p.text === '3/5' && p.source === 'ACCEPTANCE'; })());
+eq('the legacy items-based progress field is not read (0/5 plan steps on a DONE row stay invisible)', S.progressOf({ progress: { done: 0, total: 5 } }), null);
+eq('no denominator → no percentage', S.progressOf({ current_step: 'בודקת', closure: cl('DONE_COMPLETE') }), null);
+eq('a zero total → no percentage', S.progressOf({ closure: cl('DONE_COMPLETE', { progress: { done: 0, total: 0, source: 'STEPS' } }) }), null);
+eq('a malformed progress → no percentage', S.progressOf({ closure: cl('DONE_COMPLETE', { progress: { done: '3', total: 'x' } }) }), null);
+eq('never above 100', S.progressOf({ closure: cl('DONE_COMPLETE', { progress: { done: 9, total: 5, source: 'STEPS' } }) }).pct, 100);
 eq('no items → the stage is the current step, as text', S.stageOf({ current_step: '  קוראת   מיילים ' }), 'קוראת מיילים');
 eq('a long step is clipped', S.stageOf({ current_step: 'א'.repeat(80) }).length, 48);
 eq('no step → the state word', S.stageOf({ state: 'QUEUED' }), 'בתור');
 eq('no step, unknown state → nothing', S.stageOf({}), null);
 ok('the source never carries a mockup number', !/35%|55%|70%|85%|Q4 Campaign|Outlook Integration|Daily status report|Increase sales by 10%/.test(html));
 
-// ── milestones: only from real items ──────────────────────────────────────
-eq('fewer than two items → no milestones', S.milestonesOf({ items: [{ id: 'a', status: 'OPEN' }] }).length, 0);
-eq('more than eight items → no milestones (a list, not a track)', S.milestonesOf({ items: Array.from({ length: 9 }, (_, i) => ({ id: 'i' + i, status: 'OPEN' })) }).length, 0);
+// ── milestones: only where the closure found a real denominator ───────────
+const stepsP = (n, d) => ({ closure: cl('DONE_COMPLETE', { progress: { done: d, total: n, source: 'STEPS' } }) });
+eq('fewer than two items → no milestones', S.milestonesOf({ items: [{ id: 'a', status: 'OPEN' }], ...stepsP(1, 0) }).length, 0);
+eq('more than eight items → no milestones (a list, not a track)', S.milestonesOf({ items: Array.from({ length: 9 }, (_, i) => ({ id: 'i' + i, status: 'OPEN' })), ...stepsP(9, 1) }).length, 0);
+eq('items with no real denominator (nobody maintains them) → no milestones', S.milestonesOf({ items: [{ id: '1', status: 'OPEN' }, { id: '2', status: 'OPEN' }, { id: '3', status: 'OPEN' }] }).length, 0);
+ok('acceptance progress → the acceptance criteria are the milestones, plan steps are not', (() => {
+  const m = S.milestonesOf({ items: [{ id: '1', status: 'OPEN' }, { id: 'acc:A', status: 'VERIFIED' }, { id: 'acc:B', status: 'OPEN' }], closure: cl('DONE_COMPLETE', { progress: { done: 1, total: 2, source: 'ACCEPTANCE' } }) });
+  return m.length === 2 && m[0].label === 'acc:A' && m[0].done && m[1].cur; })());
+ok('superseded plan steps are not milestones', S.milestonesOf({ items: [{ id: '1', status: 'DONE' }, { id: '2', status: 'SUPERSEDED' }, { id: '3', status: 'OPEN' }], ...stepsP(2, 1) }).length === 2);
 {
-  const m = S.milestonesOf({ items: [{ id: 'scoping', status: 'DONE' }, { id: 'design', status: 'OPEN' }, { id: 'build', status: 'PENDING' }] });
+  const m = S.milestonesOf({ items: [{ id: 'scoping', status: 'DONE' }, { id: 'design', status: 'OPEN' }, { id: 'build', status: 'PENDING' }], ...stepsP(3, 1) });
   ok('done / current / open are marked from the items\' own status', m.length === 3 && m[0].done && !m[1].done && m[1].cur && !m[2].cur, JSON.stringify(m));
   ok('labels come from the item, never invented', m[0].label === 'scoping');
 }
@@ -141,9 +153,9 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ];
   eq('needs David first, then moving, then stale, then waiting, then the queue', S.sortRows(rows).map((r) => r.work_id).join(''), 'nmswq');
   const sum = S.summarize(rows, [
-    { state: 'DONE', completed_at: iso(30), verifications: [{ result: 'PASS' }] },
-    { state: 'DONE', completed_at: iso(40) },
-    { state: 'DONE', completed_at: iso(60 * 30), verifications: [{ result: 'PASS' }] },
+    { state: 'DONE', completed_at: iso(30), closure: cl('DONE_VERIFIED') },
+    { state: 'DONE', completed_at: iso(40), completion_evidence: { complete: true }, closure: cl('DONE_COMPLETE') },
+    { state: 'DONE', completed_at: iso(60 * 30), closure: cl('DONE_VERIFIED') },
     { state: 'FAILED', completed_at: iso(10) },
   ], 2, NOW);
   ok('the summary: 5 active · 1+2 need him · 1 moving · 1 stale · 1 finished today verified (+1 unverified; yesterday\'s and the failure excluded)',
@@ -158,9 +170,12 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
 {
   const tokens = (s) => (s.match(/:root\{([\s\S]*?)\}/) || ['', ''])[1].replace(/\s+/g, '');
   eq('the design tokens are lia.html\'s, verbatim (no drift)', tokens(css), tokens(lia));
-  ok('there are exactly two roads to green: MOVING (a live lease + a fresh heartbeat) and VERIFIED (verifiedOf)',
+  ok('there are exactly two roads to green: MOVING (a live lease + a fresh heartbeat) and closure DONE_VERIFIED (the server\'s word, never inferred here)',
     (src.match(/out\.tone='ok'/g) || []).length === 1 && /r\.lease_alive===true&&r\.worker_quiet!==true\)\{out\.key='MOVING';out\.label='בתנועה';out\.tone='ok'/.test(src)
-    && (src.match(/out\.tone=ok\?'ok':'dim'/g) || []).length === 1 && /var ok=verifiedOf\(r\);out\.key=ok\?'VERIFIED'/.test(src) && (src.match(/tone:'ok'/g) || []).length === 0);
+    && /var CLOSURE_TONE=\{DONE_VERIFIED:'ok',DONE_COMPLETE:'dim',DONE_UNVERIFIED:'warn',DONE_HOLLOW:'warn'\};/.test(src)
+    && (src.match(/out\.tone=CLOSURE_TONE\[c\.key\]\|\|'dim'/g) || []).length === 1 && /var ok=c\.key==='DONE_VERIFIED';out\.key=ok\?'VERIFIED':c\.key/.test(src)
+    && (src.match(/tone:'ok'/g) || []).length === 0
+    && !/verifications|completion_evidence/.test((src.match(/function deriveRow\(r\)\{[\s\S]*?\n\}/) || [''])[0] + (src.match(/function verifiedOf\(r\)\{.*\}/) || [''])[0]));
   ok('the needs-David signal is small and orange', /\.feat \.sig\{[^}]*color:var\(--warn\)/.test(css) && /\.feat \.sig::before\{[^}]*background:var\(--warn\)/.test(css));
   ok('the selected domain is LIA blue, the rest grey', /#domains button\{[^}]*color:var\(--dim\)/.test(css) && /#domains button\.on\{[^}]*color:var\(--acc\)/.test(css));
   ok('long Hebrew titles clamp instead of clipping', /\.row \.ttl\{[^}]*-webkit-line-clamp:2/.test(css) && /overflow-wrap:anywhere/.test(css));

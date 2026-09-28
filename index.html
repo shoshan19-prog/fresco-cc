@@ -268,7 +268,7 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-09-28.2';
+var CC_BUILD='2026-09-28.3';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -351,14 +351,17 @@ function stateOf(r){
   return STATE_HE[raw]?raw:(LEGACY[raw]||'UNKNOWN');
 }
 function isTerminal(st){return st==='DONE'||st==='FAILED'||st==='CANCELLED';}
-/* GREEN only for VERIFIED completion: an independent PASS on record, or the
-   completion evidence the close attempt produced saying complete. A DONE
-   label by itself proves nothing. */
-function verifiedOf(r){
-  var v=Array.isArray(r&&r.verifications)&&r.verifications.some(function(x){return String((x&&x.result)||'').toUpperCase()==='PASS';});
-  var ce=!!(r&&r.completion_evidence&&r.completion_evidence.complete===true);
-  return v||ce;
-}
+/* THE CLOSURE IS THE SERVER'S (Work Product Contract, 28.9). Runtime owns truth,
+   work_status exposes it as row.closure, this page renders it: the DONE word,
+   whether the product exists, who verified it and whether that was required,
+   the honest N/M, what David receives. The page infers none of it — a row
+   without a closure (an older server) shows "הושלם" and says the verification
+   state did not arrive, never a guess. EXECUTION COMPLETE (the product read
+   back) is not VERIFIED COMPLETE (someone other than the worker checked it). */
+function closureOf(r){return (r&&r.closure&&typeof r.closure==='object'&&r.closure.key)?r.closure:null;}
+var CLOSURE_TONE={DONE_VERIFIED:'ok',DONE_COMPLETE:'dim',DONE_UNVERIFIED:'warn',DONE_HOLLOW:'warn'};
+var CLOSURE_NOTE={DONE_COMPLETE:'התוצר קיים · לא נדרש אימות עצמאי ולא נרשם',DONE_UNVERIFIED:'התוצר קיים · נדרש אימות עצמאי ולא נרשם'};
+function verifiedOf(r){var c=closureOf(r);return !!(c&&c.key==='DONE_VERIFIED');}
 function needsDavidOf(r){
   if(!r)return false;
   return stateOf(r)==='WAITING_APPROVAL'||r.approval_required===true||r.parked_for_david===true||r.waiting_on==='david';
@@ -378,8 +381,10 @@ function deriveRow(r){
   var st=stateOf(r);
   var out={state:st,key:st,label:STATE_HE[st]||'מצב לא ידוע',tone:'dim',needs:false,moving:false,stale:false,verified:null,persisted:false,historical:false,note:null};
   if(isTerminal(st)){
-    if(st==='DONE'){var ok=verifiedOf(r);out.key=ok?'VERIFIED':'DONE_UNVERIFIED';out.label=ok?'הושלם · אומת':'הושלם · לא אומת';out.tone=ok?'ok':'dim';out.verified=ok;
-      if(!ok)out.note=(r.completion_evidence&&r.completion_evidence.detail)||'אין אימות עצמאי ואין ראיית השלמה על השורה';}
+    if(st==='DONE'){var c=closureOf(r);
+      if(!c){out.key='DONE_UNKNOWN';out.label='הושלם';out.verified=null;out.note='מצב האימות והתוצר לא הגיע מהשרת';}
+      else{var ok=c.key==='DONE_VERIFIED';out.key=ok?'VERIFIED':c.key;out.label=c.label||STATE_HE.DONE;out.tone=CLOSURE_TONE[c.key]||'dim';out.verified=ok;
+        if(!ok)out.note=(c.key==='DONE_HOLLOW'?c.presence_detail:CLOSURE_NOTE[c.key])||c.presence_detail||null;}}
     else{out.note=r.outcome||r.blocker||null;}
     return out;
   }
@@ -404,13 +409,14 @@ function deriveRow(r){
   if(out.historical)out.label+=' · רשומה היסטורית';
   return out;
 }
-/* PROGRESS: a percentage only from the package's own sub-items. No items → the
-   stage it is on, as text — never an invented number. */
+/* PROGRESS: N/M only from the closure's real denominator — acceptance criteria,
+   or plan steps a worker actually maintains (the server decides which). No
+   denominator → the stage it is on, as text — never an invented number. */
 function progressOf(r){
-  var p=r&&r.progress;
+  var c=closureOf(r),p=c&&c.progress;
   if(p&&typeof p.total==='number'&&p.total>0&&typeof p.done==='number'){
     var pct=Math.max(0,Math.min(100,Math.round(p.done/p.total*100)));
-    return {pct:pct,text:p.done+'/'+p.total,source:'items'};
+    return {pct:pct,text:p.done+'/'+p.total,source:String(p.source||'')};
   }
   return null;
 }
@@ -421,7 +427,10 @@ function stageOf(r){
   return STATE_HE[st]||null;
 }
 function milestonesOf(r){
-  var it=Array.isArray(r&&r.items)?r.items:[];
+  var p=progressOf(r);if(!p)return [];
+  var acc=p.source==='ACCEPTANCE';
+  var it=(Array.isArray(r&&r.items)?r.items:[]).filter(function(x){var id=String((x&&x.id)||'');var s=String((x&&x.status)||'').toUpperCase();
+    return acc?id.indexOf('acc:')===0:(id.indexOf('acc:')!==0&&s!=='SUPERSEDED');});
   if(it.length<2||it.length>8)return [];
   var cur=-1;
   var out=it.map(function(x,i){var s=String((x&&x.status)||'').toUpperCase();var done=!(s===''||s==='OPEN'||s==='PENDING');
@@ -731,8 +740,8 @@ function openDetail(id){
     +(r.success_condition?'<p class="dim" style="margin-top:6px">תנאי הצלחה: '+esc(r.success_condition)+'</p>':'')+'</div>';
 
   h+='<div class="card"><h3>איפה זה עומד</h3>';
-  if(p)h+='<p><b>'+p.pct+'%</b> · '+esc(p.text)+' פריטים הושלמו</p>';
-  else h+='<p class="dim">אין אחוז — אין פריטי-משנה על החבילה; מוצג השלב.</p>';
+  if(p)h+='<p><b>'+p.pct+'%</b> · '+esc(p.text)+(p.source==='ACCEPTANCE'?' קריטריוני קבלה אומתו':' צעדים הושלמו')+'</p>';
+  else h+='<p class="dim">אין אחוז — אין מכנה אמיתי (קריטריוני קבלה או צעדים שמתוחזקים); מוצג השלב.</p>';
   if(ms.length)h+='<div class="ms" style="margin-top:10px">'+ms.map(function(m){return '<div class="m'+(m.done?' done':'')+(m.cur?' cur':'')+'"><i></i><span>'+esc(m.label)+'</span></div>';}).join('')+'</div>';
   h+='<div class="kv" style="margin-top:10px"><span>השלב הנוכחי</span><div>'+esc(r.current_step||'—')+'</div>'
     +'<span>הפעולה הבאה</span><div>'+esc(r.next_step||sc.next||'—')+'</div>'
@@ -765,9 +774,22 @@ function openDetail(id){
   else h+=ev.map(function(e){return '<div class="li '+(e.ok?'ok':'no')+'"><b>'+(e.ok?'✓':'○')+'</b> '+e.t+(e.s?'<div class="t">'+esc(e.s)+'</div>':'')+'</div>';}).join('');
   h+='</div>';
 
-  var art=[];if(r.result)art.push(r.result);if(r.outcome&&r.outcome!==r.result)art.push(r.outcome);
-  if(r.completion_evidence&&r.completion_evidence.deliverable_ref)art.push(r.completion_evidence.deliverable_kind+': '+r.completion_evidence.deliverable_ref);
-  if(art.length)h+='<div class="card"><h3>תוצרים</h3>'+art.map(function(a){return '<div class="li">'+esc(a)+'</div>';}).join('')+'</div>';
+  var cl=closureOf(r);
+  if(cl&&stateOf(r)==='DONE'){
+    var dl=cl.delivery||{},pr=cl.product||{};
+    var NOTICE_HE={SENT:'נמסרה לך הודעה',PENDING:'ההודעה ממתינה למסירה',FAILED_RETRY:'המסירה נכשלה — תנוסה שוב',NONE:'לא נשלחה הודעה'};
+    var VER_HE={ACCEPTANCE:'אומת מול קריטריוני הקבלה',INDEPENDENT:'אומת באימות עצמאי',NONE:'לא אומת באימות עצמאי'};
+    h+='<div class="card"><h3>התוצר</h3><div class="kv">'
+      +'<span>ביקשת</span><div>'+esc(sc.original_goal||r.goal||r.objective||'—')+'</div>'
+      +'<span>הופק</span><div>'+esc(dl.result||(cl.presence==='PRESENT'?'':'—'))+(cl.presence!=='PRESENT'?' <span class="tag">'+esc(cl.presence_detail||'אין תוצר')+'</span>':'')+'</div>'
+      +'<span>איפה</span><div>'+(dl.ref?esc(String(dl.ref_kind||pr.kind||'')+': '+dl.ref):esc(pr.declared?'תוצאת החבילה':'תוצאת החבילה / הסיכום שלה'))+'</div>'
+      +'<span>אימות</span><div>'+esc((VER_HE[cl.verified_by]||'—')+(cl.verification_required?' · נדרש':' · לא נדרש'))+(cl.evidence_ref?'<div class="t" dir="ltr">'+esc(cl.evidence_ref)+'</div>':'')+'</div>'
+      +'<span>מסירה</span><div>'+esc(NOTICE_HE[dl.notice]||'—')+'</div>'
+      +'</div></div>';
+  }else{
+    var art=[];if(r.result)art.push(r.result);if(r.outcome&&r.outcome!==r.result)art.push(r.outcome);
+    if(art.length)h+='<div class="card"><h3>תוצרים</h3>'+art.map(function(a){return '<div class="li">'+esc(a)+'</div>';}).join('')+'</div>';
+  }
 
   var steps=Array.isArray(r.steps)?r.steps:[];
   h+='<div class="card"><h3>היסטוריה</h3>';
