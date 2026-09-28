@@ -1,18 +1,14 @@
 {
-  "name": "Fresco CEO Control Tower",
+  "name": "Fresco Command Center",
   "short_name": "Fresco",
-  "start_url": ".",
+  "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#101214",
-  "theme_color": "#C8102E",
+  "background_color": "#f7f8fa",
+  "theme_color": "#f7f8fa",
   "dir": "rtl",
   "lang": "he",
   "icons": [
-    {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23C8102E'/%3E%3Ctext x='256' y='366' font-size='304' font-family='sans-serif' font-weight='700' fill='%23fff' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
+    { "src": "lia-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "lia-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }
