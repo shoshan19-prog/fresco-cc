@@ -685,7 +685,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-28.1';
+const LIA_BUILD='2026-09-28.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -751,6 +751,7 @@ function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
  openSession();setMode('idle');render(st);
  tickClock();loadRails().catch(()=>{}).then(bootOrgRoute);loadOrgMobile().catch(()=>{});probeLiveVoice().catch(()=>{});initNotifications();
+ bootPanelRoute();
  loadSinceLastHere().catch(()=>{});
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
@@ -780,7 +781,19 @@ function subLine(){
  if(g)g.textContent=MODEL_ON?'GPT מחובר ל-LIA Fresco':'GPT עדיין לא מחובר';}
 async function load(){try{render(await api({action:'state'}));}catch(e){}}
 function openPanel(){document.getElementById('panel').classList.add('on');renderSessions();}
-function closePanel(){document.getElementById('panel').classList.remove('on');}
+function closePanel(){document.getElementById('panel').classList.remove('on');
+ if(/^#(history|settings)$/.test(location.hash||'')){try{history.replaceState(null,'',location.pathname);}catch(e){}}}
+/* COMMAND CENTER DEEP LINKS (David, 28.9): the Command Center's bottom nav is
+   Chat · Command Center · History · Settings. History and Settings both live
+   behind ⋯ here — #history opens the panel at the conversations, #settings
+   opens it at the top. Nothing new is built; the existing panel is addressed. */
+function panelHashRoute(){const m=/^#(history|settings)$/.exec(location.hash||'');return m?m[1]:'';}
+function bootPanelRoute(){
+ const k=panelHashRoute();if(!k)return;
+ openPanel();
+ if(k==='history'){const el=document.getElementById('sessions');if(el&&el.scrollIntoView)el.scrollIntoView({block:'start'});}
+ else{document.getElementById('panel').scrollTop=0;}}
+if(!window._liaPanelHash){window._liaPanelHash=1;window.addEventListener('hashchange',()=>{if(panelHashRoute()&&CODE)bootPanelRoute();});}
 
 /* ── ONE conversation session ────────────────────────────────────────────
    The turns David sees ARE the turns the kernel reasons over: the timeline
@@ -1596,7 +1609,7 @@ function renderStateStrip(row){
  STATE_ROW=row||null;
  el.innerHTML='<button class="stripLine" onclick="toggleStateDetail()">'
    +esc(parts.join(' · ')||'עודכן')+'</button>'
-   +'<a class="stripTower" href="'+STATE_TOWER_URL+'" target="_blank" rel="noopener">מגדל הבקרה ↗</a>'
+   +'<a class="stripTower" href="'+STATE_TOWER_URL+'" target="_blank" rel="noopener">מרכז הפיקוד ↗</a>'
    +'<div id="stateDetail" style="display:none"></div>';
  el.style.display='flex';}
 const STATE_TOWER_URL='https://shoshan19-prog.github.io/fresco-cc/index.html';
