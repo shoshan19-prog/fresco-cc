@@ -284,11 +284,27 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 
 .msg{display:flex;flex-direction:column;gap:6px;animation:rise .32s ease both}
 .msg .who{font-size:11px;letter-spacing:.6px;color:var(--dim);padding:0 6px}
+/* WHO SAID IT, AND ONE TAP TO COPY IT (David, 28.9 — "שיחה קודם, מערכת אחר כך").
+   The label row carries a role mark (blue dot = David, LIA's orb = LIA) and one
+   quiet copy control; David's bubble gets its accent edge. Nothing else moves. */
+.msg .who{display:flex;align-items:center;gap:6px}
+.msg .who .tag{display:inline-flex;align-items:center;gap:5px;font-weight:600}
+.msg .who .tag::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--dim);flex:0 0 auto}
+.msg.me .who .tag::before{background:var(--acc)}
+.msg.lia .who .tag::before{background:radial-gradient(closest-side at 34% 30%,#9db6ff 0%,#5b7cff 45%,#2f6bff 100%)}
+.msg .cp{margin-inline-start:auto;width:26px;height:26px;padding:0;border-radius:50%;font-size:13px;line-height:1;
+ display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--line);
+ color:var(--dim);cursor:pointer;transition:background .18s,color .18s,border-color .18s}
+.msg .cp:hover{background:var(--card2);color:var(--txt);border-color:var(--line2)}
+.msg .cp.done{color:var(--ok);border-color:var(--ok);background:#eaf7ee}
+.msg .cp.err{color:var(--warn);border-color:var(--warn)}
+.srOnly{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .msg .bubble{border-radius:var(--rs);font-size:16.5px;line-height:1.85;
  white-space:pre-wrap;word-break:break-word}
 .msg.me{align-self:flex-start;max-width:86%}
 .msg.me .bubble{background:var(--me);border:1px solid #d6e2ff;
  border-radius:var(--rs);padding:12px 15px}
+.msg.me .bubble{border-inline-start:3px solid var(--acc)}   /* David's edge (28.9) — after the shorthand so it wins */
 .msg.lia{align-self:stretch;max-width:100%}
 /* LIA answers as a dark-glass panel, not a chat bubble.
    MOBILE COMMS LAW (David, 2.9): the page is RTL, but an answer line that
@@ -481,6 +497,7 @@ button#live.wait{opacity:.6}
  /* thumbs, not cursors: the two icon controls get a real tap target */
  .msg .acts{gap:10px;margin-top:14px}
  .msg .acts .det{width:38px;height:38px;font-size:16px}
+ .msg .cp{width:32px;height:32px;font-size:14px}
 }
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
@@ -576,6 +593,7 @@ button#live.wait{opacity:.6}
  <div class="orgList" id="orgListMobile"></div>
 </section>
 <main id="thread"></main>
+<div id="copyLive" class="srOnly" aria-live="polite"></div>
 </div>
 
 
@@ -667,7 +685,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-12.1';
+const LIA_BUILD='2026-09-28.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -2310,6 +2328,35 @@ window.addEventListener('popstate',()=>{
  const btn=document.querySelector('#evHead button');if(btn)btn.addEventListener('click',fix);
 })();
 function bootOrgRoute(){const k=orgHashKey();if(k&&ORGANIZATION_ROUTES[k])openOrgRoute(k,{fromHistory:true});}
+/* COPY (David, 28.9). One tap copies the whole original text of either side:
+   David's message verbatim (even when the bubble shows only the execution
+   summary), LIA's answer exactly as David reads it — line breaks kept, the
+   diagnostic label lines that were demoted to the drawer left out (they are
+   metadata, not the answer). Clipboard API first (secure context + user tap),
+   the textarea fallback for older mobile browsers; a small ✓ on the control and
+   a polite live-region line confirm it. */
+function copyTextOf(t){
+ if(!t||t.pending)return '';
+ if(t.role==='me')return String(t.text||'');
+ const r=t.res,structured=r&&!r.__plain;
+ if(structured&&contradicts(t.text,r))return DATA_LEAD;
+ const dg=demoteDiag(t.text);
+ return heb(dg.tech.length?(dg.clean||TECH_FALLBACK):String(t.text||''));}
+function copyBtn(i,label){return '<button type="button" class="cp" onclick="copyTurn('+i+',this)" title="העתק" aria-label="'+esc(label)+'">⧉</button>';}
+async function copyTurn(i,btn){
+ const s=copyTextOf(SESSION.turns[i]);
+ if(!s){copyAck(btn,false);return;}
+ let ok=false;
+ try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(s);ok=true;}}catch(e){ok=false;}
+ if(!ok){try{const ta=document.createElement('textarea');ta.value=s;ta.setAttribute('readonly','');
+  ta.style.cssText='position:fixed;top:0;left:0;opacity:0;pointer-events:none';document.body.appendChild(ta);
+  ta.focus();ta.select();ta.setSelectionRange(0,s.length);ok=!!document.execCommand('copy');document.body.removeChild(ta);}catch(e){ok=false;}}
+ copyAck(btn,ok);}
+function copyAck(btn,ok){
+ const live=document.getElementById('copyLive');if(live)live.textContent=ok?'הועתק':'ההעתקה לא הצליחה';
+ if(!btn)return;
+ btn.textContent=ok?'✓':'!';btn.title=ok?'הועתק':'ההעתקה לא הצליחה';btn.classList.toggle('done',ok);btn.classList.toggle('err',!ok);
+ setTimeout(function(){btn.textContent='⧉';btn.title='העתק';btn.classList.remove('done','err');},1400);}
 function renderThread(){
  const el=document.getElementById('thread');if(!el)return;
  const stick=nearBottom();
@@ -2329,7 +2376,7 @@ function renderThread(){
       instruction went through. */
    const shown=t.exec?esc(t.exec.sum):esc(t.text);
    const execNote=t.exec?'<span class="sub dim" style="display:block;margin-top:4px;font-size:11.5px">הוראת ביצוע מלאה ('+(t.exec.n|0)+' שורות) נשמרה בחבילת העבודה</span>':'';
-   h+='<div class="msg me"><div class="who">אתה</div><div class="bubble">'
+   h+='<div class="msg me"><div class="who"><span class="tag">אתה</span>'+copyBtn(i,'העתק את ההודעה שלך')+'</div><div class="bubble">'
     +shown+execNote+shots+'</div></div>';return;}
   const r=t.res;
   /* The answer is a panel, not a wall of text (David's UI directive, 25.8 —
@@ -2352,7 +2399,7 @@ function renderThread(){
   const structured=r&&!r.__plain;
   const facts=structured?(r.facts||[]).filter(Boolean):[];
   const denied=structured&&contradicts(t.text,r);
-  h+='<div class="msg lia"><div class="who">LIA</div>';
+  h+='<div class="msg lia"><div class="who"><span class="tag">LIA</span>'+(t.pending?'':copyBtn(i,'העתק את התשובה'))+'</div>';
   h+=structured?'<div class="ansCard">'
      +'<div class="secHead"><span class="ic">✦</span>מה מצאתי</div>':'';
   /* Diagnostics never ride the bubble (David, 2.9): label lines drop to the
