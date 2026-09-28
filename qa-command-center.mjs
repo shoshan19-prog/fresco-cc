@@ -24,14 +24,18 @@ const base = (id, over) => Object.assign({
   approval_required: false, waiting_on: null, liveness: { state: 'RUNNABLE', why: '', fake_wait: false, missing: [] }, verifications: [],
   verification_required: false, scope: { original_goal: '', required: [], completed: [], remaining: [], blocked: [], next: '', source: 'none' },
   object_state: 'ACTIVE', disposition: null, parked_for_david: false, goal: null, success_condition: null, heartbeat_at: null,
-  steps: [], steps_total: 0, completion_evidence: null, requested_by: 'david', project_id: null,
+  steps: [], steps_total: 0, completion_evidence: null, requested_by: 'david', project_id: null, closure: null,
 }, over);
+// the canonical closure as workClosureProjection emits it — the page renders it, never rebuilds it
+const closure = (key, label, over) => Object.assign({ key, label, presence: 'UNCHECKED', presence_detail: 'החבילה לא נסגרה — התוצר עוד לא נבדק', progress: null, stage: 'QUEUED',
+  verified_by: 'NONE', verification_required: false, evidence_ref: null, product: { kind: 'self_result', ref: null, declared: false },
+  delivery: { result: '', ref: null, ref_kind: null, notice: 'NONE', interface_complete: false } }, over);
 
 const ALIVE = [
   base(1, { kind: 'mail_reply', objective: 'תשובה למורן על הצעת המחיר לפרויקט הגג', goal: 'לענות למורן עם הצעה מעודכנת', status: 'WAITING_APPROVAL', state: 'WAITING_APPROVAL',
     approval_required: true, waiting_on: 'david', blocker: 'הכרעת דוד: אישור או דחייה של טיוטת המייל', current_step: 'הטיוטה מוכנה',
-    items: [{ id: 'acc:1', status: 'DONE' }, { id: 'acc:2', status: 'DONE' }, { id: 'acc:3', status: 'DONE' }, { id: 'acc:4', status: 'OPEN' }, { id: 'acc:5', status: 'OPEN' }],
-    progress: { done: 3, total: 5, text: '3/5' }, updated_at: iso(120), steps: [{ step: 'draft', at: iso(130), note: 'טיוטה נכתבה', ok: true }], steps_total: 1 }),
+    items: [{ id: 'acc:1', status: 'VERIFIED' }, { id: 'acc:2', status: 'VERIFIED' }, { id: 'acc:3', status: 'VERIFIED' }, { id: 'acc:4', status: 'OPEN' }, { id: 'acc:5', status: 'OPEN' }],
+    closure: closure('OPEN', 'בעבודה', { progress: { done: 3, total: 5, source: 'ACCEPTANCE' }, stage: 'הטיוטה מוכנה', verification_required: true }), updated_at: iso(120), steps: [{ step: 'draft', at: iso(130), note: 'טיוטה נכתבה', ok: true }], steps_total: 1 }),
   base(2, { kind: 'research', objective: 'מחקר שוק: צבעי הגנה לגגות תעשייתיים בצפון', goal: 'להגדיל את ההזדמנויות במגזר התעשייתי', status: 'RUNNING', state: 'RUNNING', state_label: 'רץ',
     lease: { worker: 'lia-worker', principal: 'lia', acquired_at: iso(9), expires_at: new Date(NOW + 6 * 60_000).toISOString() }, lease_alive: true, worker_quiet: false,
     heartbeat_at: iso(2), current_step: 'קוראת את 40 המיילים האחרונים מלקוחות תעשייה', updated_at: iso(2), started_at: iso(30) }),
@@ -53,9 +57,15 @@ const CLOSED = [
   base(11, { kind: 'research', objective: 'דוח מצב יומי: מכירות, שיווק ותפעול', status: 'DONE', state: 'DONE', state_label: 'הושלם', completed_at: iso(30), object_state: 'EXPIRED',
     verifications: [{ verifier: 'ci', kind: 'independent', evidence_ref: 'run 1', result: 'PASS', at: iso(28) }],
     completion_evidence: { complete: true, detail: 'שלם: 5120 תווים, 2/2 חלקים', checked_at: iso(29), deliverable_kind: 'lia_object', deliverable_ref: 'REPORT:x', sections_missing: [], truncated: false },
-    result: 'הדוח נשמר', steps: [{ step: 'done', at: iso(30), note: null, ok: true }], steps_total: 1 }),
-  base(12, { kind: 'build', objective: 'עדכון כרטיסי המחלקות', status: 'DONE', state: 'DONE', state_label: 'הושלם', completed_at: iso(90), object_state: 'EXPIRED',
-    completion_evidence: { complete: false, detail: 'התוצר לא נקרא חזרה מהאחסון', checked_at: iso(90), deliverable_kind: 'self_result', deliverable_ref: '', sections_missing: ['סיכום'], truncated: false } }),
+    result: 'הדוח נשמר', steps: [{ step: 'done', at: iso(30), note: null, ok: true }], steps_total: 1,
+    closure: closure('DONE_VERIFIED', 'הושלם · אומת', { presence: 'PRESENT', presence_detail: 'שלם: 5120 תווים, 2/2 חלקים', stage: 'DONE', verified_by: 'INDEPENDENT', verification_required: true, evidence_ref: 'run 1',
+      product: { kind: 'lia_object', ref: 'REPORT:x', declared: true }, delivery: { result: 'הדוח נשמר', ref: 'REPORT:x', ref_kind: 'lia_object', notice: 'SENT', interface_complete: true } }) }),
+  base(12, { kind: 'build', objective: 'עדכון כרטיסי המחלקות', status: 'DONE', state: 'DONE', state_label: 'הושלם', completed_at: iso(90), object_state: 'EXPIRED', result: 'הכרטיסים עודכנו',
+    closure: closure('DONE_COMPLETE', 'הושלם · לא אומת', { presence: 'PRESENT', presence_detail: 'התוצר הוא תוצאת החבילה עצמה (self_result משתמע) — קיימת', stage: 'DONE',
+      delivery: { result: 'הכרטיסים עודכנו', ref: null, ref_kind: null, notice: 'SENT', interface_complete: true } }) }),
+  base(14, { kind: 'build', objective: 'סגירה ריקה מהעבר', status: 'DONE', state: 'DONE', state_label: 'הושלם', completed_at: iso(60 * 40), object_state: 'EXPIRED',
+    completion_evidence: { complete: false, detail: 'התוצר לא נקרא חזרה מהאחסון', checked_at: iso(60 * 40), deliverable_kind: 'self_result', deliverable_ref: '', sections_missing: ['סיכום'], truncated: false },
+    closure: closure('DONE_HOLLOW', 'הושלם · אין תוצר', { presence: 'MISSING', presence_detail: 'התוצר לא נקרא חזרה מהאחסון', stage: 'DONE' }) }),
   base(13, { kind: 'engineering', objective: 'ניסיון תיקון שנכשל', status: 'FAILED', state: 'FAILED', state_label: 'נכשל', completed_at: iso(60 * 30), object_state: 'EXPIRED', outcome: 'הבדיקה לא עברה' }),
 ];
 const DEPT = (key, name, ids) => ({ key, name, state: 'LIVE', metrics: [{ label: 'מדד', value: 3, source: 'x' }], stuck: '', next: 'הבא', ceo: null,
@@ -158,6 +168,7 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok(`${tag}: the verified completion is the only green check`, done.filter((d) => d.ok).length === 1 && done.find((d) => d.ok).lbl === 'הושלם · אומת' && /rgb\(18, 161, 80\)/.test(done.find((d) => d.ok).icon), JSON.stringify(done));
   ok(`${tag}: a DONE without evidence reads הושלם · לא אומת and is not green`, done.some((d) => d.lbl === 'הושלם · לא אומת' && !d.ok), JSON.stringify(done));
   ok(`${tag}: a FAILED close is listed, grey, as history — never deleted`, done.some((d) => d.lbl === 'נכשל' && !d.ok), JSON.stringify(done));
+  ok(`${tag}: a DONE whose product is missing reads הושלם · אין תוצר — the server's closure word, not green`, done.some((d) => d.lbl === 'הושלם · אין תוצר' && !d.ok), JSON.stringify(done));
 
   const targets = await page.evaluate(() => ({
     dom: Math.min(...[...document.querySelectorAll('#domains button')].map((b) => b.getBoundingClientRect().height)),
