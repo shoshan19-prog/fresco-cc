@@ -35,10 +35,11 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio};')();
+  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio};')();
 const POL = P.LIVE_POLICY;
 
-ok('the one tool is ask_lia', P.LIVE_TOOL === 'ask_lia');
+ok('the one tool is deep_answer — LIA\'s own deeper processing; the old name is still accepted during the rollout', P.LIVE_TOOL === 'deep_answer' && P.LIVE_TOOLS.join(',') === 'deep_answer,ask_lia');
+ok('both names pass the tool gate with a question; anything else is refused', P.liveToolCall('deep_answer', { question: 'מה מצב ריל לוקיישן?' }).ok && P.liveToolCall('ask_lia', { question: 'x' }).ok && !P.liveToolCall('delete_everything', { question: 'x' }).ok);
 ok('reconnect rule = the server\'s (1s, 2s, 4s; three tries)',
   JSON.stringify([1, 2, 3, 9].map(P.liveReconnectDelay)) === '[1000,2000,4000,4000]' && P.LIVE_RECONNECT_MAX === 3);
 ok('a drop is retried up to the ceiling', P.liveShouldReconnect({ attempt: 2, userStopped: false }) && !P.liveShouldReconnect({ attempt: 3, userStopped: false }));
@@ -116,11 +117,22 @@ ok('outcome: nothing said yet = nothing to read', P.liveOutcome('', {}) === null
     seed.length === 2 && seed[0].type === 'conversation.item.create' && seed[0].item.role === 'user' && seed[0].item.content[0].type === 'input_text'
     && seed[1].item.role === 'assistant' && seed[1].item.content[0].type === 'output_text' && seed[1].item.content[0].text === 'שלוש הזמנות פתוחות');
   ok('…only the last N turns', P.liveSeedItems(Array.from({ length: 20 }, (_, i) => ({ role: 'me', text: 't' + i })), 3).length === 3);
+  const now = 1_000_000_000;
+  const aged = P.liveSeedItems([{ role: 'me', text: 'ישן', at: now - 3_600_000 }, { role: 'lia', text: 'גם ישן', at: now - 3_500_000 }, { role: 'me', text: 'טרי', at: now - 60_000 }, { role: 'lia', text: 'בלי זמן' }], 6, now, 1_800_000);
+  ok('…seeding is bounded by recency (Phase A): an hour-old turn is not resurrected, a fresh one and an undated one are', aged.length === 2 && aged[0].item.content[0].text === 'טרי' && aged[1].item.content[0].text === 'בלי זמן');
+  ok('the policy names the tool bound (doAsk\'s 150 s) and the seed window', POL.tool_timeout_ms === 150000 && POL.seed_window_ms === 1800000);
 }
 
 // ── wiring, as text ────────────────────────────────────────────────────────
 const live = slice('/* ── LIVE VOICE', '/* ── the keyless road');
-ok('the tool runs through action:kernel with voice:true and nothing else', /ccApi\(\{action:'kernel',body:text,history:historyForKernel\(text\)[\s\S]*?request_id:reqId,voice:true\}\)/.test(live) && !/action:'cap'/.test(live));
+ok('the tool runs through action:kernel with voice:true and its correlation ids, nothing else', /const call=ccApi\(\{voice_session_id:run\.session_id,voice_request_id:run\.request_id,parent_item_id:run\.item_id,call_id:run\.call_id,\s*action:'kernel',body:text,history:historyForKernel\(text\),retracted:retractedForKernel\(\),request_id:reqId,voice:true\}\)/.test(live) && !/action:'cap'/.test(live));
+ok('a tool reply never starts over David: while he speaks the output is returned and the reply waits for his turn end (replyOwed → the next SPEAK)', /if\(LIVE\.userSpeaking&&d\.ok\)\{LIVE\.replyOwed=true;liveRecord\('TOOL'/.test(live) && /continuity_state:LIVE\.replyOwed\?'turn_end_with_tool_reply'/.test(live) && /LIVE\.replyOwed=false;LIVE\.lastCreateFor=0;/.test(live));
+ok('the tool leg is bounded by the policy (Promise.race with tool_timeout_ms), and a result is accepted only in the epoch that asked', /Promise\.race\(\[call,new Promise\(\(_,rej\)=>setTimeout\(\(\)=>rej\(new Error\('timeout'\)\),LIVE_POLICY\.tool_timeout_ms\)\)\]\)/.test(live) && /if\(run\.epoch!==LIVE\.epoch\)\{/.test(live));
+ok('teardown moves the epoch and kills every session-local flag (toolBusy, lastCreateFor, pending, responseActive)', /function liveTeardown\(reason\)\{/.test(live) && /LIVE\.epoch\+\+;LIVE\.toolBusy=false;LIVE\.replyOwed=false;LIVE\.lastCreateFor=0;/.test(live) && /LIVE\.pending=null;LIVE\.audioStartedAt=0;LIVE\.responseActive=false;/.test(live));
+ok('a response covers only utterances the VAD had closed before it was asked for (the 01:34:42 seam)', /LIVE\.lastCreateFor=LIVE\.userSpeaking\?\(LIVE\.lastCommittedUtt\|\|0\):\(LIVE\.uttStartedAt\|\|0\)/.test(live) && /LIVE\.lastCommittedUtt=LIVE\.uttStartedAt;/.test(live));
+ok('the ordinary road says how the words arrived: typed at the send door, dictation at the transcript door, on every kernel body', /INPUT_MODALITY='typed';\s*road\(intent\)/.test(src) && /INPUT_MODALITY='dictation';\s*road\(intent\)/.test(src) && (src.match(/modality:INPUT_MODALITY/g) || []).length === 3);
+ok('a synced message keeps its server time (created_at, else server_at) — so the seed window measures age, not sync time', (src.match(/at:Date\.parse\(m\.created_at\|\|m\.server_at\)\|\|Date\.now\(\)/g) || []).length === 2);
+ok('nothing on the screen calls the tool "checking with LIA"', !/בודקת אצל ליה/.test(src) && !/להגיע לליה/.test(src));
 ok('what goes back to the model is the server\'s voice_output', /output=res\.voice_output\|\|\{error:'no_voice_output'/.test(live));
 ok('the SDP goes to OpenAI with the client secret only', /Authorization:'Bearer '\+mint\.client_secret/.test(live) && !/sk-/.test(live) && !/sk-[A-Za-z0-9_-]{20,}/.test(src));
 ok('the secret is minted by command-center (voice_session), never held in the page', /ccApi\(\{action:'voice_session'\}\)/.test(live) && !/localStorage\.setItem\('[^']*(secret|ek)/.test(live));
@@ -128,8 +140,8 @@ ok('the button exists and starts hidden', /id="live" onclick="liveTap\(\)"[^>]*d
 ok('response.create has ONE door (liveCreateResponse); nothing else asks the model to speak', (live.match(/type:'response\.create'/g) || []).length === 1 && /function liveCreateResponse\(\)\{LIVE\.responseActive=true;/.test(live));
 ok('a YIELD sends the wire of liveYieldActions and nothing decides an interruption elsewhere', /const acts=liveYieldActions\(\{item_id:LIVE\.itemId,audio_started_at:LIVE\.audioStartedAt/.test(live) && /acts\.forEach\(m=>liveSend\(m\)\)/.test(live));
 ok('the trace reaches the ledger through voice_trace_log, in batches of 50', /cap\('voice_trace_log',\{session_id:LIVE\.sessionId\|\|'',model:LIVE\.model\|\|'',events:batch\}\)/.test(live) && /i\+=50/.test(live));
-ok('a stop flushes what is left (pending → no_repair); a renewal flushes the known and seeds the new channel', /liveFlushTrace\(true\)/.test(live) && /LIVE\.renewing=true;liveFlushTrace\(false\)/.test(live) && /if\(LIVE\.renewing\)\{LIVE\.renewing=false;const seed=liveSeedItems\(SESSION\.turns\)/.test(live));
-ok('the build is bumped', /const LIA_BUILD='2026-09-29\.1'/.test(src));
+ok('a stop flushes what is left (pending → no_repair); EVERY connect (tap, reconnect, renewal) seeds the new channel from the recent conversation', /liveFlushTrace\(true\)/.test(live) && /LIVE\.renewing=true;liveTeardown\('renewal'\);liveFlushTrace\(false\)/.test(live) && /const seed=liveSeedItems\(SESSION\.turns,LIVE_POLICY\.seed_turns,Date\.now\(\),LIVE_POLICY\.seed_window_ms\);/.test(live));
+ok('the build is bumped', /const LIA_BUILD='2026-09-29\.3'/.test(src));
 ok('the tap-microphone is shut while live', /function micAllowed\(\)\{return TURN==='IDLE'&&!TTS&&!\(typeof LIVE!=='undefined'&&LIVE\.on\);\}/.test(src));
 ok('the browser speech engine yields while live', /if\(typeof LIVE!=='undefined'&&LIVE\.on\)\{TTS=false;if\(done\)setTimeout\(done,0\);return;\}/.test(src));
 
@@ -192,9 +204,9 @@ async function session(tag, opts = {}) {
     else if (body.action === 'voice_session') {
       if (opts.scoped) { status = 403; json = { error: 'הקוד הזה פתוח לפעולות kernel/state בלבד' }; }
       else if (opts.mintFails && mints >= (opts.mintFails.after || 0)) { status = 502; json = { error: 'mint_failed', reason: 'model_unavailable', model: 'gpt-realtime-2', realtime_models: ['gpt-realtime'], detail: 'The model `gpt-realtime-2` does not exist' }; }
-      else { mints++; json = { client_secret: 'ek_test_' + mints, expires_at: Math.floor(Date.now() / 1000) + 600, model: 'gpt-realtime-2', tool: 'ask_lia', who: 'david', scoped: false }; }
+      else { mints++; json = { client_secret: 'ek_test_' + mints, expires_at: Math.floor(Date.now() / 1000) + 600, model: 'gpt-realtime-2', tool: 'deep_answer', who: 'david', scoped: false, session_id: 'sess_test_' + mints }; }
     }
-    else if (body.action === 'kernel') { if (code === 'bad-code') { status = 401; json = null; } else json = KERNEL; }
+    else if (body.action === 'kernel') { if (code === 'bad-code') { status = 401; json = null; } else { json = KERNEL; if (opts.kernel && opts.kernel.delay) await new Promise((r) => setTimeout(r, opts.kernel.delay)); } }
     await route.fulfill({ status, contentType: json === null ? 'text/plain' : 'application/json', body: json === null ? 'unauthorized' : JSON.stringify(json) });
   });
   await page.route('https://api.openai.com/**', async (route) => {
@@ -239,6 +251,8 @@ const stat = (page) => page.textContent('#noteStat');
   ok('2a. a non-Hebrew ear line is replaced by the question LIA acted on', await page.evaluate(() => { const me = SESSION.turns.filter(t => t.role === 'me'); return me.length === 1 && me[0].text === 'מה מצב REAL·LOCATION?'; }));
   const out = sent.find(s => s.type === 'conversation.item.create');
   ok('3b. the function output is the server\'s voice_output, verbatim', !!out && out.item.type === 'function_call_output' && out.item.call_id === 'call_1' && out.item.output === JSON.stringify(KERNEL.voice_output));
+  ok('3d. the kernel call names the realtime session, its own request id, the provider call and the user item (Phase A ids)', k[0].voice_session_id === 'sess_test_1' && k[0].voice_request_id === k[0].request_id && /^[0-9a-f-]{36}$/.test(k[0].request_id) && k[0].call_id === 'call_1' && k[0].parent_item_id === '');
+  ok('3e. the trace holds TOOL started + done with the same ids, outcome n/a, the kernel route as continuity', await page.evaluate((rid) => { const t = LIVE.trace.filter((r) => r.decision === 'TOOL'); return t.length === 2 && t[0].continuity_state === 'tool_started' && t[1].continuity_state === 'tool_done' && t.every((r) => r.request_id === rid && r.call_id === 'call_1' && r.session_id === 'sess_test_1' && r.outcome === 'n/a') && t[1].continuity_result === 'route:entity_status' && t[1].latency_ms >= 0; }, k[0].request_id));
   ok('3c. …followed by response.create', sent[sent.indexOf(out) + 1].type === 'response.create');
   await page.waitForTimeout(30);
   await feed(page, { type: 'response.output_item.added', response_id: 'resp_1', item: { id: 'item_1', type: 'message', role: 'assistant' } });
@@ -300,7 +314,7 @@ const stat = (page) => page.textContent('#noteStat');
   await page.waitForFunction(() => LIVE.on === true, null, { timeout: 5000 });
   await feed(page, { type: 'session.created' });
   const creates = () => sent.filter((a) => a.type === 'response.create').length;
-  const trace = (f) => page.evaluate((f) => LIVE.trace.map((r) => ({ d: r.decision, c: r.continuity_state, cr: r.continuity_result, o: r.outcome, s: r.interruption_source })), f);
+  const trace = (f) => page.evaluate((f) => LIVE.trace.filter((r) => r.decision !== 'SESSION' && r.decision !== 'TOOL').map((r) => ({ d: r.decision, c: r.continuity_state, cr: r.continuity_result, o: r.outcome, s: r.interruption_source })), f);
   // CASE 1 — continuous speech: no entry
   await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 0, item_id: 'u1' });
   await page.waitForTimeout(POL.grace_ms + 400);
@@ -391,7 +405,7 @@ const stat = (page) => page.textContent('#noteStat');
   await page.waitForFunction(() => LIVE.on === true, null, { timeout: 5000 });
   await feed(page, { type: 'session.created' });
   const creates = () => sent.filter((a) => a.type === 'response.create').length;
-  const trace = () => page.evaluate(() => LIVE.trace.map((r) => ({ d: r.decision, s: r.interruption_source, c: r.continuity_state, cr: r.continuity_result, o: r.outcome, cancelled: r.response_cancelled, cleared: r.cleared })));
+  const trace = () => page.evaluate(() => LIVE.trace.filter((r) => r.decision !== 'SESSION' && r.decision !== 'TOOL').map((r) => ({ d: r.decision, s: r.interruption_source, c: r.continuity_state, cr: r.continuity_result, o: r.outcome, cancelled: r.response_cancelled, cleared: r.cleared })));
   // LIA is speaking
   await feed(page, { type: 'response.output_item.added', response_id: 'r1', item: { id: 'item_s1', type: 'message', role: 'assistant' } });
   await feed(page, { type: 'output_audio_buffer.started', response_id: 'r1' });
@@ -498,6 +512,160 @@ const stat = (page) => page.textContent('#noteStat');
   const { page } = await session('nomodel', { available: false });
   await page.waitForTimeout(400);
   ok('14. when the server cannot mint for the model David named, there is no button', await page.evaluate(() => document.getElementById('live').style.display === 'none'));
+  await page.close();
+}
+
+// ── 1d. PHASE A-D (29.9): David's next utterance is never swallowed by a tool reply that started before it was committed ──
+{
+  const kernel = { delay: 0 };
+  const { page, calls, sent } = await session('overlap', { kernel });
+  await page.waitForFunction(() => document.getElementById('live').style.display !== 'none', null, { timeout: 5000 });
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true, null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  const creates = () => sent.filter((a) => a.type === 'response.create').length;
+  const dec = () => page.evaluate(() => LIVE.trace.filter((r) => r.decision !== 'SESSION' && r.decision !== 'TOOL').map((r) => ({ d: r.decision, c: r.continuity_state, cr: r.continuity_result, reason: r.reason })));
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 0, item_id: 'uA' });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'מה מצב ריל לוקיישן?' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  ok('D0. A ends → SPEAK (one response.create)', creates() === 1);
+  kernel.delay = 1500;                                                      // the kernel takes its time
+  await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_A', name: 'deep_answer', arguments: JSON.stringify({ question: 'מה מצב ריל לוקיישן?' }) } });
+  await page.waitForFunction(() => LIVE.toolBusy === true, null, { timeout: 2000 });
+  await feed(page, { type: 'response.done', response: { status: 'completed' } });   // the tool-call response itself is done
+  await page.waitForTimeout(300);
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 4000, item_id: 'uB' });   // B begins while A is still out
+  const bStart = await page.evaluate(() => LIVE.uttStartedAt);
+  await page.waitForFunction(() => LIVE.toolBusy === false, null, { timeout: 5000 });   // A returns while B is in progress
+  await page.waitForTimeout(50);
+  ok('D1. A\'s reply is NOT asked for while B is still being spoken — the output is returned to the model, the reply waits (no talking over David)', creates() === 1 && sent.some((m) => m.type === 'conversation.item.create' && m.item.type === 'function_call_output' && m.item.call_id === 'call_A') && await page.evaluate(() => LIVE.userSpeaking === true && LIVE.replyOwed === true && LIVE.toolBusy === false));
+  ok('D1a. …and the trace says why', await page.evaluate(() => LIVE.trace.filter((r) => r.decision === 'TOOL').pop().continuity_state === 'reply_deferred_user_speaking'));
+  ok('D2. nothing claims B: lastCreateFor stays before B\'s start', await page.evaluate((b) => LIVE.lastCreateFor < b, bStart), await page.evaluate((b) => `lastCreateFor=${LIVE.lastCreateFor} bStart=${b}`, bStart));
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'רגע, לפני שאת בודקת, בואי נחשוב על זה יחד.' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  const d = await dec();
+  ok('D3. when B ends, ONE response.create answers the tool output and B together (SPEAK · turn_end_with_tool_reply) — never "already_answered"', creates() === 2 && d[d.length - 1].d === 'SPEAK' && d[d.length - 1].c === 'turn_end_with_tool_reply' && !d.some((r) => r.c === 'already_answered') && await page.evaluate(() => LIVE.replyOwed === false), JSON.stringify(d));
+  await feed(page, { type: 'response.output_item.added', response_id: 'rA', item: { id: 'item_A', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'rA' });
+  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'ריל לוקיישן בביצוע. ולגבי לחשוב יחד — בסדר.' });
+  await feed(page, { type: 'output_audio_buffer.stopped' });
+  await feed(page, { type: 'response.done', response: { status: 'completed' } });
+  await page.waitForTimeout(80);
+  ok('D4. nothing else is asked for afterwards (no second reply, nothing pending)', creates() === 2 && await page.evaluate(() => LIVE.pending === null && LIVE.responseActive === false));
+  // the reply is immediate when David is NOT speaking
+  kernel.delay = 300;
+  await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_B', name: 'deep_answer', arguments: JSON.stringify({ question: 'מה מצב ריל לוקיישן?' }) } });
+  await page.waitForFunction(() => LIVE.toolBusy === false, null, { timeout: 5000 });
+  await page.waitForTimeout(50);
+  ok('D5. with David silent, the tool reply is asked for at once (response.create #3), as before', creates() === 3 && await page.evaluate(() => LIVE.replyOwed === false));
+  await page.click('#live');
+  await page.close();
+}
+
+// ── 1e. PHASE A-C (29.9): a result created for session X never touches session Y; the tool leg is bounded; every connect seeds ──
+{
+  const kernel = { delay: 0 };
+  const { page, calls, sent } = await session('stale', { kernel });
+  await page.waitForFunction(() => document.getElementById('live').style.display !== 'none', null, { timeout: 5000 });
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true && LIVE.ready === true, null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  ok('E0. session 1 is named on the trace (SESSION · session_started · tap), no seed — nothing to seed yet', await page.evaluate(() => { const r = LIVE.trace.filter((x) => x.decision === 'SESSION'); return r.length === 1 && r[0].continuity_state === 'session_started' && r[0].continuity_result === 'tap' && r[0].session_id === 'sess_test_1' && !LIVE.trace.some((x) => x.decision === 'CONTINUE'); }));
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 0, item_id: 'u1' });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'מה מצב ריל לוקיישן?' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  kernel.delay = 2500;
+  await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_X', name: 'deep_answer', arguments: JSON.stringify({ question: 'מה מצב ריל לוקיישן?' }) } });
+  await page.waitForFunction(() => LIVE.toolBusy === true, null, { timeout: 2000 });
+  const reqX = calls.filter((c) => c.action === 'kernel').pop().request_id;
+  // David stops and re-taps before X returns
+  await page.click('#live');
+  ok('C1. the stop kills the session-local flags at once (toolBusy, responseActive, pending)', await page.evaluate(() => LIVE.toolBusy === false && LIVE.responseActive === false && LIVE.pending === null && LIVE.on === false));
+  ok('C1a. the teardown is on the trace under the OLD session id', await page.evaluate(() => { const r = LIVE.trace.filter((x) => x.decision === 'SESSION').pop(); return r.continuity_state === 'session_teardown' && r.session_id === 'sess_test_1' && /user|stop/.test(r.continuity_result); }));
+  await page.waitForTimeout(200);
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true && LIVE.ready === true && LIVE.sessionId === 'sess_test_2', null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  const dc2 = () => page.evaluate(() => window.__live.dcs[window.__live.dcs.length - 1].sent.slice());
+  const seeds = (await dc2()).filter((m) => m.type === 'conversation.item.create');
+  ok('E1. session 2 (a re-tap, not a renewal) is seeded from the conversation so far — David\'s question rides in as a user item', seeds.length >= 1 && seeds[0].item.role === 'user' && /ריל לוקיישן/.test(seeds[0].item.content[0].text) && await page.evaluate(() => { const r = LIVE.trace.filter((x) => x.decision === 'CONTINUE').pop(); return r && r.continuity_state === 'session_tap_seeded' && r.session_id === 'sess_test_2'; }), JSON.stringify(seeds.map((m) => m.item.role)));
+  await page.waitForTimeout(2800);                                                  // X lands now, in session 2's lifetime
+  ok('C2. X\'s late result is discarded: no function_call_output, no response.create on session 2', !(await dc2()).some((m) => m.type === 'conversation.item.create' && m.item.type === 'function_call_output') && !(await dc2()).some((m) => m.type === 'response.create'));
+  ok('C2a. …and session 2 is untouched: not busy, no response active, nothing pending, nothing "answered"', await page.evaluate(() => LIVE.toolBusy === false && LIVE.responseActive === false && LIVE.pending === null && LIVE.lastCreateFor === 0));
+  ok('C2b. the trace says so explicitly: TOOL · tool_discarded_stale, under session 1, with X\'s request id', await page.evaluate((rid) => { const r = LIVE.trace.filter((x) => x.decision === 'TOOL').pop(); return r.continuity_state === 'tool_discarded_stale' && r.continuity_result === 'discarded' && r.session_id === 'sess_test_1' && r.request_id === rid && r.call_id === 'call_X'; }, reqX));
+  const flushedStale = calls.filter((c) => c.action === 'cap' && c.name === 'voice_trace_log').some((c) => (c.args.events || []).some((e) => e.decision === 'TOOL' && e.continuity_state === 'tool_discarded_stale' && e.session_id === 'sess_test_1' && e.request_id === reqX));
+  ok('C2c. …and it reached the ledger road with the dead session\'s id, not the live one\'s', flushedStale);
+  // session 2 works normally afterwards
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 0, item_id: 'u2' });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'שלום, את שומעת אותי?' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  ok('C3. session 2 answers its own first turn (one response.create on ITS channel)', (await dc2()).filter((m) => m.type === 'response.create').length === 1);
+  // the bound: a slow kernel is answered "timeout" and the late answer is discarded
+  await page.evaluate(() => { LIVE_POLICY.tool_timeout_ms = 400; });
+  kernel.delay = 1500;
+  await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_T', name: 'deep_answer', arguments: JSON.stringify({ question: 'מה מצב ריל לוקיישן?' }) } });
+  await page.waitForFunction(() => LIVE.trace.some((r) => r.decision === 'TOOL' && r.continuity_state === 'tool_timeout'), null, { timeout: 3000 });
+  const tOut = (await dc2()).filter((m) => m.type === 'conversation.item.create' && m.item.type === 'function_call_output' && m.item.call_id === 'call_T');
+  ok('T1. past the bound the model is told "timeout" (first person, no invented answer) and the panel is free again', tOut.length === 1 && JSON.parse(tOut[0].item.output).error === 'timeout' && await page.evaluate(() => LIVE.toolBusy === false));
+  await page.waitForTimeout(1600);
+  ok('T2. the answer that limps in later is recorded as discarded_late and NOT sent a second time', (await dc2()).filter((m) => m.type === 'conversation.item.create' && m.item.type === 'function_call_output' && m.item.call_id === 'call_T').length === 1 && await page.evaluate(() => LIVE.trace.some((r) => r.decision === 'TOOL' && r.continuity_state === 'tool_discarded_late' && r.call_id === 'call_T')));
+  await page.click('#live');
+  await page.close();
+}
+
+// ── 1g. PHASE A-A (29.9): the ordinary road tells the server how the words arrived ──
+{
+  const { page, calls } = await session('modality');
+  await page.fill('#note', 'מה מצב ריל לוקיישן?');
+  await page.evaluate(() => sendPrimary());
+  await page.waitForTimeout(500);
+  const k = calls.find((c) => c.action === 'kernel');
+  ok('M1. a typed question carries modality:typed', !!k && k.modality === 'typed', JSON.stringify(k && { modality: k.modality }));
+  await page.close();
+}
+
+// ── 1h. PHASE A-D (29.9, run 36573775204): the VAD closes David's sentence, he resumes 300 ms later,
+//        and the transcript of the closed part must not ask for a reply over him ──
+{
+  const { page, sent } = await session('resume');
+  await page.waitForFunction(() => document.getElementById('live').style.display !== 'none', null, { timeout: 5000 });
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true, null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  // David asks, LIA answers and is speaking
+  await feed(page, { type: 'input_audio_buffer.speech_started', item_id: 'item_h1' });
+  await page.waitForTimeout(20);
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'ליה, מה מצב ההזמנות של ריל לוקיישן?' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  ok('H0. his first turn end + grace → one response.create', sent.filter((m) => m.type === 'response.create').length === 1);
+  await feed(page, { type: 'response.output_item.added', response_id: 'resp_h1', item: { id: 'item_h_a', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'resp_h1' });
+  // he talks over her; the server cuts the audio at his speech onset
+  const n0 = sent.length;
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 3000, item_id: 'item_h2' });
+  await feed(page, { type: 'output_audio_buffer.cleared' });
+  await feed(page, { type: 'conversation.item.truncated', item_id: 'item_h_a', content_index: 0, audio_end_ms: 900 });
+  await feed(page, { type: 'response.done', response: { status: 'cancelled' } });
+  // the VAD closes his first sentence…
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  // …he resumes 300 ms later, and only then the transcript of the closed sentence lands
+  await page.waitForTimeout(300);
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 5200, item_id: 'item_h3' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'רגע, לפני שאת בודקת, אני חושב שהכיוון של ההזמנות פחות חשוב עכשיו.' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  ok('H1. the transcript of a closed sentence asks nothing of the model while David is speaking again', sent.slice(n0).filter((m) => m.type === 'response.create').length === 0, JSON.stringify(sent.slice(n0).map((m) => m.type)));
+  ok('H2. the wait is on the trace as user_speaking', await page.evaluate(() => LIVE.trace.some((r) => r.decision === 'WAIT' && r.continuity_state === 'user_speaking')));
+  // his turn really ends → grace → exactly one response.create
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'מה שחשוב לי זה להבין מה הלקוח באמת צריך מאיתנו.' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  ok('H3. his turn end + grace → exactly one response.create, after he finished', sent.slice(n0).filter((m) => m.type === 'response.create').length === 1, JSON.stringify(sent.slice(n0).map((m) => m.type)));
+  await page.click('#live');
   await page.close();
 }
 
