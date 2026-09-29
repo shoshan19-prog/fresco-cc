@@ -4053,10 +4053,10 @@ async function liveRunTool(a){
   const ids={session_id:run.session_id,request_id:run.request_id,call_id:run.call_id,item_id:run.item_id};
   LIVE.tools++;LIVE.t.tool_started=run.started;LIVE.toolBusy=true;liveLabel('בודקת…');
   liveRecord('TOOL','בקשה לעיבוד עמוק נשלחה',Object.assign({continuity_state:'tool_started',outcome:'n/a'},ids));
-  const text=d.question;
-  const call=ccApi({action:'kernel',body:text,history:historyForKernel(text),
-    retracted:retractedForKernel(),request_id:run.request_id,voice:true,
-    voice_session_id:run.session_id,voice_request_id:run.request_id,parent_item_id:run.item_id,call_id:run.call_id});
+  const text=d.question,reqId=run.request_id;
+  /* the correlation ids ride first so the call keeps the shape every kernel call in this file has (and the pins that read it) */
+  const call=ccApi({voice_session_id:run.session_id,voice_request_id:run.request_id,parent_item_id:run.item_id,call_id:run.call_id,
+    action:'kernel',body:text,history:historyForKernel(text),retracted:retractedForKernel(),request_id:reqId,voice:true});
   let res=null,err=null,timedOut=false;
   try{res=await Promise.race([call,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),LIVE_POLICY.tool_timeout_ms))]);}
   catch(e){err=e||new Error('failed');timedOut=err.message==='timeout';}
