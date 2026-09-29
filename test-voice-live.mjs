@@ -628,6 +628,47 @@ const stat = (page) => page.textContent('#noteStat');
   await page.close();
 }
 
+// ── 1h. PHASE A-D (29.9, run 36573775204): the VAD closes David's sentence, he resumes 300 ms later,
+//        and the transcript of the closed part must not ask for a reply over him ──
+{
+  const { page, sent } = await session('resume');
+  await page.waitForFunction(() => document.getElementById('live').style.display !== 'none', null, { timeout: 5000 });
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true, null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  // David asks, LIA answers and is speaking
+  await feed(page, { type: 'input_audio_buffer.speech_started', item_id: 'item_h1' });
+  await page.waitForTimeout(20);
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'ליה, מה מצב ההזמנות של ריל לוקיישן?' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  ok('H0. his first turn end + grace → one response.create', sent.filter((m) => m.type === 'response.create').length === 1);
+  await feed(page, { type: 'response.output_item.added', response_id: 'resp_h1', item: { id: 'item_h_a', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'resp_h1' });
+  // he talks over her; the server cuts the audio at his speech onset
+  const n0 = sent.length;
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 3000, item_id: 'item_h2' });
+  await feed(page, { type: 'output_audio_buffer.cleared' });
+  await feed(page, { type: 'conversation.item.truncated', item_id: 'item_h_a', content_index: 0, audio_end_ms: 900 });
+  await feed(page, { type: 'response.done', response: { status: 'cancelled' } });
+  // the VAD closes his first sentence…
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  // …he resumes 300 ms later, and only then the transcript of the closed sentence lands
+  await page.waitForTimeout(300);
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 5200, item_id: 'item_h3' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'רגע, לפני שאת בודקת, אני חושב שהכיוון של ההזמנות פחות חשוב עכשיו.' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  ok('H1. the transcript of a closed sentence asks nothing of the model while David is speaking again', sent.slice(n0).filter((m) => m.type === 'response.create').length === 0, JSON.stringify(sent.slice(n0).map((m) => m.type)));
+  ok('H2. the wait is on the trace as user_speaking', await page.evaluate(() => LIVE.trace.some((r) => r.decision === 'WAIT' && r.continuity_state === 'user_speaking')));
+  // his turn really ends → grace → exactly one response.create
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'מה שחשוב לי זה להבין מה הלקוח באמת צריך מאיתנו.' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  ok('H3. his turn end + grace → exactly one response.create, after he finished', sent.slice(n0).filter((m) => m.type === 'response.create').length === 1, JSON.stringify(sent.slice(n0).map((m) => m.type)));
+  await page.click('#live');
+  await page.close();
+}
+
 await browser.close();
 ok('no page errors', errors.length === 0, errors.join('\n      '));
 console.log(bad ? `${total - bad}/${total} passed — ${bad} FAILED` : `${total}/${total} live-voice asserts passed`);

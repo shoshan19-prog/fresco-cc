@@ -685,7 +685,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-29.2';
+const LIA_BUILD='2026-09-29.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -3927,6 +3927,11 @@ function liveClearTimers(){clearTimeout(LIVE.graceTimer);clearTimeout(LIVE.overl
 function liveSpeak(reason){
  clearTimeout(LIVE.graceTimer);LIVE.graceTimer=null;
  if(LIVE.toolBusy){LIVE.pending=null;liveRecord('SPEAK',reason+' · נדחה לתוצאת הכלי',{continuity_state:'merged_into_tool_reply'});return;}
+ /* Phase A (29.9, run 36573775204): the VAD closed David's sentence, he resumed 300 ms later, and the
+    transcript of the closed part asked for a response anyway — LIA spoke over him for ten seconds.
+    While he is speaking nothing is asked of the model; his next turn end (+ grace) asks for it, with
+    the tool reply still owed. */
+ if(LIVE.userSpeaking){LIVE.pending={answer_after:true,at:Date.now()};liveRecord('WAIT',reason+' · דוד חזר לדבר — עונה כשיסיים',{continuity_state:'user_speaking'});return;}
  if(LIVE.speaking||LIVE.responseActive){
   if((LIVE.lastCreateFor||0)>=(LIVE.uttStartedAt||0)){LIVE.pending=null;liveRecord('WAIT',reason+' · התשובה לדברים האלה כבר בדרך (הכלי)',{continuity_state:'already_answered'});return;}
   LIVE.pending={answer_after:true,at:Date.now()};liveRecord('WAIT',reason+(LIVE.speaking?' · ליה עדיין מדברת — עונה כשתסיים':' · תשובה כבר בדרך — מצטרף אליה'),{continuity_state:'answer_after_lia'});return;}
