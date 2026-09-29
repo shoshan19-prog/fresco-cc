@@ -1120,13 +1120,13 @@ function applyServerMessages(msgs,fresh){
  if(fresh&&msgs.length){
   const old=new Map(SESSION.turns.filter(t=>t&&t.mid).map(t=>[t.mid,t]));
   SESSION.turns=msgs.map(m=>old.get(m.message_id)||{role:m.role==='lia'?'lia':'me',
-   text:m.content,at:Date.parse(m.created_at)||Date.now(),res:null,mid:m.message_id,fromServer:true});
+   text:m.content,at:Date.parse(m.created_at||m.server_at)||Date.now(),res:null,mid:m.message_id,fromServer:true});
  }else if(msgs.length){
   const known=new Set(SESSION.turns.map(t=>t&&t.mid).filter(Boolean));
   for(const m of msgs){
    if(known.has(m.message_id))continue;
    SESSION.turns.push({role:m.role==='lia'?'lia':'me',text:m.content,
-    at:Date.parse(m.created_at)||Date.now(),res:null,mid:m.message_id,fromServer:true});
+    at:Date.parse(m.created_at||m.server_at)||Date.now(),res:null,mid:m.message_id,fromServer:true});
   }
  }else return;
  if(SESSION.turns.length>60)SESSION.turns=SESSION.turns.slice(-60);
