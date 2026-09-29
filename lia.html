@@ -685,7 +685,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-29.1';
+const LIA_BUILD='2026-09-29.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -2910,9 +2910,14 @@ function sendPrimary(){
   }
   LASTSEND={t:t,at:Date.now()};
   addTurn('me',t);ta.value='';ta.rows=1;growNote();VOICE={};setMode('thinking');
+  INPUT_MODALITY='typed';
   road(intent)(t,id);
  }else sendNote(t);}
 let LASTSEND={t:'',at:0};
+/* Phase A (29.9): how David's words arrived — typed or dictation — travels in
+   the kernel body so the ledger can tell the two roads apart (it could not on
+   29.9). Set by the two doors, read by the three roads. */
+let INPUT_MODALITY='typed';
 /* One place decides which road an intent takes, so the two entry points (typed
    send and finished dictation) can never disagree about it again. */
 function road(intent){
@@ -3430,6 +3435,7 @@ function afterTranscript(){
   const id=beginTurn();if(!id)return;      // a duplicate final event finds the turn already taken
   document.getElementById('note').value='';growNote();VOICE={};setMode('thinking');
   addTurn('me',t);
+  INPUT_MODALITY='dictation';
   road(intent)(t,id);
  }else{PENDING_NOTE=t;setMode('review');if(voiceUX())reflect();else endTurn();}}
  // PENDING_NOTE is set on BOTH roads: reflect() runs only when there is a voice
@@ -3595,7 +3601,7 @@ async function doAsk(text,turnId,atts){
      the system". doAct's identical-looking line stays const: there res is only
      ever mutated (res.__plain=...), which const permits. */
   let res=await ccApi(Object.assign({action:'kernel',body:text,history:historyForKernel(text),
-    retracted:retractedForKernel(),request_id:reqId},
+    retracted:retractedForKernel(),request_id:reqId,modality:INPUT_MODALITY},
     durable?{turn_id:reqId,conversation_id:CHAT.conv,device_id:DEVICE_ID}:{},
     srcs.length?{sources:srcs}:{}));
   /* The server is still running this very turn (a re-send met a RUNNING
@@ -3687,7 +3693,11 @@ function finishAsk(ph,res,spoken,textOverride){
    code — never the OpenAI key. The pure rules come first, so
    test-voice-live.mjs can run them; the transport follows. */
 const LIVE_URL='https://api.openai.com/v1/realtime/calls';
-const LIVE_TOOL='ask_lia';
+/* PHASE A (29.9, one LIA): the server's tool is LIA's own deeper processing
+   (deep_answer). The old name is still accepted so a panel and a server that
+   deploy minutes apart never refuse each other's tool. */
+const LIVE_TOOLS=['deep_answer','ask_lia'];
+const LIVE_TOOL=LIVE_TOOLS[0];
 const LIVE_RECONNECT_MAX=3;                      // one rule, shared with the server's voiceSession.ts
 function liveReconnectDelay(a){a=Math.max(1,Math.floor(Number(a)||1));return Math.min(4000,1000*Math.pow(2,a-1));}
 function liveShouldReconnect(st){if(st.userStopped)return false;return (Number(st.attempt)||0)<LIVE_RECONNECT_MAX;}
@@ -3716,7 +3726,7 @@ function liveReduce(ev,st){
 /* The tool gate: the model may ask for exactly one thing, and only with a
    question in it. Anything else is answered with an error and never run. */
 function liveToolCall(name,args){
- if(String(name||'')!==LIVE_TOOL)return {ok:false,output:{error:'unknown_tool',message:'הכלי '+String(name||'')+' אינו קיים — רק '+LIVE_TOOL}};
+ if(LIVE_TOOLS.indexOf(String(name||''))<0)return {ok:false,output:{error:'unknown_tool',message:'הכלי '+String(name||'')+' אינו קיים — רק '+LIVE_TOOL}};
  const q=String((args&&args.question)||'').replace(/\s+/g,' ').trim();
  if(!q)return {ok:false,output:{error:'empty_question',message:'לא הועברה שאלה'}};
  return {ok:true,question:q.slice(0,2000)};}
@@ -3759,7 +3769,7 @@ function liveMintError(j){
    the records land on the ledger through voice_trace_log (decision_event
    voice_turn). The policy is ONE object, so the pilot changes numbers, not
    decisions. Pure rules first, so test-voice-live.mjs can run them. */
-const LIVE_POLICY={grace_ms:600,overlap_yield_ms:350,backchannel_max_ms:1500,transcript_wait_ms:2500,truncate_margin_ms:60,seed_turns:6};
+const LIVE_POLICY={grace_ms:600,overlap_yield_ms:350,backchannel_max_ms:1500,transcript_wait_ms:2500,truncate_margin_ms:60,seed_turns:6,tool_timeout_ms:150000,seed_window_ms:1800000};
 const LIVE_BACKCHANNEL_RE=/^(?:(?:כן|אוקיי|אוקי|או\s?קיי|אה+|אהא|אמ+|ממ+|המ+|הממ+|מהם|נכון|בסדר|יופי|מעולה|טוב|סבבה|ברור|הבנתי|כמובן|ok|okay|yes|yeah|yep|uh[\s-]?huh|mm+|hmm+|mhm+|right|sure|got it)[\s,.!?…]*){1,3}$/i;
 const LIVE_SIGNAL_RE=/(?:^|[\s,])(?:עצרי|תעצרי|עצור|רגע|שנייה|שניה|חכי|תחכי|תני לי לסיים|אל תקטעי|אל תפריעי|המשיכי|תמשיכי|תסיימי|סיימי|די|מספיק|stop|wait|hold on|let me finish|go on|continue|enough)(?:$|[\s,.!?…])/i;
 const LIVE_CORRECTION_RE=/^(?:לא[,.\s]|לא ביקשתי|לא לזה|לא זה|לא התכוונתי|התכוונתי|לא נכון|טעות|לא אמרתי|לא על זה|no[,.\s]|not that|i meant|wrong)/i;
@@ -3787,8 +3797,12 @@ function liveYieldActions(st){
 /* A renewed session (new secret, new realtime context) is seeded from the
    conversation David can see — the last turns as text items — so the thread
    continues instead of starting from nothing. No new state: SESSION.turns is it. */
-function liveSeedItems(turns,n){
- const last=(turns||[]).filter(t=>t&&(t.role==='me'||t.role==='lia')&&String(t.text||'').trim()).slice(-(n||LIVE_POLICY.seed_turns));
+function liveSeedItems(turns,n,now,windowMs){
+ /* PHASE A (29.9): seeded on EVERY connect — a re-tap or a drop lost the whole
+    thread before (0 of 5 sessions seeded on 29.9). Bounded by recency so a tap
+    hours later does not resurrect yesterday. */
+ const cut=(now&&windowMs)?now-windowMs:null;
+ const last=(turns||[]).filter(t=>t&&(t.role==='me'||t.role==='lia')&&String(t.text||'').trim()&&(cut==null||!Number.isFinite(Number(t.at))||Number(t.at)>=cut)).slice(-(n||LIVE_POLICY.seed_turns));
  return last.map(t=>({type:'conversation.item.create',item:{type:'message',role:t.role==='me'?'user':'assistant',
    content:[t.role==='me'?{type:'input_text',text:String(t.text).slice(0,600)}:{type:'output_text',text:String(t.text).replace(/^\(נקטע\)\s*/,'').slice(0,600)}]}}));}
 
@@ -3797,7 +3811,9 @@ const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audi
   timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0,
   /* turn control (28.9) */
   userSpeaking:false,itemId:'',responseId:'',audioStartedAt:0,overlap:null,pending:null,toolBusy:false,
-  graceTimer:null,overlapTimer:null,transcriptTimer:null,trace:[],seq:0,sessionId:'',renewing:false,lastHeard:'',lastSaid:'',turnPolicy:null,uttStartedAt:0,responseActive:false,lastCreateFor:0,afterYield:false};
+  graceTimer:null,overlapTimer:null,transcriptTimer:null,trace:[],seq:0,sessionId:'',renewing:false,lastHeard:'',lastSaid:'',turnPolicy:null,uttStartedAt:0,responseActive:false,lastCreateFor:0,afterYield:false,
+  /* Phase A (29.9): epoch = which session a tool result belongs to; lastCommittedUtt = the last utterance the VAD closed; userItemId = the provider's item for it */
+  epoch:0,lastCommittedUtt:0,userItemId:''};
 /* The button appears only when the server can actually mint a session for
    the model David named — a button that fails on tap is worse than none. */
 async function probeLiveVoice(){
@@ -3845,9 +3861,13 @@ async function liveConnect(){
   LIVE.stream.getTracks().forEach(tr=>pc.addTrack(tr,LIVE.stream));
   const dc=pc.createDataChannel('oai-events');LIVE.dc=dc;
   dc.onmessage=m=>{let ev;try{ev=JSON.parse(m.data);}catch(e){return;}liveOn(ev);};
-  dc.onopen=()=>{LIVE.ready=true;LIVE.attempt=0;liveUi('on');stat('');
-   if(LIVE.renewing){LIVE.renewing=false;const seed=liveSeedItems(SESSION.turns);seed.forEach(m=>liveSend(m));
-    liveRecord('CONTINUE','חידוש סשן — '+seed.length+' תורים נזרעו לשיחה החדשה',{continuity_state:'session_renewed_seeded'});}};
+  dc.onopen=()=>{LIVE.ready=true;const why=LIVE.renewing?'renewal':LIVE.attempt>0?'reconnect':'tap';LIVE.attempt=0;liveUi('on');stat('');
+   LIVE.renewing=false;
+   liveRecord('SESSION','סשן נפתח ('+why+')',{continuity_state:'session_started',continuity_result:why,outcome:'n/a'});
+   const seed=liveSeedItems(SESSION.turns,LIVE_POLICY.seed_turns,Date.now(),LIVE_POLICY.seed_window_ms);
+   if(seed.length){seed.forEach(m=>liveSend(m));
+    liveRecord('CONTINUE',(why==='renewal'?'חידוש סשן':why==='reconnect'?'חיבור מחדש':'סשן חדש')+' — '+seed.length+' תורים נזרעו לשיחה החדשה',{continuity_state:why==='renewal'?'session_renewed_seeded':'session_'+why+'_seeded',continuity_result:String(seed.length)});}
+   liveFlushTrace(false);};
   dc.onclose=()=>{if(LIVE.pc===pc&&!LIVE.userStopped)liveDropped('הערוץ נסגר');};
   pc.onconnectionstatechange=()=>{if(LIVE.pc!==pc)return;const s=pc.connectionState;
    if(s==='failed'||s==='closed'){if(!LIVE.userStopped)liveDropped(s);}
@@ -3866,7 +3886,7 @@ async function liveConnect(){
     secret, so a long conversation never ends on a timer. */
  clearTimeout(LIVE.timer);
  const ttl=LIVE.expires-Date.now();
- if(ttl>0)LIVE.timer=setTimeout(()=>{if(LIVE.on&&!LIVE.userStopped){LIVE.on=false;LIVE.renewing=true;liveFlushTrace(false);liveTeardown();liveUi('connecting');liveConnect();}},Math.max(5000,ttl-30000));}
+ if(ttl>0)LIVE.timer=setTimeout(()=>{if(LIVE.on&&!LIVE.userStopped){LIVE.on=false;LIVE.renewing=true;liveTeardown('renewal');liveFlushTrace(false);liveUi('connecting');liveConnect();}},Math.max(5000,ttl-30000));}
 /* ── the trace: one record per decision; the outcome is attached when David's next move shows it ── */
 function liveRecord(decision,reason,extra){
  const now=Date.now();
@@ -3876,6 +3896,7 @@ function liveRecord(decision,reason,extra){
    overlap_ms:null,interruption_source:'none',response_cancelled:false,cleared:false,truncated_ms:null,latency_ms:null,
    continuity_state:'n/a',continuity_result:'n/a',outcome:'pending',outcome_evidence:'',outcome_at:null,
    heard_head:String(LIVE.lastHeard||'').slice(0,120),said_head:String(LIVE.lastSaid||'').slice(0,120),
+   session_id:LIVE.sessionId||'',request_id:'',call_id:'',item_id:LIVE.userItemId||'',response_id:LIVE.responseId||'',
    policy:{grace_ms:LIVE_POLICY.grace_ms,overlap_yield_ms:LIVE_POLICY.overlap_yield_ms,backchannel_max_ms:LIVE_POLICY.backchannel_max_ms,eagerness:(LIVE.turnPolicy&&LIVE.turnPolicy.eagerness)||''},
    _flushed:false,_ts:now,_utt:LIVE.userSpeaking?(LIVE.uttStartedAt||0):null},extra||{});
  LIVE.trace.push(r);if(LIVE.trace.length>200)LIVE.trace.splice(0,LIVE.trace.length-200);
@@ -3897,7 +3918,7 @@ async function liveFlushTrace(force){
  if(!rows.length)return;
  rows.forEach(r=>{r._flushed=true;if(force&&r.outcome==='pending'){r.outcome='no_repair';r.outcome_evidence='השיחה הסתיימה בלי מהלך נוסף';r.outcome_at=new Date().toISOString();}});
  for(let i=0;i<rows.length;i+=50){
-  const batch=rows.slice(i,i+50).map(r=>{const c=Object.assign({},r);delete c._flushed;delete c._ts;delete c._utt;return c;});
+  const batch=rows.slice(i,i+50).map(r=>{const c=Object.assign({},r);delete c._flushed;delete c._ts;delete c._utt;if(!c.session_id)c.session_id=LIVE.sessionId||'';return c;});
   try{await cap('voice_trace_log',{session_id:LIVE.sessionId||'',model:LIVE.model||'',events:batch});}
   catch(e){batch.forEach(b=>{const r=LIVE.trace.find(x=>x.seq===b.seq);if(r)r._flushed=false;});}}}
 function liveClearTimers(){clearTimeout(LIVE.graceTimer);clearTimeout(LIVE.overlapTimer);clearTimeout(LIVE.transcriptTimer);LIVE.graceTimer=LIVE.overlapTimer=LIVE.transcriptTimer=null;}
@@ -3912,7 +3933,11 @@ function liveSpeak(reason){
  LIVE.pending=null;
  liveRecord('SPEAK',reason,{continuity_state:LIVE.afterYield?'after_yield':'turn_end'});LIVE.afterYield=false;
  liveCreateResponse();liveLabel('חושבת…');}
-function liveCreateResponse(){LIVE.responseActive=true;LIVE.lastCreateFor=LIVE.uttStartedAt||0;liveSend({type:'response.create'});}
+/* Phase A (29.9, the 01:34:42 seam): a response can only answer utterances the
+   VAD had CLOSED before it was asked for. The tool reply's response.create used
+   to stamp the utterance David was still speaking, so his objection was later
+   judged "already answered" (WAIT · already_answered) and never became a turn. */
+function liveCreateResponse(){LIVE.responseActive=true;LIVE.lastCreateFor=LIVE.userSpeaking?(LIVE.lastCommittedUtt||0):(LIVE.uttStartedAt||0);liveSend({type:'response.create'});}
 /* YIELD — David has the floor: cancel, silence, truncate to what he heard. */
 function liveYield(reason,overlapMs){
  clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;
@@ -3929,7 +3954,7 @@ function liveOn(ev){
   if(a.kind==='ready'){LIVE.ready=true;}
   else if(a.kind==='item_added'){LIVE.itemId=a.item_id;LIVE.responseId=a.response_id;}
   else if(a.kind==='speech_started'){
-   LIVE.userSpeaking=true;LIVE.t={speech_started:Date.now()};LIVE.uttStartedAt=Date.now();
+   LIVE.userSpeaking=true;LIVE.t={speech_started:Date.now()};LIVE.uttStartedAt=Date.now();LIVE.userItemId=String(a.item_id||'');
    if(LIVE.graceTimer){clearTimeout(LIVE.graceTimer);LIVE.graceTimer=null;const w=liveLastRecord(r=>r.decision==='WAIT'&&r.continuity_result==='n/a');if(w)w.continuity_result='user_resumed';}
    if(LIVE.speaking){
     /* David over LIA. Long = he is taking the turn → YIELD when the threshold passes;
@@ -3944,6 +3969,7 @@ function liveOn(ev){
   else if(a.kind==='speech_stopped'){
    if(!LIVE.userSpeaking)continue;                       // the commit that follows a stop we already handled
    LIVE.userSpeaking=false;if(!LIVE.t.speech_stopped)LIVE.t.speech_stopped=Date.now();
+   LIVE.lastCommittedUtt=LIVE.uttStartedAt;               // Phase A: a reply may cover this utterance from now on, not before
    if(LIVE.overlap&&(!LIVE.overlap.decided||LIVE.overlap.server_cut)){
     clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;
     const ms=Date.now()-LIVE.overlap.start;LIVE.overlap.decided=true;const cut=!!LIVE.overlap.server_cut;LIVE.overlap=null;
@@ -4018,21 +4044,53 @@ async function liveRunTool(a){
  const d=liveToolCall(a.name,a.args);
  let output=d.ok?null:d.output;
  if(d.ok){
-  LIVE.tools++;LIVE.t.tool_started=Date.now();LIVE.toolBusy=true;liveLabel('בודקת אצל ליה…');
-  const text=d.question,reqId=uuid();           // the same shape every kernel call in this file has
-  try{
-   const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
-     retracted:retractedForKernel(),request_id:reqId,voice:true});
+  /* Phase A (29.9): the run is OWNED by the session that asked (epoch). Its ids
+     travel to the kernel and onto every ledger row of that request; its result
+     is accepted only while that session is still the live one; it is bounded by
+     doAsk's proven 150 s; a late or stale result is recorded and discarded —
+     never spoken, never busy, never "answered" in a later session. */
+  const run={epoch:LIVE.epoch,session_id:LIVE.sessionId||'',request_id:uuid(),call_id:String(a.call_id||''),item_id:LIVE.userItemId||'',started:Date.now(),settled:false};
+  const ids={session_id:run.session_id,request_id:run.request_id,call_id:run.call_id,item_id:run.item_id};
+  LIVE.tools++;LIVE.t.tool_started=run.started;LIVE.toolBusy=true;liveLabel('בודקת…');
+  liveRecord('TOOL','בקשה לעיבוד עמוק נשלחה',Object.assign({continuity_state:'tool_started',outcome:'n/a'},ids));
+  const text=d.question;
+  const call=ccApi({action:'kernel',body:text,history:historyForKernel(text),
+    retracted:retractedForKernel(),request_id:run.request_id,voice:true,
+    voice_session_id:run.session_id,voice_request_id:run.request_id,parent_item_id:run.item_id,call_id:run.call_id});
+  let res=null,err=null,timedOut=false;
+  try{res=await Promise.race([call,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),LIVE_POLICY.tool_timeout_ms))]);}
+  catch(e){err=e||new Error('failed');timedOut=err.message==='timeout';}
+  const ms=Date.now()-run.started;
+  if(run.epoch!==LIVE.epoch){
+   /* the session that asked is gone: nothing of this result may touch the live one */
+   liveRecord('TOOL','תוצאה של סשן שהסתיים — נזרקה',Object.assign({continuity_state:timedOut?'tool_timeout_stale':err?'tool_error_stale':'tool_discarded_stale',continuity_result:'discarded',outcome:'n/a',latency_ms:ms},ids));
+   liveFlushTrace(false);return;}
+  run.settled=true;
+  if(timedOut){
+   call.then(()=>{liveRecord('TOOL','תשובה הגיעה אחרי הזמן הקצוב — נזרקה',Object.assign({continuity_state:'tool_discarded_late',continuity_result:'discarded',outcome:'n/a',latency_ms:Date.now()-run.started},ids));liveFlushTrace(false);}).catch(()=>{});
+   output={error:'timeout',message:'לא הגיעה תשובה תוך '+Math.round(LIVE_POLICY.tool_timeout_ms/1000)+' שניות'};
+   liveRecord('TOOL','הזמן הקצוב לעיבוד העמוק עבר',Object.assign({continuity_state:'tool_timeout',continuity_result:'error:timeout',outcome:'n/a',latency_ms:ms},ids));}
+  else if(err){
+   output={error:err.message==='401'?'unauthorized':'unreachable',
+     message:err.message==='401'?'אין הרשאה — הקוד נדחה':'לא הצלחתי לבדוק ('+err.message+')'};
+   liveRecord('TOOL','העיבוד העמוק נכשל',Object.assign({continuity_state:'tool_error',continuity_result:('error:'+String(output.error)).slice(0,40),outcome:'n/a',latency_ms:ms},ids));}
+  else{
    rememberRetracted(res);
    const shown=unwrapPayload(res);LIVE.res=shown;LAST={q:text,res:shown};
    output=res.voice_output||{error:'no_voice_output',message:'השרת לא החזיר תשובה קולית'};
-  }catch(e){output={error:e.message==='401'?'unauthorized':'unreachable',
-    message:e.message==='401'?'אין הרשאה — הקוד נדחה':'לא הצלחתי להגיע לליה ('+e.message+')'};}
+   liveRecord('TOOL','העיבוד העמוק החזיר תשובה',Object.assign({continuity_state:'tool_done',continuity_result:('route:'+String((res.meta&&res.meta.route_taken)||res.route||'')).slice(0,40),outcome:'n/a',latency_ms:ms},ids));}
   LIVE.t.tool_done=Date.now();LIVE.toolBusy=false;
+  liveFlushTrace(false);
  }
  liveSend({type:'conversation.item.create',item:{type:'function_call_output',call_id:a.call_id,output:JSON.stringify(output)}});
  liveCreateResponse();}
-function liveTeardown(){
+function liveTeardown(reason){
+ /* Phase A (29.9): the epoch moves, so a tool result that belongs to this
+    session is discarded when it lands; every busy / response / pending flag is
+    session-local and dies here — measured 29.9: toolBusy and responseActive
+    survived a stop and deferred or silenced the next session's first turns. */
+ if(LIVE.sessionId)liveRecord('SESSION','סשן נסגר ('+String(reason||'')+')',{continuity_state:'session_teardown',continuity_result:String(reason||'').slice(0,40),outcome:'n/a'});
+ LIVE.epoch++;LIVE.toolBusy=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;
  clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;liveClearTimers();LIVE.userSpeaking=false;LIVE.overlap=null;LIVE.pending=null;LIVE.audioStartedAt=0;LIVE.responseActive=false;
  const dc=LIVE.dc,pc=LIVE.pc;LIVE.dc=null;LIVE.pc=null;
  try{if(dc)dc.close();}catch(e){}try{if(pc)pc.close();}catch(e){}
@@ -4040,14 +4098,15 @@ function liveTeardown(){
 function liveReleaseMic(){if(LIVE.stream){try{LIVE.stream.getTracks().forEach(t=>t.stop());}catch(e){}LIVE.stream=null;}}
 function liveStop(why){
  LIVE.userStopped=true;LIVE.on=false;clearTimeout(LIVE.reconnectTimer);LIVE.reconnectTimer=null;
+ liveTeardown(why||'stop');
  liveFlushTrace(true);
- liveTeardown();liveReleaseMic();liveUi('off');
+ liveReleaseMic();liveUi('off');
  stat(why==='user'?(LIVE.lat.length?'השיחה הסתיימה · ⚡ ממוצע '+(LIVE.lat.reduce((x,y)=>x+y,0)/LIVE.lat.length/1000).toFixed(1)+' ש׳':''):String(why||''));}
-function liveFail(msg){LIVE.on=false;liveTeardown();liveReleaseMic();liveUi('off');stat(msg);}
+function liveFail(msg){LIVE.on=false;liveTeardown('fail: '+String(msg||'').slice(0,30));liveFlushTrace(true);liveReleaseMic();liveUi('off');stat(msg);}
 /* A drop David did not ask for: three tries, 1s/2s/4s apart, on a fresh
    secret each time; then the honest line and the button. */
 function liveDropped(reason){
- LIVE.on=false;liveTeardown();
+ LIVE.on=false;liveTeardown('drop: '+String(reason||'').slice(0,30));liveFlushTrace(false);
  if(!liveShouldReconnect({attempt:LIVE.attempt,userStopped:LIVE.userStopped})){liveFail('השיחה נותקה ('+reason+') — לחץ 🎧 לחיבור מחדש');return;}
  LIVE.attempt++;const d=liveReconnectDelay(LIVE.attempt);
  liveUi('connecting');stat('החיבור נפל ('+reason+') — מתחברת מחדש… ('+LIVE.attempt+'/'+LIVE_RECONNECT_MAX+')');
@@ -4437,7 +4496,7 @@ async function doExecute(text,turnId){
      work, told which package it is inside so its checkpoints land on the row
      David is already watching. */
   const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
-    retracted:retractedForKernel(),request_id:reqId,work_id:w.work_id});
+    retracted:retractedForKernel(),request_id:reqId,work_id:w.work_id,modality:INPUT_MODALITY});
   rememberRetracted(res);
   LAST={q:text,res:res};
   const spoken=spokenAnswer(res);
@@ -4454,7 +4513,7 @@ async function doAct(text,turnId){
  const outward=OUTWARD_RE.test(text);
  try{
   const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
-    retracted:retractedForKernel(),request_id:reqId});
+    retracted:retractedForKernel(),request_id:reqId,modality:INPUT_MODALITY});
   rememberRetracted(res);
   if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft
    await ccApi({action:'ask',kind:'change_request',body:text});

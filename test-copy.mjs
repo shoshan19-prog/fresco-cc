@@ -44,7 +44,7 @@ ok('clipboard API first, textarea fallback second — both under the user tap', 
 ok('role marks: David blue, LIA her orb; David\'s bubble has the accent edge', html.includes('.msg.me .who .tag::before{background:var(--acc)}') && html.includes('.msg.lia .who .tag::before{background:radial-gradient') && html.includes('.msg.me .bubble{border-inline-start:3px solid var(--acc)}'));
 ok('the phone gets a real tap target for the copy control', html.includes(' .msg .cp{width:32px;height:32px;font-size:14px}'));
 ok('nothing else moved: the evidence and explain controls are still the two under the answer', src.includes(`<button class="det" onclick="toggleDeep('+i+')" title="ראיות ופרטים"`) && src.includes(`<button class="det" onclick="explainTurn('+i+')" title="תסבירי פשוט"`));
-ok('the build stamp moved', /const LIA_BUILD='2026-09-29\.1';/.test(src));
+ok('the build stamp moved', /const LIA_BUILD='2026-09-29\.2';/.test(src));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);
