@@ -3813,7 +3813,7 @@ const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audi
   userSpeaking:false,itemId:'',responseId:'',audioStartedAt:0,overlap:null,pending:null,toolBusy:false,
   graceTimer:null,overlapTimer:null,transcriptTimer:null,trace:[],seq:0,sessionId:'',renewing:false,lastHeard:'',lastSaid:'',turnPolicy:null,uttStartedAt:0,responseActive:false,lastCreateFor:0,afterYield:false,
   /* Phase A (29.9): epoch = which session a tool result belongs to; lastCommittedUtt = the last utterance the VAD closed; userItemId = the provider's item for it */
-  epoch:0,lastCommittedUtt:0,userItemId:''};
+  epoch:0,lastCommittedUtt:0,userItemId:'',replyOwed:false};
 /* The button appears only when the server can actually mint a session for
    the model David named — a button that fails on tap is worse than none. */
 async function probeLiveVoice(){
@@ -3931,7 +3931,7 @@ function liveSpeak(reason){
   if((LIVE.lastCreateFor||0)>=(LIVE.uttStartedAt||0)){LIVE.pending=null;liveRecord('WAIT',reason+' · התשובה לדברים האלה כבר בדרך (הכלי)',{continuity_state:'already_answered'});return;}
   LIVE.pending={answer_after:true,at:Date.now()};liveRecord('WAIT',reason+(LIVE.speaking?' · ליה עדיין מדברת — עונה כשתסיים':' · תשובה כבר בדרך — מצטרף אליה'),{continuity_state:'answer_after_lia'});return;}
  LIVE.pending=null;
- liveRecord('SPEAK',reason,{continuity_state:LIVE.afterYield?'after_yield':'turn_end'});LIVE.afterYield=false;
+ liveRecord('SPEAK',reason+(LIVE.replyOwed?' · כולל תשובת הכלי שחיכתה':''),{continuity_state:LIVE.replyOwed?'turn_end_with_tool_reply':LIVE.afterYield?'after_yield':'turn_end'});LIVE.afterYield=false;LIVE.replyOwed=false;
  liveCreateResponse();liveLabel('חושבת…');}
 /* Phase A (29.9, the 01:34:42 seam): a response can only answer utterances the
    VAD had CLOSED before it was asked for. The tool reply's response.create used
@@ -4083,6 +4083,11 @@ async function liveRunTool(a){
   liveFlushTrace(false);
  }
  liveSend({type:'conversation.item.create',item:{type:'function_call_output',call_id:a.call_id,output:JSON.stringify(output)}});
+ /* Measured 29.9 (run 36561273023, 20.3 s): the kernel came back while David was mid-sentence and the
+    reply was asked for at once — LIA spoke over him for fourteen seconds. The output goes back to the
+    model now (the call is closed); the reply is asked for when HIS turn ends, by the same SPEAK door,
+    so it answers his words too. Nothing new is decided here: liveSpeak already owns that moment. */
+ if(LIVE.userSpeaking&&d.ok){LIVE.replyOwed=true;liveRecord('TOOL','התשובה מוכנה — דוד עדיין מדבר; תיאמר כשיסיים',{continuity_state:'reply_deferred_user_speaking',outcome:'n/a',request_id:a.call_id?String(a.call_id):''});return;}
  liveCreateResponse();}
 function liveTeardown(reason){
  /* Phase A (29.9): the epoch moves, so a tool result that belongs to this
@@ -4090,7 +4095,7 @@ function liveTeardown(reason){
     session-local and dies here — measured 29.9: toolBusy and responseActive
     survived a stop and deferred or silenced the next session's first turns. */
  if(LIVE.sessionId)liveRecord('SESSION','סשן נסגר ('+String(reason||'')+')',{continuity_state:'session_teardown',continuity_result:String(reason||'').slice(0,40),outcome:'n/a'});
- LIVE.epoch++;LIVE.toolBusy=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;
+ LIVE.epoch++;LIVE.toolBusy=false;LIVE.replyOwed=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;
  clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;liveClearTimers();LIVE.userSpeaking=false;LIVE.overlap=null;LIVE.pending=null;LIVE.audioStartedAt=0;LIVE.responseActive=false;
  const dc=LIVE.dc,pc=LIVE.pc;LIVE.dc=null;LIVE.pc=null;
  try{if(dc)dc.close();}catch(e){}try{if(pc)pc.close();}catch(e){}

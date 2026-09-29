@@ -126,8 +126,9 @@ ok('outcome: nothing said yet = nothing to read', P.liveOutcome('', {}) === null
 // ── wiring, as text ────────────────────────────────────────────────────────
 const live = slice('/* ── LIVE VOICE', '/* ── the keyless road');
 ok('the tool runs through action:kernel with voice:true and its correlation ids, nothing else', /const call=ccApi\(\{voice_session_id:run\.session_id,voice_request_id:run\.request_id,parent_item_id:run\.item_id,call_id:run\.call_id,\s*action:'kernel',body:text,history:historyForKernel\(text\),retracted:retractedForKernel\(\),request_id:reqId,voice:true\}\)/.test(live) && !/action:'cap'/.test(live));
+ok('a tool reply never starts over David: while he speaks the output is returned and the reply waits for his turn end (replyOwed → the next SPEAK)', /if\(LIVE\.userSpeaking&&d\.ok\)\{LIVE\.replyOwed=true;liveRecord\('TOOL'/.test(live) && /continuity_state:LIVE\.replyOwed\?'turn_end_with_tool_reply'/.test(live) && /LIVE\.replyOwed=false;LIVE\.lastCreateFor=0;/.test(live));
 ok('the tool leg is bounded by the policy (Promise.race with tool_timeout_ms), and a result is accepted only in the epoch that asked', /Promise\.race\(\[call,new Promise\(\(_,rej\)=>setTimeout\(\(\)=>rej\(new Error\('timeout'\)\),LIVE_POLICY\.tool_timeout_ms\)\)\]\)/.test(live) && /if\(run\.epoch!==LIVE\.epoch\)\{/.test(live));
-ok('teardown moves the epoch and kills every session-local flag (toolBusy, lastCreateFor, pending, responseActive)', /function liveTeardown\(reason\)\{/.test(live) && /LIVE\.epoch\+\+;LIVE\.toolBusy=false;LIVE\.lastCreateFor=0;/.test(live) && /LIVE\.pending=null;LIVE\.audioStartedAt=0;LIVE\.responseActive=false;/.test(live));
+ok('teardown moves the epoch and kills every session-local flag (toolBusy, lastCreateFor, pending, responseActive)', /function liveTeardown\(reason\)\{/.test(live) && /LIVE\.epoch\+\+;LIVE\.toolBusy=false;LIVE\.replyOwed=false;LIVE\.lastCreateFor=0;/.test(live) && /LIVE\.pending=null;LIVE\.audioStartedAt=0;LIVE\.responseActive=false;/.test(live));
 ok('a response covers only utterances the VAD had closed before it was asked for (the 01:34:42 seam)', /LIVE\.lastCreateFor=LIVE\.userSpeaking\?\(LIVE\.lastCommittedUtt\|\|0\):\(LIVE\.uttStartedAt\|\|0\)/.test(live) && /LIVE\.lastCommittedUtt=LIVE\.uttStartedAt;/.test(live));
 ok('the ordinary road says how the words arrived: typed at the send door, dictation at the transcript door, on every kernel body', /INPUT_MODALITY='typed';\s*road\(intent\)/.test(src) && /INPUT_MODALITY='dictation';\s*road\(intent\)/.test(src) && (src.match(/modality:INPUT_MODALITY/g) || []).length === 3);
 ok('nothing on the screen calls the tool "checking with LIA"', !/בודקת אצל ליה/.test(src) && !/להגיע לליה/.test(src));
@@ -537,20 +538,27 @@ const stat = (page) => page.textContent('#noteStat');
   const bStart = await page.evaluate(() => LIVE.uttStartedAt);
   await page.waitForFunction(() => LIVE.toolBusy === false, null, { timeout: 5000 });   // A returns while B is in progress
   await page.waitForTimeout(50);
-  ok('D1. A\'s reply was asked for (response.create #2) while B was still being spoken', creates() === 2 && await page.evaluate(() => LIVE.userSpeaking === true));
-  ok('D2. …and it does NOT claim B: lastCreateFor stays before B\'s start', await page.evaluate((b) => LIVE.lastCreateFor < b, bStart), await page.evaluate((b) => `lastCreateFor=${LIVE.lastCreateFor} bStart=${b}`, bStart));
-  await feed(page, { type: 'response.output_item.added', response_id: 'rA', item: { id: 'item_A', type: 'message', role: 'assistant' } });
-  await feed(page, { type: 'output_audio_buffer.started', response_id: 'rA' });
+  ok('D1. A\'s reply is NOT asked for while B is still being spoken — the output is returned to the model, the reply waits (no talking over David)', creates() === 1 && sent.some((m) => m.type === 'conversation.item.create' && m.item.type === 'function_call_output' && m.item.call_id === 'call_A') && await page.evaluate(() => LIVE.userSpeaking === true && LIVE.replyOwed === true && LIVE.toolBusy === false));
+  ok('D1a. …and the trace says why', await page.evaluate(() => LIVE.trace.filter((r) => r.decision === 'TOOL').pop().continuity_state === 'reply_deferred_user_speaking'));
+  ok('D2. nothing claims B: lastCreateFor stays before B\'s start', await page.evaluate((b) => LIVE.lastCreateFor < b, bStart), await page.evaluate((b) => `lastCreateFor=${LIVE.lastCreateFor} bStart=${b}`, bStart));
   await feed(page, { type: 'input_audio_buffer.speech_stopped' });
   await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'רגע, לפני שאת בודקת, בואי נחשוב על זה יחד.' });
   await page.waitForTimeout(POL.grace_ms + 150);
   const d = await dec();
-  ok('D3. B is judged on its own: answered AFTER A\'s reply (WAIT · answer_after_lia), never "already_answered"', d[d.length - 1].c === 'answer_after_lia' && !d.some((r) => r.c === 'already_answered') && creates() === 2, JSON.stringify(d));
-  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'ריל לוקיישן בביצוע.' });
+  ok('D3. when B ends, ONE response.create answers the tool output and B together (SPEAK · turn_end_with_tool_reply) — never "already_answered"', creates() === 2 && d[d.length - 1].d === 'SPEAK' && d[d.length - 1].c === 'turn_end_with_tool_reply' && !d.some((r) => r.c === 'already_answered') && await page.evaluate(() => LIVE.replyOwed === false), JSON.stringify(d));
+  await feed(page, { type: 'response.output_item.added', response_id: 'rA', item: { id: 'item_A', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'rA' });
+  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'ריל לוקיישן בביצוע. ולגבי לחשוב יחד — בסדר.' });
   await feed(page, { type: 'output_audio_buffer.stopped' });
   await feed(page, { type: 'response.done', response: { status: 'completed' } });
   await page.waitForTimeout(80);
-  ok('D4. when A\'s reply ends, B gets its own response.create (SPEAK for the words that accumulated)', creates() === 3 && /הצטברו/.test((await dec()).pop().reason), JSON.stringify(await dec()));
+  ok('D4. nothing else is asked for afterwards (no second reply, nothing pending)', creates() === 2 && await page.evaluate(() => LIVE.pending === null && LIVE.responseActive === false));
+  // the reply is immediate when David is NOT speaking
+  kernel.delay = 300;
+  await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_B', name: 'deep_answer', arguments: JSON.stringify({ question: 'מה מצב ריל לוקיישן?' }) } });
+  await page.waitForFunction(() => LIVE.toolBusy === false, null, { timeout: 5000 });
+  await page.waitForTimeout(50);
+  ok('D5. with David silent, the tool reply is asked for at once (response.create #3), as before', creates() === 3 && await page.evaluate(() => LIVE.replyOwed === false));
   await page.click('#live');
   await page.close();
 }
