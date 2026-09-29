@@ -129,7 +129,7 @@ ok('response.create has ONE door (liveCreateResponse); nothing else asks the mod
 ok('a YIELD sends the wire of liveYieldActions and nothing decides an interruption elsewhere', /const acts=liveYieldActions\(\{item_id:LIVE\.itemId,audio_started_at:LIVE\.audioStartedAt/.test(live) && /acts\.forEach\(m=>liveSend\(m\)\)/.test(live));
 ok('the trace reaches the ledger through voice_trace_log, in batches of 50', /cap\('voice_trace_log',\{session_id:LIVE\.sessionId\|\|'',model:LIVE\.model\|\|'',events:batch\}\)/.test(live) && /i\+=50/.test(live));
 ok('a stop flushes what is left (pending → no_repair); a renewal flushes the known and seeds the new channel', /liveFlushTrace\(true\)/.test(live) && /LIVE\.renewing=true;liveFlushTrace\(false\)/.test(live) && /if\(LIVE\.renewing\)\{LIVE\.renewing=false;const seed=liveSeedItems\(SESSION\.turns\)/.test(live));
-ok('the build is bumped', /const LIA_BUILD='2026-09-28\.4'/.test(src));
+ok('the build is bumped', /const LIA_BUILD='2026-09-29\.1'/.test(src));
 ok('the tap-microphone is shut while live', /function micAllowed\(\)\{return TURN==='IDLE'&&!TTS&&!\(typeof LIVE!=='undefined'&&LIVE\.on\);\}/.test(src));
 ok('the browser speech engine yields while live', /if\(typeof LIVE!=='undefined'&&LIVE\.on\)\{TTS=false;if\(done\)setTimeout\(done,0\);return;\}/.test(src));
 
@@ -378,6 +378,58 @@ const stat = (page) => page.textContent('#noteStat');
   await page.waitForTimeout(300);
   const last = calls.filter((c) => c.action === 'cap' && c.name === 'voice_trace_log').pop();
   ok('C7. a stop flushes the pending decisions as no_repair (no further move)', !!last && (last.args.events || []).some((e) => e.outcome === 'no_repair'));
+  await page.close();
+}
+
+// ── 1c. the server's own cut (measured 29.9, run 36506338290): over WebRTC the output audio is cleared the
+//        instant the VAD hears speech, whatever interrupt_response says — the client records it as a YIELD it did
+//        not choose, and the ear still classifies the utterance ─────────────────────────────────────────────
+{
+  const { page, calls, sent } = await session('servercut');
+  await page.waitForFunction(() => document.getElementById('live').style.display !== 'none', null, { timeout: 5000 });
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true, null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  const creates = () => sent.filter((a) => a.type === 'response.create').length;
+  const trace = () => page.evaluate(() => LIVE.trace.map((r) => ({ d: r.decision, s: r.interruption_source, c: r.continuity_state, cr: r.continuity_result, o: r.outcome, cancelled: r.response_cancelled, cleared: r.cleared })));
+  // LIA is speaking
+  await feed(page, { type: 'response.output_item.added', response_id: 'r1', item: { id: 'item_s1', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'r1' });
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 3000, item_id: 'u1' });
+  const n0 = sent.length;
+  // …and 180 ms later the SERVER clears and truncates on its own
+  await page.waitForTimeout(180);
+  await feed(page, { type: 'output_audio_buffer.cleared' });
+  await feed(page, { type: 'conversation.item.truncated', item_id: 'item_s1', content_index: 0, audio_end_ms: 2800 });
+  await page.waitForTimeout(POL.overlap_yield_ms + 100);
+  ok('S1. the server\'s cut is on the trace as a YIELD the client did not choose', (await trace()).pop().d === 'YIELD' && (await trace()).pop().s === 'server_vad' && (await trace()).pop().cancelled === false && (await trace()).pop().cleared === true);
+  ok('S1a. …with the server\'s truncation as its continuity', /^truncated_2800ms$/.test((await trace()).pop().cr));
+  ok('S1b. …and the client sent nothing (no second cancel, no clear, no truncate)', sent.length === n0 && await page.evaluate(() => LIVE.speaking === false && LIVE.interrupted === true));
+  await feed(page, { type: 'response.done', response: { status: 'completed' } });
+  // the utterance ends and the ear says it was a backchannel
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'כן' });
+  await page.waitForTimeout(80);
+  ok('S2. a backchannel the server already cut is recorded as such — nothing is asked of the model', (await trace()).pop().d === 'BACKCHANNEL' && (await trace()).pop().c === 'cut_by_server' && creates() === 0);
+  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'שלוש הזמנות פתוחות, האחרונה' });
+  ok('S2a. the cut sentence is labelled', await page.evaluate(() => /^\(נקטע\)/.test(SESSION.turns[SESSION.turns.length - 1].text)));
+  // a second cut, this time a real interruption
+  await feed(page, { type: 'response.output_item.added', response_id: 'r2', item: { id: 'item_s2', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'r2' });
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 9000, item_id: 'u2' });
+  await page.waitForTimeout(150);
+  await feed(page, { type: 'output_audio_buffer.cleared' });
+  await feed(page, { type: 'conversation.item.truncated', item_id: 'item_s2', content_index: 0, audio_end_ms: 900 });
+  await feed(page, { type: 'response.done', response: { status: 'completed' } });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'רגע, לא זה — מה עם ההזמנה של אתמול?' });
+  await page.waitForTimeout(80);
+  ok('S3. a real interruption the server cut is answered (SPEAK after the server\'s cut), once', creates() === 1 && (await trace()).pop().d === 'SPEAK' && await page.evaluate(() => /השרת חתך/.test(LIVE.trace[LIVE.trace.length - 1].reason)));
+  ok('S3a. the first cut\'s outcome is what David actually said over her — "כן" — so the pair YIELD(server_vad) → BACKCHANNEL is the Gym\'s "backchannel treated as interruption" pattern, on the record', (await trace()).find((r) => r.d === 'YIELD').o === 'continued_normally' && await page.evaluate(() => LIVE.trace.find((r) => r.decision === 'YIELD').outcome_evidence === 'כן'));
+  await page.click('#live');
+  await page.waitForTimeout(300);
+  const last = calls.filter((c) => c.action === 'cap' && c.name === 'voice_trace_log').pop();
+  ok('S4. the server-cut YIELD reached the ledger road with its source named', !!last && calls.filter((c) => c.action === 'cap' && c.name === 'voice_trace_log').some((c) => (c.args.events || []).some((e) => e.decision === 'YIELD' && e.interruption_source === 'server_vad')));
   await page.close();
 }
 

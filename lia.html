@@ -685,7 +685,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-28.4';
+const LIA_BUILD='2026-09-29.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -3882,12 +3882,13 @@ function liveRecord(decision,reason,extra){
  return r;}
 function liveLastRecord(pred){for(let i=LIVE.trace.length-1;i>=0;i--){if(pred(LIVE.trace[i]))return LIVE.trace[i];}return null;}
 function liveResolveOutcomes(next,ctx){
- const o=liveOutcome(next,Object.assign({heard:LIVE.lastHeard,said:LIVE.lastSaid},ctx||{}));if(!o)return;
+ ctx=ctx||{};const onlyDuring=!!ctx.only_during;
+ const o=liveOutcome(next,Object.assign({heard:LIVE.lastHeard,said:LIVE.lastSaid},ctx));if(!o)return;
  const at=new Date().toISOString();
  /* a decision made DURING this utterance is judged by its transcript; one made after the
     previous utterance ended is judged by this one, the next move */
  const cur=LIVE.uttStartedAt||0;
- for(const r of LIVE.trace)if(r.outcome==='pending'&&(r._utt===cur||(r._utt==null&&r._ts<cur))){r.outcome=o.outcome;r.outcome_evidence=o.evidence;r.outcome_at=at;}
+ for(const r of LIVE.trace)if(r.outcome==='pending'&&(r._utt===cur||(!onlyDuring&&r._utt==null&&r._ts<cur))){r.outcome=o.outcome;r.outcome_evidence=o.evidence;r.outcome_at=at;}
  liveFlushTrace(false);}
 /* Durable: the ledger gets every record whose outcome is known; at the end of the
    session the rest go too, as no_repair (David made no further move). */
@@ -3943,10 +3944,10 @@ function liveOn(ev){
   else if(a.kind==='speech_stopped'){
    if(!LIVE.userSpeaking)continue;                       // the commit that follows a stop we already handled
    LIVE.userSpeaking=false;if(!LIVE.t.speech_stopped)LIVE.t.speech_stopped=Date.now();
-   if(LIVE.overlap&&!LIVE.overlap.decided){
+   if(LIVE.overlap&&(!LIVE.overlap.decided||LIVE.overlap.server_cut)){
     clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;
-    const ms=Date.now()-LIVE.overlap.start;LIVE.overlap.decided=true;
-    LIVE.pending={short:true,overlap_ms:ms,at:Date.now()};
+    const ms=Date.now()-LIVE.overlap.start;LIVE.overlap.decided=true;const cut=!!LIVE.overlap.server_cut;LIVE.overlap=null;
+    LIVE.pending={short:true,overlap_ms:ms,at:Date.now(),server_cut:cut};
     LIVE.transcriptTimer=setTimeout(()=>{LIVE.transcriptTimer=null;
      if(LIVE.pending&&LIVE.pending.short){LIVE.pending={answer_after:true,at:Date.now()};
       liveRecord('CONTINUE','חפיפה קצרה ('+ms+' מ״ש) בלי תמלול — ליה מסיימת ועונה אחר כך',{overlap_ms:ms,interruption_source:'user',continuity_state:'answer_after_lia'});}},LIVE_POLICY.transcript_wait_ms);
@@ -3966,13 +3967,14 @@ function liveOn(ev){
    const short=LIVE.pending&&LIVE.pending.short?LIVE.pending:null;
    if(short){clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;LIVE.pending=null;}
    if(short&&liveIsBackchannel(a.text,short.overlap_ms)){
-    liveRecord('BACKCHANNEL','"'+a.text.slice(0,30)+'" ('+short.overlap_ms+' מ״ש) — אישור, לא שאלה; ליה ממשיכה',{lia_speaking:true,overlap_state:'overlap',overlap_ms:short.overlap_ms,interruption_source:'backchannel',continuity_state:'lia_continues'});
+    liveRecord('BACKCHANNEL','"'+a.text.slice(0,30)+'" ('+short.overlap_ms+' מ״ש) — אישור, לא שאלה'+(short.server_cut?'; השרת כבר חתך את האודיו':'; ליה ממשיכה'),{lia_speaking:!short.server_cut,overlap_state:'overlap',overlap_ms:short.overlap_ms,interruption_source:'backchannel',continuity_state:short.server_cut?'cut_by_server':'lia_continues'});
+    liveResolveOutcomes(a.text,{only_during:true});
     LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;continue;}
    liveResolveOutcomes(a.text);
    LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;
    if(short){
     if(LIVE.speaking){liveYield('חפיפה קצרה ('+short.overlap_ms+' מ״ש) שאינה אישור: "'+a.text.slice(0,30)+'"',short.overlap_ms);liveSpeak('תשובה לדברי דוד אחרי שנעצרה');}
-    else liveSpeak('דיבור קצר שהסתיים אחרי שליה סיימה');}}
+    else liveSpeak(short.server_cut?'תשובה לדברי דוד אחרי שהשרת חתך את ליה':'דיבור קצר שהסתיים אחרי שליה סיימה');}}
   else if(a.kind==='tool_call'){
    const d=liveToolCall(a.name,a.args);
    if(d.ok){LIVE.lastQ=d.question;LIVE.lastQAt=Date.now();
@@ -3985,6 +3987,16 @@ function liveOn(ev){
    if(!LIVE.speaking)LIVE.audioStartedAt=Date.now();
    LIVE.speaking=true;}
   else if(a.kind==='audio_stopped'){
+   /* Measured 29.9 (run 36506338290): over WebRTC the SERVER clears the output audio the instant the
+      VAD hears speech, whatever interrupt_response says — 181 ms after speech_started, before this
+      client's own threshold. That cut is a YIELD the client did not choose; it is recorded as such
+      (interruption_source server_vad) so the pilot's trace shows every barge-in, and the overlap
+      stays open so the ear can still say whether it was a backchannel. */
+   if(a.cleared&&LIVE.overlap&&!LIVE.overlap.decided){
+    clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;LIVE.overlap.decided=true;LIVE.overlap.server_cut=true;
+    LIVE.interrupted=true;LIVE.afterYield=true;LIVE.responseActive=false;
+    liveRecord('YIELD','השרת חתך את האודיו עם תחילת הדיבור (WebRTC VAD) — לא החלטה של הלקוח',{lia_speaking:true,overlap_state:'overlap',overlap_ms:LIVE.overlap.start?Date.now()-LIVE.overlap.start:null,interruption_source:'server_vad',response_cancelled:false,cleared:true,continuity_state:'server_truncated',said_head:''});
+    LIVE.speaking=false;LIVE.audioStartedAt=0;liveLabel('מקשיבה…');continue;}
    LIVE.speaking=false;LIVE.audioStartedAt=0;LIVE.overlap=null;
    if(LIVE.pending&&LIVE.pending.answer_after){LIVE.pending=null;liveSpeak('ליה סיימה — עונה לדברי דוד שנאמרו בזמן שדיברה');}
    else liveLabel('שיחה חיה — דבר; לחץ ⏹ לסיום');}
