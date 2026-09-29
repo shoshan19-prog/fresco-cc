@@ -3882,12 +3882,13 @@ function liveRecord(decision,reason,extra){
  return r;}
 function liveLastRecord(pred){for(let i=LIVE.trace.length-1;i>=0;i--){if(pred(LIVE.trace[i]))return LIVE.trace[i];}return null;}
 function liveResolveOutcomes(next,ctx){
- const o=liveOutcome(next,Object.assign({heard:LIVE.lastHeard,said:LIVE.lastSaid},ctx||{}));if(!o)return;
+ ctx=ctx||{};const onlyDuring=!!ctx.only_during;
+ const o=liveOutcome(next,Object.assign({heard:LIVE.lastHeard,said:LIVE.lastSaid},ctx));if(!o)return;
  const at=new Date().toISOString();
  /* a decision made DURING this utterance is judged by its transcript; one made after the
     previous utterance ended is judged by this one, the next move */
  const cur=LIVE.uttStartedAt||0;
- for(const r of LIVE.trace)if(r.outcome==='pending'&&(r._utt===cur||(r._utt==null&&r._ts<cur))){r.outcome=o.outcome;r.outcome_evidence=o.evidence;r.outcome_at=at;}
+ for(const r of LIVE.trace)if(r.outcome==='pending'&&(r._utt===cur||(!onlyDuring&&r._utt==null&&r._ts<cur))){r.outcome=o.outcome;r.outcome_evidence=o.evidence;r.outcome_at=at;}
  liveFlushTrace(false);}
 /* Durable: the ledger gets every record whose outcome is known; at the end of the
    session the rest go too, as no_repair (David made no further move). */
@@ -3967,6 +3968,7 @@ function liveOn(ev){
    if(short){clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;LIVE.pending=null;}
    if(short&&liveIsBackchannel(a.text,short.overlap_ms)){
     liveRecord('BACKCHANNEL','"'+a.text.slice(0,30)+'" ('+short.overlap_ms+' מ״ש) — אישור, לא שאלה'+(short.server_cut?'; השרת כבר חתך את האודיו':'; ליה ממשיכה'),{lia_speaking:!short.server_cut,overlap_state:'overlap',overlap_ms:short.overlap_ms,interruption_source:'backchannel',continuity_state:short.server_cut?'cut_by_server':'lia_continues'});
+    liveResolveOutcomes(a.text,{only_during:true});
     LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;continue;}
    liveResolveOutcomes(a.text);
    LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;
