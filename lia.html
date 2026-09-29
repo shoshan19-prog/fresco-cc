@@ -685,7 +685,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-28.2';
+const LIA_BUILD='2026-09-28.4';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -3699,7 +3699,9 @@ function liveReduce(ev,st){
  const t=(ev&&ev.type)||'';const out=[];
  const call=(id,name,args)=>{if(!id||st.calls[id])return;st.calls[id]=1;let a={};try{a=typeof args==='string'?(args?JSON.parse(args):{}):(args||{});}catch(e){a={};}out.push({kind:'tool_call',call_id:id,name:String(name||''),args:a});};
  if(t==='session.created'||t==='session.updated')out.push({kind:'ready'});
- else if(t==='input_audio_buffer.speech_started')out.push({kind:'speech_started'});
+ else if(t==='input_audio_buffer.speech_started')out.push({kind:'speech_started',audio_start_ms:Number(ev.audio_start_ms)||0,item_id:String(ev.item_id||'')});
+ else if(t==='response.output_item.added'&&ev.item&&ev.item.type==='message'&&ev.item.role==='assistant')out.push({kind:'item_added',item_id:String(ev.item.id||''),response_id:String(ev.response_id||'')});
+ else if(t==='conversation.item.truncated')out.push({kind:'truncated',item_id:String(ev.item_id||''),audio_end_ms:Number(ev.audio_end_ms)||0});
  else if(t==='input_audio_buffer.speech_stopped'||t==='input_audio_buffer.committed')out.push({kind:'speech_stopped'});
  else if(t==='conversation.item.input_audio_transcription.completed'){const s=String(ev.transcript||'').trim();if(s)out.push({kind:'user_said',text:s});}
  else if(t==='response.output_audio_transcript.delta'||t==='response.audio_transcript.delta')st.lia+=String(ev.delta||'');
@@ -3738,9 +3740,64 @@ function liveMintError(j){
  if(j.error)return 'הקול נדחה ('+(j.reason||j.error)+'): '+String(j.detail||j.message||'').slice(0,160);
  return 'הקול לא זמין כרגע.';}
 
+/* ── TURN CONTROL (David, 28.9): the provider's VAD only reports; LIA decides ─
+   The session is minted with create_response=false and interrupt_response=false
+   (voiceSession.ts), so nothing starts or stops a reply except the decisions
+   below, made in liveOn from the events that already arrive:
+     SPEAK       David's turn ended and the grace window passed → response.create
+     WAIT        David paused — a pause is not a turn end until the grace window passes
+     YIELD       David keeps talking over LIA (≥ overlap_yield_ms), or said something
+                 that is not a backchannel → response.cancel + output_audio_buffer.clear
+                 + conversation.item.truncate to the audio he actually heard, so the
+                 model never remembers words David did not hear
+     BACKCHANNEL a short "כן / ממ / אוקיי" while LIA speaks → she continues, no reply
+     CONTINUE    a short overlap the ear has not transcribed yet → LIA finishes, and
+                 David's words are answered when she is done
+   Every decision is one trace record; the OUTCOME is the move David made next
+   (continued / repeated / corrected / interrupted again / changed direction /
+   explicit signal), read from his next utterance — never a fixed window — and
+   the records land on the ledger through voice_trace_log (decision_event
+   voice_turn). The policy is ONE object, so the pilot changes numbers, not
+   decisions. Pure rules first, so test-voice-live.mjs can run them. */
+const LIVE_POLICY={grace_ms:600,overlap_yield_ms:350,backchannel_max_ms:1500,transcript_wait_ms:2500,truncate_margin_ms:60,seed_turns:6};
+const LIVE_BACKCHANNEL_RE=/^(?:(?:כן|אוקיי|אוקי|או\s?קיי|אה+|אהא|אמ+|ממ+|המ+|הממ+|מהם|נכון|בסדר|יופי|מעולה|טוב|סבבה|ברור|הבנתי|כמובן|ok|okay|yes|yeah|yep|uh[\s-]?huh|mm+|hmm+|mhm+|right|sure|got it)[\s,.!?…]*){1,3}$/i;
+const LIVE_SIGNAL_RE=/(?:^|[\s,])(?:עצרי|תעצרי|עצור|רגע|שנייה|שניה|חכי|תחכי|תני לי לסיים|אל תקטעי|אל תפריעי|המשיכי|תמשיכי|תסיימי|סיימי|די|מספיק|stop|wait|hold on|let me finish|go on|continue|enough)(?:$|[\s,.!?…])/i;
+const LIVE_CORRECTION_RE=/^(?:לא[,.\s]|לא ביקשתי|לא לזה|לא זה|לא התכוונתי|התכוונתי|לא נכון|טעות|לא אמרתי|לא על זה|no[,.\s]|not that|i meant|wrong)/i;
+function liveTokens(s){return String(s||'').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').split(/\s+/).filter(w=>w.length>1);}
+function liveOverlapRatio(a,b){const A=new Set(liveTokens(a)),B=new Set(liveTokens(b));if(!A.size||!B.size)return 0;let n=0;for(const w of A)if(B.has(w))n++;return n/Math.min(A.size,B.size);}
+/* A backchannel is SHORT and made of acknowledgement words only. */
+function liveIsBackchannel(text,ms){const t=String(text||'').trim();if(!t)return false;if(ms!=null&&ms>LIVE_POLICY.backchannel_max_ms)return false;return LIVE_BACKCHANNEL_RE.test(t)&&liveTokens(t).length<=3;}
+/* What David did NEXT, read against the exchange before it. Null = nothing to read yet. */
+function liveOutcome(next,prev){
+ prev=prev||{};
+ if(prev.interrupted_again)return {outcome:'interrupted_again',evidence:'דוד דיבר שוב מעל ליה'};
+ const t=String(next||'').trim();if(!t)return null;
+ if(LIVE_SIGNAL_RE.test(t))return {outcome:'explicit_signal',evidence:t.slice(0,80)};
+ if(LIVE_CORRECTION_RE.test(t))return {outcome:'corrected',evidence:t.slice(0,80)};
+ if(prev.heard&&liveTokens(t).length>=2&&liveOverlapRatio(t,prev.heard)>=0.6)return {outcome:'repeated',evidence:'≥60% מהמילים של האמירה הקודמת'};
+ if(prev.heard&&prev.said&&liveTokens(t).length>=4&&liveOverlapRatio(t,prev.heard)===0&&liveOverlapRatio(t,prev.said)===0)return {outcome:'changed_direction',evidence:'אף מילה משותפת עם החילוף הקודם'};
+ return {outcome:'continued_normally',evidence:t.slice(0,80)};}
+/* The wire of a YIELD, in order: cancel the reply, silence the speaker, cut the
+   model's memory of the reply to what was actually heard (a little less, never more —
+   an audio_end_ms past the real audio is refused by the server). */
+function liveYieldActions(st){
+ st=st||{};const out=[{type:'response.cancel'},{type:'output_audio_buffer.clear'}];
+ if(st.item_id&&st.audio_started_at){const ms=Math.max(0,Math.round((st.now||Date.now())-st.audio_started_at-LIVE_POLICY.truncate_margin_ms));out.push({type:'conversation.item.truncate',item_id:st.item_id,content_index:0,audio_end_ms:ms});}
+ return out;}
+/* A renewed session (new secret, new realtime context) is seeded from the
+   conversation David can see — the last turns as text items — so the thread
+   continues instead of starting from nothing. No new state: SESSION.turns is it. */
+function liveSeedItems(turns,n){
+ const last=(turns||[]).filter(t=>t&&(t.role==='me'||t.role==='lia')&&String(t.text||'').trim()).slice(-(n||LIVE_POLICY.seed_turns));
+ return last.map(t=>({type:'conversation.item.create',item:{type:'message',role:t.role==='me'?'user':'assistant',
+   content:[t.role==='me'?{type:'input_text',text:String(t.text).slice(0,600)}:{type:'output_text',text:String(t.text).replace(/^\(נקטע\)\s*/,'').slice(0,600)}]}}));}
+
 const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audio:null,model:'',expires:0,
   attempt:0,userStopped:false,ready:false,speaking:false,interrupted:false,t:{},lat:[],red:null,res:null,
-  timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0};
+  timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0,
+  /* turn control (28.9) */
+  userSpeaking:false,itemId:'',responseId:'',audioStartedAt:0,overlap:null,pending:null,toolBusy:false,
+  graceTimer:null,overlapTimer:null,transcriptTimer:null,trace:[],seq:0,sessionId:'',renewing:false,lastHeard:'',lastSaid:'',turnPolicy:null,uttStartedAt:0,responseActive:false,lastCreateFor:0,afterYield:false};
 /* The button appears only when the server can actually mint a session for
    the model David named — a button that fails on tap is worse than none. */
 async function probeLiveVoice(){
@@ -3762,7 +3819,7 @@ async function liveTap(){
  if(LIVE.on||LIVE.pc){liveStop('user');return;}
  if(recording()){stat('עצור קודם את ההקלטה');return;}
  if(TTS)shutUp();
- LIVE.userStopped=false;LIVE.attempt=0;LIVE.lat=[];
+ LIVE.userStopped=false;LIVE.attempt=0;LIVE.lat=[];LIVE.trace=[];LIVE.seq=0;LIVE.lastHeard='';LIVE.lastSaid='';
  await liveStart();}
 async function liveStart(){
  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.RTCPeerConnection)){stat('הדפדפן לא תומך בשיחה חיה');return;}
@@ -3780,6 +3837,7 @@ async function liveConnect(){
  catch(e){liveFail('לא הצלחתי לפתוח קול ('+e.message+')');return;}
  if(!mint||mint.error||!mint.client_secret){liveFail(liveMintError(mint));return;}
  LIVE.model=String(mint.model||'');LIVE.expires=Number(mint.expires_at||0)*1000;LIVE.red={lia:'',calls:{}};LIVE.t={};
+ LIVE.sessionId=String(mint.session_id||'');LIVE.turnPolicy=mint.turn_detection||null;
  let pc;
  try{
   pc=new RTCPeerConnection();LIVE.pc=pc;
@@ -3787,7 +3845,9 @@ async function liveConnect(){
   LIVE.stream.getTracks().forEach(tr=>pc.addTrack(tr,LIVE.stream));
   const dc=pc.createDataChannel('oai-events');LIVE.dc=dc;
   dc.onmessage=m=>{let ev;try{ev=JSON.parse(m.data);}catch(e){return;}liveOn(ev);};
-  dc.onopen=()=>{LIVE.ready=true;LIVE.attempt=0;liveUi('on');stat('');};
+  dc.onopen=()=>{LIVE.ready=true;LIVE.attempt=0;liveUi('on');stat('');
+   if(LIVE.renewing){LIVE.renewing=false;const seed=liveSeedItems(SESSION.turns);seed.forEach(m=>liveSend(m));
+    liveRecord('CONTINUE','חידוש סשן — '+seed.length+' תורים נזרעו לשיחה החדשה',{continuity_state:'session_renewed_seeded'});}};
   dc.onclose=()=>{if(LIVE.pc===pc&&!LIVE.userStopped)liveDropped('הערוץ נסגר');};
   pc.onconnectionstatechange=()=>{if(LIVE.pc!==pc)return;const s=pc.connectionState;
    if(s==='failed'||s==='closed'){if(!LIVE.userStopped)liveDropped(s);}
@@ -3806,20 +3866,113 @@ async function liveConnect(){
     secret, so a long conversation never ends on a timer. */
  clearTimeout(LIVE.timer);
  const ttl=LIVE.expires-Date.now();
- if(ttl>0)LIVE.timer=setTimeout(()=>{if(LIVE.on&&!LIVE.userStopped){LIVE.on=false;liveTeardown();liveUi('connecting');liveConnect();}},Math.max(5000,ttl-30000));}
+ if(ttl>0)LIVE.timer=setTimeout(()=>{if(LIVE.on&&!LIVE.userStopped){LIVE.on=false;LIVE.renewing=true;liveFlushTrace(false);liveTeardown();liveUi('connecting');liveConnect();}},Math.max(5000,ttl-30000));}
+/* ── the trace: one record per decision; the outcome is attached when David's next move shows it ── */
+function liveRecord(decision,reason,extra){
+ const now=Date.now();
+ const r=Object.assign({seq:++LIVE.seq,at:new Date(now).toISOString(),decision:decision,reason:String(reason||'').slice(0,120),
+   user_speaking:!!LIVE.userSpeaking,lia_speaking:!!LIVE.speaking,
+   overlap_state:(LIVE.userSpeaking&&LIVE.speaking)?'overlap':LIVE.userSpeaking?'user_only':LIVE.speaking?'lia_only':'none',
+   overlap_ms:null,interruption_source:'none',response_cancelled:false,cleared:false,truncated_ms:null,latency_ms:null,
+   continuity_state:'n/a',continuity_result:'n/a',outcome:'pending',outcome_evidence:'',outcome_at:null,
+   heard_head:String(LIVE.lastHeard||'').slice(0,120),said_head:String(LIVE.lastSaid||'').slice(0,120),
+   policy:{grace_ms:LIVE_POLICY.grace_ms,overlap_yield_ms:LIVE_POLICY.overlap_yield_ms,backchannel_max_ms:LIVE_POLICY.backchannel_max_ms,eagerness:(LIVE.turnPolicy&&LIVE.turnPolicy.eagerness)||''},
+   _flushed:false,_ts:now,_utt:LIVE.userSpeaking?(LIVE.uttStartedAt||0):null},extra||{});
+ LIVE.trace.push(r);if(LIVE.trace.length>200)LIVE.trace.splice(0,LIVE.trace.length-200);
+ return r;}
+function liveLastRecord(pred){for(let i=LIVE.trace.length-1;i>=0;i--){if(pred(LIVE.trace[i]))return LIVE.trace[i];}return null;}
+function liveResolveOutcomes(next,ctx){
+ const o=liveOutcome(next,Object.assign({heard:LIVE.lastHeard,said:LIVE.lastSaid},ctx||{}));if(!o)return;
+ const at=new Date().toISOString();
+ /* a decision made DURING this utterance is judged by its transcript; one made after the
+    previous utterance ended is judged by this one, the next move */
+ const cur=LIVE.uttStartedAt||0;
+ for(const r of LIVE.trace)if(r.outcome==='pending'&&(r._utt===cur||(r._utt==null&&r._ts<cur))){r.outcome=o.outcome;r.outcome_evidence=o.evidence;r.outcome_at=at;}
+ liveFlushTrace(false);}
+/* Durable: the ledger gets every record whose outcome is known; at the end of the
+   session the rest go too, as no_repair (David made no further move). */
+async function liveFlushTrace(force){
+ const rows=LIVE.trace.filter(r=>!r._flushed&&(force||r.outcome!=='pending'));
+ if(!rows.length)return;
+ rows.forEach(r=>{r._flushed=true;if(force&&r.outcome==='pending'){r.outcome='no_repair';r.outcome_evidence='השיחה הסתיימה בלי מהלך נוסף';r.outcome_at=new Date().toISOString();}});
+ for(let i=0;i<rows.length;i+=50){
+  const batch=rows.slice(i,i+50).map(r=>{const c=Object.assign({},r);delete c._flushed;delete c._ts;delete c._utt;return c;});
+  try{await cap('voice_trace_log',{session_id:LIVE.sessionId||'',model:LIVE.model||'',events:batch});}
+  catch(e){batch.forEach(b=>{const r=LIVE.trace.find(x=>x.seq===b.seq);if(r)r._flushed=false;});}}}
+function liveClearTimers(){clearTimeout(LIVE.graceTimer);clearTimeout(LIVE.overlapTimer);clearTimeout(LIVE.transcriptTimer);LIVE.graceTimer=LIVE.overlapTimer=LIVE.transcriptTimer=null;}
+/* SPEAK — the only place a reply is asked for on David's turn end. (The tool's own
+   response.create, after a function result, is the model continuing its reply.) */
+function liveSpeak(reason){
+ clearTimeout(LIVE.graceTimer);LIVE.graceTimer=null;
+ if(LIVE.toolBusy){LIVE.pending=null;liveRecord('SPEAK',reason+' · נדחה לתוצאת הכלי',{continuity_state:'merged_into_tool_reply'});return;}
+ if(LIVE.speaking||LIVE.responseActive){
+  if((LIVE.lastCreateFor||0)>=(LIVE.uttStartedAt||0)){LIVE.pending=null;liveRecord('WAIT',reason+' · התשובה לדברים האלה כבר בדרך (הכלי)',{continuity_state:'already_answered'});return;}
+  LIVE.pending={answer_after:true,at:Date.now()};liveRecord('WAIT',reason+(LIVE.speaking?' · ליה עדיין מדברת — עונה כשתסיים':' · תשובה כבר בדרך — מצטרף אליה'),{continuity_state:'answer_after_lia'});return;}
+ LIVE.pending=null;
+ liveRecord('SPEAK',reason,{continuity_state:LIVE.afterYield?'after_yield':'turn_end'});LIVE.afterYield=false;
+ liveCreateResponse();liveLabel('חושבת…');}
+function liveCreateResponse(){LIVE.responseActive=true;LIVE.lastCreateFor=LIVE.uttStartedAt||0;liveSend({type:'response.create'});}
+/* YIELD — David has the floor: cancel, silence, truncate to what he heard. */
+function liveYield(reason,overlapMs){
+ clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;
+ const since=LIVE.overlap&&LIVE.overlap.start?Date.now()-LIVE.overlap.start:null;
+ const acts=liveYieldActions({item_id:LIVE.itemId,audio_started_at:LIVE.audioStartedAt,now:Date.now()});
+ acts.forEach(m=>liveSend(m));
+ const tr=acts.find(m=>m.type==='conversation.item.truncate');
+ LIVE.interrupted=true;LIVE.afterYield=true;LIVE.speaking=false;LIVE.audioStartedAt=0;LIVE.overlap=null;LIVE.responseActive=false;
+ liveRecord('YIELD',reason,{lia_speaking:true,overlap_state:'overlap',overlap_ms:overlapMs==null?null:overlapMs,interruption_source:'user',response_cancelled:true,cleared:true,
+   truncated_ms:tr?tr.audio_end_ms:null,continuity_state:tr?'truncated_to_heard':'no_item_to_truncate',latency_ms:since,said_head:''});
+ liveLabel('מקשיבה…');}
 function liveOn(ev){
  for(const a of liveReduce(ev,LIVE.red)){
   if(a.kind==='ready'){LIVE.ready=true;}
-  else if(a.kind==='speech_started'){LIVE.t={speech_started:Date.now()};
-   /* Barge-in: the server stops its own reply the moment David speaks; what
-      it had said so far is marked as cut when its transcript lands. */
-   if(LIVE.speaking)LIVE.interrupted=true;liveLabel('מקשיבה…');}
-  else if(a.kind==='speech_stopped'){if(!LIVE.t.speech_stopped)LIVE.t.speech_stopped=Date.now();liveLabel('חושבת…');}
+  else if(a.kind==='item_added'){LIVE.itemId=a.item_id;LIVE.responseId=a.response_id;}
+  else if(a.kind==='speech_started'){
+   LIVE.userSpeaking=true;LIVE.t={speech_started:Date.now()};LIVE.uttStartedAt=Date.now();
+   if(LIVE.graceTimer){clearTimeout(LIVE.graceTimer);LIVE.graceTimer=null;const w=liveLastRecord(r=>r.decision==='WAIT'&&r.continuity_result==='n/a');if(w)w.continuity_result='user_resumed';}
+   if(LIVE.speaking){
+    /* David over LIA. Long = he is taking the turn → YIELD when the threshold passes;
+       short = wait for the ear before deciding (backchannel or interruption). */
+    LIVE.overlap={start:Date.now(),decided:false};
+    const at=new Date().toISOString();
+    for(const r of LIVE.trace)if(r.outcome==='pending'&&(r.decision==='SPEAK'||r.decision==='CONTINUE'||r.decision==='BACKCHANNEL')){r.outcome='interrupted_again';r.outcome_evidence='דוד דיבר מעל ליה';r.outcome_at=at;}
+    LIVE.overlapTimer=setTimeout(()=>{LIVE.overlapTimer=null;
+     if(LIVE.overlap&&!LIVE.overlap.decided&&LIVE.userSpeaking&&LIVE.speaking){LIVE.overlap.decided=true;liveYield('חפיפה מעל '+LIVE_POLICY.overlap_yield_ms+' מ״ש — דוד לוקח את התור',Date.now()-LIVE.overlap.start);}},LIVE_POLICY.overlap_yield_ms);
+   }
+   liveLabel('מקשיבה…');}
+  else if(a.kind==='speech_stopped'){
+   if(!LIVE.userSpeaking)continue;                       // the commit that follows a stop we already handled
+   LIVE.userSpeaking=false;if(!LIVE.t.speech_stopped)LIVE.t.speech_stopped=Date.now();
+   if(LIVE.overlap&&!LIVE.overlap.decided){
+    clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;
+    const ms=Date.now()-LIVE.overlap.start;LIVE.overlap.decided=true;
+    LIVE.pending={short:true,overlap_ms:ms,at:Date.now()};
+    LIVE.transcriptTimer=setTimeout(()=>{LIVE.transcriptTimer=null;
+     if(LIVE.pending&&LIVE.pending.short){LIVE.pending={answer_after:true,at:Date.now()};
+      liveRecord('CONTINUE','חפיפה קצרה ('+ms+' מ״ש) בלי תמלול — ליה מסיימת ועונה אחר כך',{overlap_ms:ms,interruption_source:'user',continuity_state:'answer_after_lia'});}},LIVE_POLICY.transcript_wait_ms);
+    liveLabel('מדברת');
+   }else{
+    liveRecord('WAIT','חלון חסד '+LIVE_POLICY.grace_ms+' מ״ש אחרי סוף דיבור',{continuity_state:'grace'});
+    clearTimeout(LIVE.graceTimer);
+    LIVE.graceTimer=setTimeout(()=>{LIVE.graceTimer=null;const w=liveLastRecord(r=>r.decision==='WAIT'&&r.continuity_result==='n/a');if(w)w.continuity_result='grace_elapsed';
+     liveSpeak('סוף דיבור + חלון חסד '+LIVE_POLICY.grace_ms+' מ״ש');},LIVE_POLICY.grace_ms);
+    liveLabel('חושבת…');
+   }}
   else if(a.kind==='user_said'){
    /* The ear may land after the tool call: then the question LIA acted on
       (seconds old) is the record, unless the ear heard Hebrew. */
    const recent=LIVE.lastQ&&Date.now()-LIVE.lastQAt<15000?LIVE.lastQ:'';
-   addTurn('me',liveHeardText(a.text,recent));LIVE.earIdx=SESSION.turns.length-1;}
+   const heard=liveHeardText(a.text,recent);
+   const short=LIVE.pending&&LIVE.pending.short?LIVE.pending:null;
+   if(short){clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;LIVE.pending=null;}
+   if(short&&liveIsBackchannel(a.text,short.overlap_ms)){
+    liveRecord('BACKCHANNEL','"'+a.text.slice(0,30)+'" ('+short.overlap_ms+' מ״ש) — אישור, לא שאלה; ליה ממשיכה',{lia_speaking:true,overlap_state:'overlap',overlap_ms:short.overlap_ms,interruption_source:'backchannel',continuity_state:'lia_continues'});
+    LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;continue;}
+   liveResolveOutcomes(a.text);
+   LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;
+   if(short){
+    if(LIVE.speaking){liveYield('חפיפה קצרה ('+short.overlap_ms+' מ״ש) שאינה אישור: "'+a.text.slice(0,30)+'"',short.overlap_ms);liveSpeak('תשובה לדברי דוד אחרי שנעצרה');}
+    else liveSpeak('דיבור קצר שהסתיים אחרי שליה סיימה');}}
   else if(a.kind==='tool_call'){
    const d=liveToolCall(a.name,a.args);
    if(d.ok){LIVE.lastQ=d.question;LIVE.lastQAt=Date.now();
@@ -3827,13 +3980,23 @@ function liveOn(ev){
     if(tr&&tr.role==='me'&&!/[֐-׿]/.test(tr.text)){tr.text=liveHeardText(tr.text,d.question);saveSession();renderThread();}}
    liveRunTool(a);}
   else if(a.kind==='audio_started'){
-   if(!LIVE.t.audio_started){LIVE.t.audio_started=Date.now();const ms=liveLatency(LIVE.t);if(ms!=null)LIVE.lat.push(ms);
+   if(!LIVE.t.audio_started){LIVE.t.audio_started=Date.now();const ms=liveLatency(LIVE.t);if(ms!=null){LIVE.lat.push(ms);const sp=liveLastRecord(r=>r.decision==='SPEAK'&&r.latency_ms==null);if(sp)sp.latency_ms=ms;}
     liveLabel('מדברת'+(ms!=null?' · ⚡ '+(ms/1000).toFixed(1)+' ש׳':''));}
+   if(!LIVE.speaking)LIVE.audioStartedAt=Date.now();
    LIVE.speaking=true;}
-  else if(a.kind==='audio_stopped'){LIVE.speaking=false;liveLabel('שיחה חיה — דבר; לחץ ⏹ לסיום');}
-  else if(a.kind==='lia_said'){addTurn('lia',(LIVE.interrupted?'(נקטע) ':'')+a.text,LIVE.res);LIVE.res=null;LIVE.interrupted=false;}
-  else if(a.kind==='response_done'){if(a.status==='failed')stat('התשובה הקולית נכשלה — נסה שוב');}
-  else if(a.kind==='error'){stat('שגיאת קול: '+a.message);}
+  else if(a.kind==='audio_stopped'){
+   LIVE.speaking=false;LIVE.audioStartedAt=0;LIVE.overlap=null;
+   if(LIVE.pending&&LIVE.pending.answer_after){LIVE.pending=null;liveSpeak('ליה סיימה — עונה לדברי דוד שנאמרו בזמן שדיברה');}
+   else liveLabel('שיחה חיה — דבר; לחץ ⏹ לסיום');}
+  else if(a.kind==='lia_said'){addTurn('lia',(LIVE.interrupted?'(נקטע) ':'')+a.text,LIVE.res);LIVE.res=null;
+   if(LIVE.interrupted){const y=liveLastRecord(r=>r.decision==='YIELD'&&!r.said_head);if(y)y.said_head=a.text.slice(0,120);}
+   LIVE.lastSaid=a.text;LIVE.interrupted=false;}
+  else if(a.kind==='truncated'){const y=liveLastRecord(r=>r.decision==='YIELD');if(y)y.continuity_result='truncated_'+a.audio_end_ms+'ms';}
+  else if(a.kind==='response_done'){LIVE.responseActive=false;if(a.status==='failed')stat('התשובה הקולית נכשלה — נסה שוב');
+   if(!LIVE.speaking&&LIVE.pending&&LIVE.pending.answer_after){LIVE.pending=null;liveSpeak('התשובה הקודמת הסתיימה — עונה לדברי דוד שהצטברו');}}
+  else if(a.kind==='error'){
+   if(/truncat/i.test(a.message+' '+a.code)){const y=liveLastRecord(r=>r.decision==='YIELD'&&r.continuity_result==='n/a');if(y)y.continuity_result='truncate_error:'+String(a.message).slice(0,40);}
+   stat('שגיאת קול: '+a.message);}
  }}
 /* THE TOOL: one call, through the kernel, with this panel's own code. The
    answer the mouth reads is the server's voice_output — LIA's answer and its
@@ -3843,7 +4006,7 @@ async function liveRunTool(a){
  const d=liveToolCall(a.name,a.args);
  let output=d.ok?null:d.output;
  if(d.ok){
-  LIVE.tools++;LIVE.t.tool_started=Date.now();liveLabel('בודקת אצל ליה…');
+  LIVE.tools++;LIVE.t.tool_started=Date.now();LIVE.toolBusy=true;liveLabel('בודקת אצל ליה…');
   const text=d.question,reqId=uuid();           // the same shape every kernel call in this file has
   try{
    const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
@@ -3853,18 +4016,19 @@ async function liveRunTool(a){
    output=res.voice_output||{error:'no_voice_output',message:'השרת לא החזיר תשובה קולית'};
   }catch(e){output={error:e.message==='401'?'unauthorized':'unreachable',
     message:e.message==='401'?'אין הרשאה — הקוד נדחה':'לא הצלחתי להגיע לליה ('+e.message+')'};}
-  LIVE.t.tool_done=Date.now();
+  LIVE.t.tool_done=Date.now();LIVE.toolBusy=false;
  }
  liveSend({type:'conversation.item.create',item:{type:'function_call_output',call_id:a.call_id,output:JSON.stringify(output)}});
- liveSend({type:'response.create'});}
+ liveCreateResponse();}
 function liveTeardown(){
- clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;
+ clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;liveClearTimers();LIVE.userSpeaking=false;LIVE.overlap=null;LIVE.pending=null;LIVE.audioStartedAt=0;LIVE.responseActive=false;
  const dc=LIVE.dc,pc=LIVE.pc;LIVE.dc=null;LIVE.pc=null;
  try{if(dc)dc.close();}catch(e){}try{if(pc)pc.close();}catch(e){}
  if(LIVE.audio){try{LIVE.audio.srcObject=null;}catch(e){}}}
 function liveReleaseMic(){if(LIVE.stream){try{LIVE.stream.getTracks().forEach(t=>t.stop());}catch(e){}LIVE.stream=null;}}
 function liveStop(why){
  LIVE.userStopped=true;LIVE.on=false;clearTimeout(LIVE.reconnectTimer);LIVE.reconnectTimer=null;
+ liveFlushTrace(true);
  liveTeardown();liveReleaseMic();liveUi('off');
  stat(why==='user'?(LIVE.lat.length?'השיחה הסתיימה · ⚡ ממוצע '+(LIVE.lat.reduce((x,y)=>x+y,0)/LIVE.lat.length/1000).toFixed(1)+' ש׳':''):String(why||''));}
 function liveFail(msg){LIVE.on=false;liveTeardown();liveReleaseMic();liveUi('off');stat(msg);}

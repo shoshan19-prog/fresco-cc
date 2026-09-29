@@ -35,7 +35,8 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText};')();
+  + '\nreturn {LIVE_TOOL, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio};')();
+const POL = P.LIVE_POLICY;
 
 ok('the one tool is ask_lia', P.LIVE_TOOL === 'ask_lia');
 ok('reconnect rule = the server\'s (1s, 2s, 4s; three tries)',
@@ -77,6 +78,46 @@ ok('latency is null without both marks, or out of order', P.liveLatency({ speech
 ok('a refused model is named with the account\'s list — never swapped', /gpt-realtime-2/.test(P.liveMintError({ error: 'mint_failed', reason: 'model_unavailable', model: 'gpt-realtime-2', realtime_models: ['gpt-realtime'] })) && /gpt-realtime\b/.test(P.liveMintError({ reason: 'model_unavailable', model: 'gpt-realtime-2', realtime_models: ['gpt-realtime'] })) && /לא הוחלף/.test(P.liveMintError({ reason: 'model_unavailable' })));
 ok('no key / no credit / bad key each say so', /OPENAI_API_KEY/.test(P.liveMintError({ error: 'no_key' })) && /יתרה/.test(P.liveMintError({ reason: 'no_api_credit' })) && /לא תקף/.test(P.liveMintError({ reason: 'bad_key' })));
 
+// ── turn control (28.9): the rules LIA decides by ──────────────────────────
+{
+  const st = { lia: '', calls: {} };
+  const r = (ev) => P.liveReduce(ev, st);
+  const ss = r({ type: 'input_audio_buffer.speech_started', audio_start_ms: 1234, item_id: 'item_u1' })[0];
+  ok('speech_started carries the offset and the user item', ss.kind === 'speech_started' && ss.audio_start_ms === 1234 && ss.item_id === 'item_u1');
+  const ia = r({ type: 'response.output_item.added', response_id: 'resp_1', item: { id: 'item_1', type: 'message', role: 'assistant' } });
+  ok('the assistant item id is captured when the reply starts (truncate needs it)', ia.length === 1 && ia[0].kind === 'item_added' && ia[0].item_id === 'item_1' && ia[0].response_id === 'resp_1');
+  ok('a function-call output item is not an assistant message', r({ type: 'response.output_item.added', item: { id: 'x', type: 'function_call' } }).length === 0);
+  const tr = r({ type: 'conversation.item.truncated', item_id: 'item_1', content_index: 0, audio_end_ms: 1800 })[0];
+  ok('the server\'s truncation confirmation is an action', tr.kind === 'truncated' && tr.item_id === 'item_1' && tr.audio_end_ms === 1800);
+}
+ok('the policy is one object of numbers', ['grace_ms', 'overlap_yield_ms', 'backchannel_max_ms', 'transcript_wait_ms', 'truncate_margin_ms', 'seed_turns'].every((k) => Number.isFinite(POL[k])));
+ok('"כן" / "ממ" / "אוקיי" while she speaks are backchannels', P.liveIsBackchannel('כן', 300) && P.liveIsBackchannel('ממ', 250) && P.liveIsBackchannel('אוקיי, כן', 600) && P.liveIsBackchannel('yeah', 200));
+ok('a backchannel is short: the same word over the ceiling is not one', !P.liveIsBackchannel('כן', POL.backchannel_max_ms + 1));
+ok('"כן, אבל מה עם ההזמנה?" is not a backchannel', !P.liveIsBackchannel('כן, אבל מה עם ההזמנה?', 900));
+ok('"רגע" / "עצרי" are not backchannels', !P.liveIsBackchannel('רגע', 300) && !P.liveIsBackchannel('עצרי', 300));
+ok('an empty ear is never a backchannel', !P.liveIsBackchannel('', 100));
+ok('outcome: "רגע רגע" is an explicit signal', P.liveOutcome('רגע רגע', { heard: 'x' }).outcome === 'explicit_signal');
+ok('outcome: "לא, התכוונתי לפרויקט השני" is a correction', P.liveOutcome('לא, התכוונתי לפרויקט השני', { heard: 'מה מצב הפרויקט' }).outcome === 'corrected');
+ok('outcome: the same words again = repeated', P.liveOutcome('מה מצב ריל לוקיישן', { heard: 'מה מצב ריל לוקיישן?' }).outcome === 'repeated');
+ok('outcome: nothing shared with the exchange = changed direction', P.liveOutcome('תשלחי מייל לרחל על הפגישה מחר', { heard: 'מה מצב ריל לוקיישן', said: 'שלוש הזמנות פתוחות' }).outcome === 'changed_direction');
+ok('outcome: a follow-up on the same subject = continued normally', P.liveOutcome('ומה עם ההזמנה האחרונה של ריל לוקיישן?', { heard: 'מה מצב ריל לוקיישן', said: 'שלוש הזמנות פתוחות' }).outcome === 'continued_normally');
+ok('outcome: speaking over her again = interrupted_again', P.liveOutcome('', { interrupted_again: true }).outcome === 'interrupted_again');
+ok('outcome: nothing said yet = nothing to read', P.liveOutcome('', {}) === null);
+{
+  const y = P.liveYieldActions({ item_id: 'item_1', audio_started_at: 10000, now: 12000 });
+  ok('a YIELD is cancel → clear → truncate, in that order', y.map((a) => a.type).join(',') === 'response.cancel,output_audio_buffer.clear,conversation.item.truncate');
+  ok('…truncated to the audio heard, a margin short, never long', y[2].item_id === 'item_1' && y[2].content_index === 0 && y[2].audio_end_ms === 2000 - POL.truncate_margin_ms);
+  ok('…no item yet = cancel and clear only (nothing to cut)', P.liveYieldActions({ item_id: '', audio_started_at: 0 }).length === 2);
+  ok('…the margin never goes below zero', P.liveYieldActions({ item_id: 'i', audio_started_at: 100, now: 110 })[2].audio_end_ms === 0);
+}
+{
+  const seed = P.liveSeedItems([{ role: 'me', text: 'מה מצב ריל לוקיישן?' }, { role: 'lia', text: '(נקטע) שלוש הזמנות פתוחות' }, { role: 'me', text: '   ' }], 6);
+  ok('a renewed session is seeded from the visible conversation as text items, roles kept, the cut label dropped',
+    seed.length === 2 && seed[0].type === 'conversation.item.create' && seed[0].item.role === 'user' && seed[0].item.content[0].type === 'input_text'
+    && seed[1].item.role === 'assistant' && seed[1].item.content[0].type === 'output_text' && seed[1].item.content[0].text === 'שלוש הזמנות פתוחות');
+  ok('…only the last N turns', P.liveSeedItems(Array.from({ length: 20 }, (_, i) => ({ role: 'me', text: 't' + i })), 3).length === 3);
+}
+
 // ── wiring, as text ────────────────────────────────────────────────────────
 const live = slice('/* ── LIVE VOICE', '/* ── the keyless road');
 ok('the tool runs through action:kernel with voice:true and nothing else', /ccApi\(\{action:'kernel',body:text,history:historyForKernel\(text\)[\s\S]*?request_id:reqId,voice:true\}\)/.test(live) && !/action:'cap'/.test(live));
@@ -84,7 +125,11 @@ ok('what goes back to the model is the server\'s voice_output', /output=res\.voi
 ok('the SDP goes to OpenAI with the client secret only', /Authorization:'Bearer '\+mint\.client_secret/.test(live) && !/sk-/.test(live) && !/sk-[A-Za-z0-9_-]{20,}/.test(src));
 ok('the secret is minted by command-center (voice_session), never held in the page', /ccApi\(\{action:'voice_session'\}\)/.test(live) && !/localStorage\.setItem\('[^']*(secret|ek)/.test(live));
 ok('the button exists and starts hidden', /id="live" onclick="liveTap\(\)"[^>]*display:none/.test(html));
-ok('the build is bumped', /const LIA_BUILD='2026-09-08\.2'/.test(src));
+ok('response.create has ONE door (liveCreateResponse); nothing else asks the model to speak', (live.match(/type:'response\.create'/g) || []).length === 1 && /function liveCreateResponse\(\)\{LIVE\.responseActive=true;/.test(live));
+ok('a YIELD sends the wire of liveYieldActions and nothing decides an interruption elsewhere', /const acts=liveYieldActions\(\{item_id:LIVE\.itemId,audio_started_at:LIVE\.audioStartedAt/.test(live) && /acts\.forEach\(m=>liveSend\(m\)\)/.test(live));
+ok('the trace reaches the ledger through voice_trace_log, in batches of 50', /cap\('voice_trace_log',\{session_id:LIVE\.sessionId\|\|'',model:LIVE\.model\|\|'',events:batch\}\)/.test(live) && /i\+=50/.test(live));
+ok('a stop flushes what is left (pending → no_repair); a renewal flushes the known and seeds the new channel', /liveFlushTrace\(true\)/.test(live) && /LIVE\.renewing=true;liveFlushTrace\(false\)/.test(live) && /if\(LIVE\.renewing\)\{LIVE\.renewing=false;const seed=liveSeedItems\(SESSION\.turns\)/.test(live));
+ok('the build is bumped', /const LIA_BUILD='2026-09-28\.4'/.test(src));
 ok('the tap-microphone is shut while live', /function micAllowed\(\)\{return TURN==='IDLE'&&!TTS&&!\(typeof LIVE!=='undefined'&&LIVE\.on\);\}/.test(src));
 ok('the browser speech engine yields while live', /if\(typeof LIVE!=='undefined'&&LIVE\.on\)\{TTS=false;if\(done\)setTimeout\(done,0\);return;\}/.test(src));
 
@@ -196,18 +241,37 @@ const stat = (page) => page.textContent('#noteStat');
   ok('3b. the function output is the server\'s voice_output, verbatim', !!out && out.item.type === 'function_call_output' && out.item.call_id === 'call_1' && out.item.output === JSON.stringify(KERNEL.voice_output));
   ok('3c. …followed by response.create', sent[sent.indexOf(out) + 1].type === 'response.create');
   await page.waitForTimeout(30);
-  await feed(page, { type: 'output_audio_buffer.started' });
+  await feed(page, { type: 'response.output_item.added', response_id: 'resp_1', item: { id: 'item_1', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'resp_1' });
   await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'ריל לוקיישן בביצוע. שלוש הזמנות פתוחות.' });
   ok('4. LIA\'s spoken answer is on the screen, with the kernel result behind it', await page.evaluate(() => { const t = SESSION.turns[SESSION.turns.length - 1]; return t.role === 'lia' && /בביצוע/.test(t.text) && t.res && t.res.meta && t.res.meta.route_taken === 'entity_status'; }));
   const lat = await page.evaluate(() => LIVE.lat.slice());
   ok('5. latency (end of speech → first sound) was measured', lat.length === 1 && lat[0] >= 20 && lat[0] < 5000, JSON.stringify(lat));
   ok('5a. …and shown', /⚡/.test(await page.textContent('#recLabel')));
-  // barge-in
-  await feed(page, { type: 'input_audio_buffer.speech_started' });
-  ok('6. speaking over her marks the reply as interrupted', await page.evaluate(() => LIVE.interrupted === true));
+  // barge-in → YIELD: David keeps talking over her
+  const n0 = sent.length;
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 4000, item_id: 'item_u2' });
+  ok('6. speaking over her is not yet a decision — the ear may still say "כן"', await page.evaluate(() => LIVE.interrupted === false && !!LIVE.overlap && LIVE.overlap.decided === false) && sent.length === n0);
+  await page.waitForTimeout(POL.overlap_yield_ms + 150);
+  const y = sent.slice(n0);
+  ok('6a. past the threshold she yields: cancel → clear → truncate, in that order', y.length >= 3 && y[0].type === 'response.cancel' && y[1].type === 'output_audio_buffer.clear' && y[2].type === 'conversation.item.truncate', JSON.stringify(y.map((a) => a.type)));
+  ok('6b. the truncate names the assistant item and the audio David actually heard', !!y[2] && y[2].item_id === 'item_1' && y[2].content_index === 0 && y[2].audio_end_ms >= 0 && y[2].audio_end_ms < 5000, JSON.stringify(y[2]));
+  ok('6c. the YIELD is on the trace with what it did', await page.evaluate(() => { const r = LIVE.trace[LIVE.trace.length - 1]; return r.decision === 'YIELD' && r.response_cancelled === true && r.cleared === true && r.truncated_ms != null && r.interruption_source === 'user' && r.overlap_state === 'overlap' && r.overlap_ms >= 300; }));
+  ok('6d. …and she is marked interrupted only now', await page.evaluate(() => LIVE.interrupted === true && LIVE.speaking === false));
   await feed(page, { type: 'output_audio_buffer.cleared' });
+  await feed(page, { type: 'conversation.item.truncated', item_id: 'item_1', content_index: 0, audio_end_ms: y[2].audio_end_ms });
+  await feed(page, { type: 'response.done', response: { status: 'cancelled' } });
+  ok('6e. the server confirms the cut; continuity is recorded on the YIELD', await page.evaluate(() => /^truncated_\d+ms$/.test(LIVE.trace.filter((r) => r.decision === 'YIELD').pop().continuity_result)));
   await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'ועוד משהו שלא נאמר עד הסוף' });
-  ok('6a. the cut sentence is labelled', await page.evaluate(() => /^\(נקטע\)/.test(SESSION.turns[SESSION.turns.length - 1].text)));
+  ok('6f. the cut sentence is labelled', await page.evaluate(() => /^\(נקטע\)/.test(SESSION.turns[SESSION.turns.length - 1].text)));
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'רגע, מה עם ההזמנה של אתמול?' });
+  ok('6g. the YIELD\'s outcome is read from the words that interrupted: an explicit signal ("רגע")', await page.evaluate(() => LIVE.trace.filter((r) => r.decision === 'YIELD').pop().outcome === 'explicit_signal'));
+  const n1 = sent.length;
+  ok('6h. …and nothing is asked of the model while his turn is open', sent.slice(n0 + 3).filter((a) => a.type === 'response.create').length === 0);
+  await page.waitForTimeout(POL.grace_ms + 150);
+  ok('6i. his turn ended + grace → exactly one response.create (SPEAK after the yield)', sent.slice(n1).filter((a) => a.type === 'response.create').length === 1 && await page.evaluate(() => { const r = LIVE.trace.filter((x) => x.decision === 'SPEAK').pop(); return !!r && r.continuity_state === 'after_yield'; }));
+  await feed(page, { type: 'response.done', response: { status: 'completed' } });
   // unknown tool
   const before = calls.filter(c => c.action === 'kernel').length;
   await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_2', name: 'delete_everything', arguments: '{}' } });
@@ -225,6 +289,95 @@ const stat = (page) => page.textContent('#noteStat');
   await page.waitForTimeout(1200);
   ok('9a. …no new mint after the stop', calls.filter(c => c.action === 'voice_session' && !c.probe).length === 1);
   ok('9b. the button is back to 🎧', (await page.textContent('#live')) === '🎧');
+  await page.close();
+}
+
+// ── 1b. the six acceptance cases on the faked wire (28.9) ───────────────────
+{
+  const { page, calls, sent } = await session('turns');
+  await page.waitForFunction(() => document.getElementById('live').style.display !== 'none', null, { timeout: 5000 });
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true, null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  const creates = () => sent.filter((a) => a.type === 'response.create').length;
+  const trace = (f) => page.evaluate((f) => LIVE.trace.map((r) => ({ d: r.decision, c: r.continuity_state, cr: r.continuity_result, o: r.outcome, s: r.interruption_source })), f);
+  // CASE 1 — continuous speech: no entry
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 0, item_id: 'u1' });
+  await page.waitForTimeout(POL.grace_ms + 400);
+  ok('C1. while David keeps talking, LIA asks for nothing and decides nothing', creates() === 0 && (await trace()).length === 0);
+  // CASE 2 — a mid-thought pause is not a turn end
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await page.waitForTimeout(150);
+  ok('C2. a stop opens the grace window: WAIT, no response.create', creates() === 0 && (await trace()).pop().d === 'WAIT');
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 900, item_id: 'u1b' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  ok('C2a. he resumed inside the window → the WAIT was right (user_resumed), still nothing asked', creates() === 0 && (await trace()).pop().cr === 'user_resumed');
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'מה מצב ריל לוקיישן, ומה עם ההזמנה האחרונה?' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  ok('C2b. his turn really ended → grace elapsed → ONE response.create (SPEAK, turn_end)', creates() === 1 && (await trace()).slice(-2).map((r) => r.d + ':' + (r.cr !== 'n/a' ? r.cr : r.c)).join(',') === 'WAIT:grace_elapsed,SPEAK:turn_end');
+  // the reply arrives
+  await feed(page, { type: 'response.output_item.added', response_id: 'r2', item: { id: 'item_2', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'r2' });
+  await feed(page, { type: 'response.done', response: { status: 'completed' } });
+  ok('C2c. the SPEAK now carries its latency (end of speech → first sound)', await page.evaluate(() => { const r = LIVE.trace.filter((x) => x.decision === 'SPEAK').pop(); return r.latency_ms != null && r.latency_ms > 0; }));
+  // CASE 5 — a backchannel does not cancel
+  const n5 = sent.length;
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 5000, item_id: 'u2' });
+  await page.waitForTimeout(120);
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'כן' });
+  await page.waitForTimeout(80);
+  ok('C5. "כן" while she speaks: BACKCHANNEL — no cancel, no clear, no response.create; she keeps speaking', sent.length === n5 && await page.evaluate(() => LIVE.speaking === true && LIVE.interrupted === false) && (await trace()).pop().d === 'BACKCHANNEL' && (await trace()).pop().s === 'backchannel');
+  ok('C5a. the backchannel is on the screen as David\'s words', await page.evaluate(() => SESSION.turns.filter((t) => t.role === 'me').pop().text === 'כן'));
+  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'ריל לוקיישן בביצוע, שלוש הזמנות פתוחות, האחרונה מאתמול.' });
+  await feed(page, { type: 'output_audio_buffer.stopped' });
+  await page.waitForTimeout(80);
+  ok('C5b. …and when she finishes nothing is owed (a backchannel is not a question)', creates() === 1 && await page.evaluate(() => !/נקטע/.test(SESSION.turns[SESSION.turns.length - 1].text)));
+  // CASE 6 — LIA enters after a pause; David resumes over her: recorded, auditable
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 9000, item_id: 'u3' });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'ותשלחי לרחל את הסיכום של הפגישה' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  ok('C6. after his pause + grace LIA enters (SPEAK)', creates() === 2 && (await trace()).pop().d === 'SPEAK');
+  ok('C6a. the BACKCHANNEL decision before it is judged by his next move: changed_direction', (await trace()).find((r) => r.d === 'BACKCHANNEL').o === 'changed_direction');
+  await feed(page, { type: 'response.output_item.added', response_id: 'r3', item: { id: 'item_3', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'r3' });
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 11000, item_id: 'u4' });   // he was not done
+  await page.waitForTimeout(POL.overlap_yield_ms + 150);
+  ok('C6b. the entry is judged by what followed: interrupted_again — and she yields', (await trace()).filter((r) => r.d === 'SPEAK').pop().o === 'interrupted_again' && (await trace()).pop().d === 'YIELD');
+  await feed(page, { type: 'output_audio_buffer.cleared' });
+  await feed(page, { type: 'response.done', response: { status: 'cancelled' } });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', transcript: 'ותשלחי לרחל את הסיכום של הפגישה, אבל רק אחרי שאני אאשר' });
+  await page.waitForTimeout(POL.grace_ms + 200);
+  const flushed = calls.filter((c) => c.action === 'cap' && c.name === 'voice_trace_log');
+  ok('C6c. resolved decisions reached the ledger road (voice_trace_log) with decision, reason, outcome', flushed.length >= 1 && flushed.some((c) => (c.args.events || []).some((e) => e.decision === 'SPEAK' && e.outcome === 'interrupted_again' && e.reason && e.policy)), JSON.stringify(flushed.map((c) => (c.args.events || []).map((e) => e.decision + '/' + e.outcome))));
+  ok('C6d. every flushed record has the trace fields David asked for', flushed.every((c) => (c.args.events || []).every((e) => ['at', 'decision', 'reason', 'user_speaking', 'lia_speaking', 'overlap_state', 'interruption_source', 'response_cancelled', 'cleared', 'latency_ms', 'continuity_state', 'continuity_result', 'outcome'].every((k) => k in e))));
+  // CASE 4/continuity — a renewed session is seeded from the visible conversation
+  const dcsBefore = await page.evaluate(() => window.__live.dcs.length);
+  await page.evaluate(() => { LIVE.on = false; LIVE.renewing = true; liveFlushTrace(false); liveTeardown(); liveUi('connecting'); liveConnect(); });
+  await page.waitForFunction((n) => window.__live.dcs.length === n + 1 && window.__live.dcs[n].readyState === 'open', dcsBefore, { timeout: 5000 });
+  await page.waitForTimeout(50);
+  const seeds = await page.evaluate((n) => window.__live.dcs[n].sent.filter((m) => m.type === 'conversation.item.create'), dcsBefore);
+  ok('C4. the renewed channel is seeded with the last turns (user + assistant, text), so the thread continues', seeds.length >= 2 && seeds.some((m) => m.item.role === 'user') && seeds.some((m) => m.item.role === 'assistant') && (await trace()).pop().c === 'session_renewed_seeded');
+  // CONTINUE — a short overlap the ear never transcribed: she finishes, then answers
+  await feed(page, { type: 'response.output_item.added', response_id: 'r4', item: { id: 'item_4', type: 'message', role: 'assistant' } });
+  await feed(page, { type: 'output_audio_buffer.started', response_id: 'r4' });
+  await feed(page, { type: 'input_audio_buffer.speech_started', audio_start_ms: 20000, item_id: 'u5' });
+  await page.waitForTimeout(150);
+  await feed(page, { type: 'input_audio_buffer.speech_stopped' });
+  await page.waitForTimeout(POL.transcript_wait_ms + 200);
+  ok('C3b. a short overlap with no transcript: CONTINUE (she finishes; his words are owed an answer)', (await trace()).pop().d === 'CONTINUE' && await page.evaluate(() => LIVE.speaking === true && LIVE.pending && LIVE.pending.answer_after === true));
+  const c7 = creates();
+  await feed(page, { type: 'output_audio_buffer.stopped' });
+  await page.waitForTimeout(50);
+  ok('C3c. …when she finishes, the owed answer is asked for once', creates() === c7 + 1);
+  // stop → the rest is flushed as no_repair
+  await page.click('#live');
+  await page.waitForTimeout(300);
+  const last = calls.filter((c) => c.action === 'cap' && c.name === 'voice_trace_log').pop();
+  ok('C7. a stop flushes the pending decisions as no_repair (no further move)', !!last && (last.args.events || []).some((e) => e.outcome === 'no_repair'));
   await page.close();
 }
 
