@@ -499,6 +499,46 @@ button#live.wait{opacity:.6}
  .msg .acts .det{width:38px;height:38px;font-size:16px}
  .msg .cp{width:32px;height:32px;font-size:14px}
 }
+/* ── THE PHONE IS A CONVERSATION (David, 29.9 → 30.9) ─────────────────────────
+   "מסך שיחה נקי בסגנון של ChatGPT. העיפרון והשלוש נקודות נשארים, אבל קטנים ולא
+   מפריעים. אזור ההקלדה והפעולות התחתונות קומפקטי, והשיחה היא מרכז המסך. …
+   בדסקטופ אל תשנה את הממשק."
+   THE RULE THAT MAKES THIS SAFE: every declaration below sits inside ONE media
+   query — a phone-width viewport, or a touch device turned on its side (short and
+   coarse). A desktop window never matches it, so the command-center layout above
+   is byte-for-byte what it was before. The first attempt at this (WORK 5099131f)
+   was unscoped: it hid the rail, the bar and both icons on EVERY screen and
+   collapsed the desktop grid — the regression this replaces.
+   Nothing is removed from the DOM: the panels the logic writes into stay in
+   place (display only), so every handler and every id keeps working. What is
+   hidden is only what stood between David and the conversation — the organizer,
+   the running-tasks strip, the notification banner, the sync/diagnostic line,
+   the clock/context/LIVE marks and the "secured" footer. The notification switch
+   and the history are still one tap away behind ⋯. */
+@media(max-width:600px),(pointer:coarse) and (max-height:500px){
+ #orgMobile,#stateStrip,#notifCta,#chatSyncLine,#ctxLine,#clock,#osName,#topbar .live,#seal{display:none!important}
+ /* the bar: a mark, a name and two small controls — no rule under it, no chrome */
+ #topbar{padding:calc(6px + env(safe-area-inset-top)) 10px 2px;gap:2px;background:var(--bg);border-bottom:0}
+ #topbar .brand{font-size:15px;letter-spacing:1.2px;gap:7px;margin-inline-end:auto}
+ #topbar .orb.sm{width:17px;height:17px}
+ #topbar button{width:34px;height:34px;padding:0;font-size:15px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+ /* the conversation takes what the chrome gave back: the 42vh floor existed for
+    the organizer that used to sit above it and is not needed without it */
+ #center>#thread{min-height:0}
+ #thread{padding:6px 12px 8px;gap:14px}
+ .hero{padding-top:14px}
+ /* the bottom: one slim input, its buttons sized to the row, no dead lines */
+ #composer{padding:4px 12px calc(6px + env(safe-area-inset-bottom))}
+ #composer .line{gap:4px;border-radius:22px;padding:3px 3px 3px 8px}
+ #composer #note{padding:8px 10px;max-height:28vh}
+ #composer .line button{width:36px;height:36px;font-size:16px}
+ #composer #sendBtn{font-size:17px}
+ #composer #noteStat{margin-top:3px;font-size:12px;line-height:1.35}
+ #composer #capActions{margin-top:4px!important;gap:6px}
+ #composer #capActions:empty,#composer #noteStat:empty{display:none!important}
+ #composer #attachBar{margin:0 2px 5px}
+}
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
   transition-duration:.001ms!important}
@@ -685,7 +725,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-29.3';
+const LIA_BUILD='2026-09-30.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not

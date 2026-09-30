@@ -7,7 +7,7 @@ import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 
-const PAGE = 'file://' + fileURLToPath(new URL('./lia.html', import.meta.url));
+const PAGE = process.env.QA_PAGE || 'file://' + fileURLToPath(new URL('./lia.html', import.meta.url));
 const OUT = fileURLToPath(new URL('./qa/', import.meta.url));
 mkdirSync(OUT, { recursive: true });
 
@@ -38,8 +38,8 @@ const DENIAL = { ...RICH,
 const browser = await chromium.launch();
 const errors = [];
 
-async function open(viewport, tag, hold) {
-  const ctx = await browser.newContext({ viewport, locale: 'he-IL', deviceScaleFactor: 2 });
+async function open(viewport, tag, hold, extra = {}, pageUrl = PAGE) {
+  const ctx = await browser.newContext({ viewport, locale: 'he-IL', deviceScaleFactor: 2, ...extra });
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push(`${tag}: ${e.message}`));
   page.on('console', m => { if (m.type() === 'error') errors.push(`${tag} console: ${m.text()}`); });
@@ -71,7 +71,7 @@ async function open(viewport, tag, hold) {
         counts: { active: 2, canonical: 2, pending_notes: 0, expired: 0 } });
   });
   await page.addInitScript(() => { localStorage.setItem('lia_code', 'qa'); localStorage.setItem('lia_privacy', '1'); });
-  await page.goto(PAGE);
+  await page.goto(pageUrl);
   await page.waitForSelector('#app', { state: 'visible', timeout: 5000 });
   return { page, ctx, set: (p) => { payload = p; } };
 }
@@ -87,7 +87,9 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok(`${tag}: home screen greets and asks`, /(טוב|טובים), דוד/.test(await page.textContent('#thread')));
   // David, 25.8: a control that looks live but does nothing is worse than none.
   ok(`${tag}: no dead expert-system controls`, (await page.$$('#chips, .chip')).length === 0);
-  ok(`${tag}: LIVE indicator present`, await page.isVisible('.live'));
+  // David, 30.9: the phone bar is the mark, the name and two small controls — the LIVE pill is a desktop mark.
+  ok(`${tag}: LIVE indicator ${tag === 'desktop' ? 'present' : 'is not on the phone bar'}`,
+    tag === 'desktop' ? await page.isVisible('.live') : !(await page.isVisible('.live')));
   ok(`${tag}: orb present`, await page.isVisible('.orb.lg'));
   // Light theme (David, 25.8): a bright ground and dark text, everywhere.
   const skin = await page.evaluate(() => {
@@ -382,6 +384,139 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok('keyboard: the composer is still fully on screen', composerVisible);
   ok('keyboard: does not spill sideways', (await overflow(page)) <= 1);
   await ctx.close();
+}
+
+/* ── THE PHONE IS A CONVERSATION, THE DESKTOP IS UNTOUCHED (David, 29.9 → 30.9) ──
+   Two claims, each proved against the real shipped file in a real browser:
+   (1) DESKTOP — at every desktop and tablet width the layout is the one that ran
+       before the regression (ca8cea0, the page served before WORK 5099131f): the
+       same rectangles for every region and button, and the same pixels.
+   (2) PHONE — a clean conversation screen: nothing above the thread but a slim bar
+       with two small controls, a slim composer, no sideways spill, nothing clipped,
+       at the widths real phones have, in portrait and on its side. */
+{
+  const { execFileSync } = await import('node:child_process');
+  const { writeFileSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const BASE_SHA = 'ca8cea0';
+  let basePath = null;
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'lia-base-'));
+    basePath = join(dir, 'lia.html');
+    writeFileSync(basePath, execFileSync('git', ['show', `${BASE_SHA}:lia.html`], { cwd: fileURLToPath(new URL('./', import.meta.url)), maxBuffer: 64 << 20 }));
+  } catch (e) { basePath = null; }
+  ok(`the pre-regression page (${BASE_SHA}) is available to compare against`, !!basePath, 'git show failed — fetch the history');
+
+  // The regions and every visible control, as rectangles — the layout, not a screenshot.
+  const layout = (page) => page.evaluate(() => {
+    const r = (el) => { const b = el.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
+    const vis = (el) => { const b = el.getBoundingClientRect(); const cs = getComputedStyle(el); return b.width > 0 && b.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+    const regions = {};
+    for (const sel of ['#topbar', '.brand', '.live', '#osName', '#ctxLine', '#clock', '#railL', '#kpiCard', '#center', '#stateStrip', '#orgMobile', '#thread', '#composer', '#composer .line', '#seal'])
+      { const el = document.querySelector(sel); regions[sel] = el && vis(el) ? r(el) : null; }
+    const buttons = [...document.querySelectorAll('#app button')].filter(vis).map((b) => (b.id || b.getAttribute('title') || b.textContent.trim().slice(0, 12)) + '@' + r(b).join(','));
+    return { regions, buttons };
+  });
+  const still = async (page) => {
+    await page.addStyleTag({ content: '#clock{visibility:hidden!important}*{animation:none!important;transition:none!important}' });
+    await page.waitForTimeout(250);
+    return page.screenshot({ animations: 'disabled' });
+  };
+
+  // ── (1) DESKTOP AND TABLET: identical to the page before the regression ──
+  for (const [w, h] of [[1280, 800], [1440, 900], [1920, 1080], [1100, 800], [1099, 900], [768, 1024], [601, 900]]) {
+    if (!basePath) break;
+    const tag = `desktop ${w}x${h}`;
+    const now = await open({ width: w, height: h }, tag);
+    const was = await open({ width: w, height: h }, tag + ' (before)', false, {}, 'file://' + basePath);
+    await now.page.waitForTimeout(500); await was.page.waitForTimeout(500);
+    const a = await layout(now.page), b = await layout(was.page);
+    const same = JSON.stringify(a) === JSON.stringify(b);
+    ok(`${tag}: every region and every control sits where it sat before the regression`, same,
+      same ? '' : 'now ' + JSON.stringify(a.regions) + '\n      was ' + JSON.stringify(b.regions));
+    const pa = await still(now.page), pb = await still(was.page);
+    ok(`${tag}: and the pixels are identical`, Buffer.compare(pa, pb) === 0, `${pa.length} vs ${pb.length} bytes`);
+    if (w >= 1100) {
+      ok(`${tag}: the sales/metrics rail is on screen`, !!a.regions['#railL'] && !!a.regions['#kpiCard']);
+      ok(`${tag}: the top bar keeps LIVE, the name, the clock and both controls`,
+        !!a.regions['#topbar'] && !!a.regions['.live'] && !!a.regions['#osName'] && !!a.regions['#clock'] && a.buttons.some((x) => x.startsWith('שיחה חדשה')) && a.buttons.some((x) => x.startsWith('עוד')));
+      ok(`${tag}: the two-column grid is intact`, a.regions['#railL'][2] >= 280 && a.regions['#center'][2] > 600);
+    }
+    await now.ctx.close(); await was.ctx.close();
+  }
+
+  // ── (2) PHONE: a clean conversation ──
+  const PHONES = [
+    { w: 390, h: 844, name: 'phone 390x844' }, { w: 360, h: 740, name: 'phone 360x740' },
+    { w: 320, h: 568, name: 'phone 320x568' }, { w: 430, h: 932, name: 'phone 430x932' },
+    { w: 600, h: 900, name: 'phone 600x900 (the largest width)' },
+    { w: 844, h: 390, name: 'phone on its side 844x390', touch: true },
+  ];
+  const HIDDEN = ['#orgMobile', '#stateStrip', '#notifCta', '#chatSyncLine', '#clock', '#seal', '#ctxLine', '#osName'];
+  for (const P of PHONES) {
+    const extra = { isMobile: true, hasTouch: true };
+    const { page, ctx } = await open({ width: P.w, height: P.h }, P.name, false, extra);
+    await page.waitForTimeout(500);
+    // Show every clutter block the way the app would when it has something to say. The phone must keep them out.
+    await page.evaluate((sels) => { for (const s of sels) { const e = document.querySelector(s); if (e) { e.style.display = 'block'; e.textContent = e.textContent || 'x'; } } }, HIDDEN);
+    await page.waitForTimeout(150);
+    const m = await page.evaluate((HIDDEN) => {
+      const box = (sel) => { const e = document.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); const cs = getComputedStyle(e);
+        return { on: b.width > 0 && b.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden', l: Math.round(b.left), t: Math.round(b.top), r: Math.round(b.right), b: Math.round(b.bottom), w: Math.round(b.width), h: Math.round(b.height), fs: parseFloat(cs.fontSize) }; };
+      const btn = (title) => { const e = [...document.querySelectorAll('#topbar button')].find((x) => x.getAttribute('title') === title); if (!e) return null; const b = e.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height), l: Math.round(b.left), r: Math.round(b.right), fs: parseFloat(getComputedStyle(e).fontSize) }; };
+      return { hidden: HIDDEN.map((s) => [s, !!(box(s) && box(s).on)]).filter(([, on]) => on).map(([s]) => s),
+        topbar: box('#topbar'), thread: box('#thread'), composer: box('#composer'), line: box('#composer .line'), note: box('#note'),
+        pen: btn('שיחה חדשה'), dots: btn('עוד'), vw: window.innerWidth, vh: window.innerHeight,
+        spill: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    }, HIDDEN);
+    await shot(page, 'phone-clean-' + P.name.replace(/[^0-9a-z]+/gi, '-'));
+    ok(`${P.name}: none of the dashboard clutter is on screen (organizer, running-tasks strip, notification banner, sync line, clock, footer)`,
+      m.hidden.length === 0, JSON.stringify(m.hidden));
+    ok(`${P.name}: ✎ and ⋯ stay — small, thumb-reachable, on screen`,
+      !!m.pen && !!m.dots && m.pen.w >= 30 && m.pen.w <= 40 && m.dots.w >= 30 && m.dots.w <= 40 && m.pen.fs <= 16 && m.dots.fs <= 16
+      && m.pen.l >= 0 && m.dots.l >= 0 && m.pen.r <= m.vw && m.dots.r <= m.vw, JSON.stringify({ pen: m.pen, dots: m.dots }));
+    ok(`${P.name}: the bar is slim`, m.topbar.h <= (P.h < 500 ? 46 : 48), JSON.stringify(m.topbar));
+    ok(`${P.name}: the composer is one slim line`, m.composer.h <= (P.h < 500 ? 60 : 64), JSON.stringify(m.composer));
+    const share = m.thread.h / m.vh;
+    ok(`${P.name}: the conversation is the middle of the screen (${Math.round(share * 100)}% of the height)`, share >= (P.h < 500 ? 0.4 : 0.66), JSON.stringify(m.thread));
+    ok(`${P.name}: the conversation ends where the composer starts — nothing under it`, m.thread.b <= m.composer.t + 1 && m.composer.b <= m.vh + 1, JSON.stringify({ thread: m.thread, composer: m.composer }));
+    ok(`${P.name}: no sideways spill`, m.spill <= 1, `overflow ${m.spill}px`);
+    ok(`${P.name}: the input keeps a 16px font (no browser zoom on focus)`, m.note.fs >= 16, `font ${m.note.fs}px`);
+    await ctx.close();
+  }
+
+  // The phone under load: a long conversation with an unbreakable line, then the keyboard.
+  {
+    const { page, ctx } = await open({ width: 390, height: 844 }, 'phone-load', false, { isMobile: true, hasTouch: true });
+    for (let i = 0; i < 3; i++) {
+      await page.fill('#note', i === 1 ? 'https://example.com/' + 'x'.repeat(160) : 'כמה מכרנו היום? ' + i);
+      await page.click('#sendBtn');
+      await page.waitForSelector(`#thread .msg.lia:nth-of-type(${i + 1}) .ansCard, #thread .msg.lia .ansCard`, { timeout: 6000 });
+      await page.waitForTimeout(500);
+    }
+    const g = await page.evaluate(() => {
+      const t = document.querySelector('#thread'), c = document.querySelector('#composer');
+      const msgs = [...t.querySelectorAll('.msg')]; const last = msgs[msgs.length - 1].getBoundingClientRect();
+      return { last: [Math.round(last.top), Math.round(last.bottom)], composerTop: Math.round(c.getBoundingClientRect().top), spill: document.documentElement.scrollWidth - document.documentElement.clientWidth, n: msgs.length };
+    });
+    await shot(page, 'phone-clean-conversation');
+    ok('phone: with a real conversation the newest message is fully above the composer', g.last[1] <= g.composerTop + 1 && g.last[0] >= 0, JSON.stringify(g));
+    ok('phone: an unbroken 160-character line does not push the page sideways', g.spill <= 1, `overflow ${g.spill}px`);
+    await page.setViewportSize({ width: 390, height: 400 });
+    await page.waitForTimeout(300);
+    const k = await page.evaluate(() => { const c = document.querySelector('#composer').getBoundingClientRect(), t = document.querySelector('#thread').getBoundingClientRect();
+      return { composerBottom: Math.round(c.bottom), vh: innerHeight, threadH: Math.round(t.height) }; });
+    await shot(page, 'phone-clean-keyboard');
+    ok('phone: with the keyboard up the composer is on screen and the conversation still has room', k.composerBottom <= k.vh + 1 && k.threadH >= 150, JSON.stringify(k));
+    await page.setViewportSize({ width: 390, height: 844 });
+    // ⋯ and ✎ do what they did: the menu opens, and it still holds the history and the notification switch.
+    await page.click('#topbar button[title="עוד"]');
+    await page.waitForTimeout(250);
+    ok('phone: ⋯ opens the panel — history and settings are one tap away', await page.isVisible('#panel.on') && await page.isVisible('#sessions'));
+    ok('phone: and the notification switch is inside it', await page.isVisible('#notifBtn'));
+    await ctx.close();
+  }
 }
 
 ok('no console or page errors', errors.length === 0, errors.join('\n      '));
