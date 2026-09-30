@@ -725,7 +725,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-30.1';
+const LIA_BUILD='2026-09-30.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -4565,22 +4565,20 @@ async function doAct(text,turnId){
   const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
     retracted:retractedForKernel(),request_id:reqId,modality:INPUT_MODALITY});
   rememberRetracted(res);
-  if(res.self_diagnosis){          // no model → record it for approval, do not pretend to draft
-   await ccApi({action:'ask',kind:'change_request',body:text});
-   const r2=said('רשמתי את הבקשה לאישור במסך. להכין ניסוח בעצמי אני צריכה GPT.',[],[],
-     ['חיבור GPT']);
-   LAST={q:text,res:r2};showAnswer(r2,'נרשם לאישור:');
+  /* WHAT THIS ROAD MAY SAY (David, 30.9): it used to post the sentence to
+     command_request and then tell David it was prepared and left for his approval —
+     a row nothing reads and nothing approves. A sentence about what was done is
+     true only if the runtime did it; this road does nothing but ask the kernel,
+     so it says only what the kernel answered — and, when the ask reached out of
+     the OS, that nothing left it. */
+  if(res.self_diagnosis){
+   const r2=said('לא ניסחתי ולא רשמתי כלום — המודל שמנסח אינו זמין כרגע.',[],[],['חיבור GPT']);
+   LAST={q:text,res:r2};showAnswer(r2,'לא נרשם:');
    deliverText(r2.answer);return;}
   LAST={q:text,res:res};
   let spoken=spokenAnswer(res);
-  if(outward){
-   spoken+=' זו פעולה שיוצאת החוצה — אני לא מבצעת אותה באישור קולי. רשמתי אותה לאישור במסך.';
-   await ccApi({action:'ask',kind:'change_request',body:text});
-  }else{
-   await ccApi({action:'ask',kind:'change_request',body:text});
-   spoken+=' הכנתי את זה והשארתי לאישור שלך.';
-  }
-  res.__plain=spoken;showAnswer(res,outward?'מוכן לאישור במסך:':'הכנתי:');
+  if(outward)spoken+=' זו פעולה שיוצאת החוצה — לא בוצעה ולא נרשמה.';
+  res.__plain=spoken;showAnswer(res,outward?'לא בוצע:':'תשובה:');
   deliverText(spoken);
  }catch(e){stat('לא הצלחתי ('+e.message+')');deliverText('לא הצלחתי לבצע את זה.');}}
 /* The composer grows with what is typed — and SHRINKS BACK when it is sent.
