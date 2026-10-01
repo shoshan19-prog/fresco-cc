@@ -256,7 +256,7 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 </header>
 <div id="search"><input id="q" type="search" placeholder="חיפוש בעבודה הפעילה…" aria-label="חיפוש"></div>
 <nav id="domains" aria-label="תחומים"></nav>
-<main id="m"></main>
+<main id="m" data-lia-change="9c753c76"></main>
 <nav id="bottom" aria-label="ניווט"><div class="in" id="bottomIn"></div></nav>
 </div>
 
@@ -577,8 +577,8 @@ function inView(r){
 function render(){
   if(!D.tower)return;
   var now=Date.now(),T=D.tower;
-  var alive=D.alive.filter(function(r){return !isTerminal(stateOf(r));}).filter(inView).filter(matchesQ);
-  var closed=D.closed.filter(inView).filter(matchesQ).sort(function(a,b){return tms(b.completed_at)-tms(a.completed_at);});
+  var alive=D.alive.filter(function(r){return !isTerminal(stateOf(r));}).filter(function(r){return deriveRow(r).needs;}).filter(inView).filter(matchesQ);
+  var closed=[];
   var approvals=VIEW==='overview'?(T.approvals||[]):[];
   var alerts=VIEW==='overview'?(T.alerts||[]).filter(function(al){return al.state!=='resolved';}):[];
   var needsRows=alive.filter(function(r){return deriveRow(r).needs;});
