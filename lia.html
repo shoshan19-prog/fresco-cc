@@ -3768,7 +3768,7 @@ function liveReduce(ev,st){
  else if(t==='output_audio_buffer.stopped'||t==='output_audio_buffer.cleared')out.push({kind:'audio_stopped',cleared:/cleared$/.test(t)});
  else if(t==='response.function_call_arguments.done')call(ev.call_id,ev.name,ev.arguments);
  else if(t==='response.output_item.done'&&ev.item&&ev.item.type==='function_call')call(ev.item.call_id,ev.item.name,ev.item.arguments);
- else if(t==='response.done')out.push({kind:'response_done',status:String((ev.response&&ev.response.status)||'')});
+ else if(t==='response.done')out.push({kind:'response_done',status:String((ev.response&&ev.response.status)||''),tool:(ev.response&&Array.isArray(ev.response.output)?ev.response.output:[]).some(o=>o&&o.type==='function_call')});
  else if(t==='error')out.push({kind:'error',message:String((ev.error&&ev.error.message)||ev.message||'unknown'),code:String((ev.error&&ev.error.code)||'')});
  return out;}
 /* The tool gate: the model may ask for exactly one thing, and only with a
@@ -3866,7 +3866,7 @@ function liveSeedItems(turns,n,now,windowMs){
 
 const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audio:null,model:'',expires:0,
   attempt:0,userStopped:false,ready:false,speaking:false,interrupted:false,t:{},lat:[],red:null,res:null,
-  timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0,ear:[],earCursor:0,
+  timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0,ear:[],earMark:0,
   /* turn control (28.9) */
   userSpeaking:false,itemId:'',responseId:'',audioStartedAt:0,overlap:null,pending:null,toolBusy:false,
   graceTimer:null,overlapTimer:null,transcriptTimer:null,trace:[],seq:0,sessionId:'',renewing:false,lastHeard:'',lastSaid:'',turnPolicy:null,uttStartedAt:0,responseActive:false,lastCreateFor:0,afterYield:false,
@@ -4000,7 +4000,7 @@ function liveSpeak(reason){
    VAD had CLOSED before it was asked for. The tool reply's response.create used
    to stamp the utterance David was still speaking, so his objection was later
    judged "already answered" (WAIT · already_answered) and never became a turn. */
-function liveCreateResponse(){LIVE.responseActive=true;LIVE.lastCreateFor=LIVE.userSpeaking?(LIVE.lastCommittedUtt||0):(LIVE.uttStartedAt||0);liveSend({type:'response.create'});}
+function liveCreateResponse(){LIVE.responseActive=true;LIVE.earMark=LIVE.ear.length;LIVE.lastCreateFor=LIVE.userSpeaking?(LIVE.lastCommittedUtt||0):(LIVE.uttStartedAt||0);liveSend({type:'response.create'});}
 /* YIELD — David has the floor: cancel, silence, truncate to what he heard. */
 function liveYield(reason,overlapMs){
  clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;
@@ -4099,24 +4099,30 @@ function liveOn(ev){
    LIVE.lastSaid=a.text;LIVE.interrupted=false;}
   else if(a.kind==='truncated'){const y=liveLastRecord(r=>r.decision==='YIELD');if(y)y.continuity_result='truncated_'+a.audio_end_ms+'ms';}
   else if(a.kind==='response_done'){LIVE.responseActive=false;if(a.status==='failed')stat('התשובה הקולית נכשלה — נסה שוב');
+   if(a.status==='completed'&&!a.tool&&!LIVE.toolBusy)liveEarAnswered();
    if(!LIVE.speaking&&LIVE.pending&&LIVE.pending.answer_after){LIVE.pending=null;liveSpeak('התשובה הקודמת הסתיימה — עונה לדברי דוד שהצטברו');}}
   else if(a.kind==='error'){
    if(/truncat/i.test(a.message+' '+a.code)){const y=liveLastRecord(r=>r.decision==='YIELD'&&r.continuity_result==='n/a');if(y)y.continuity_result='truncate_error:'+String(a.message).slice(0,40);}
    stat('שגיאת קול: '+a.message);}
  }}
 /* The ear's ledger: one entry per utterance (VAD item), its transcript when it lands. */
-function liveEarOpen(id){id=String(id||'');if(id&&LIVE.ear.some(e=>e.id===id))return;LIVE.ear.push({id:id,text:null,committed:false,skip:false});}
-function liveEarCommit(id){id=String(id||'');const e=id?LIVE.ear.find(x=>x.id===id):null;if(e)e.committed=true;else if(id)LIVE.ear.push({id:id,text:null,committed:true,skip:false});}
+function liveEarOpen(id){id=String(id||'');if(id&&LIVE.ear.some(e=>e.id===id))return;LIVE.ear.push({id:id,text:null,committed:false,skip:false,used:false});}
+function liveEarCommit(id){id=String(id||'');const e=id?LIVE.ear.find(x=>x.id===id):null;if(e)e.committed=true;else if(id)LIVE.ear.push({id:id,text:null,committed:true,skip:false,used:false});}
 function liveEarHeard(id,text,skip){id=String(id||'');let e=id?LIVE.ear.find(x=>x.id===id):null;
- if(!e){e={id:id,text:null,committed:true,skip:false};LIVE.ear.push(e);}e.text=String(text||'');e.committed=true;e.skip=!!skip;}
+ if(!e){e={id:id,text:null,committed:true,skip:false,used:false};LIVE.ear.push(e);}e.text=String(text||'');e.committed=true;e.skip=!!skip;}
 /* David's words since the last delegation — waiting (bounded) for a committed utterance whose
-   transcript has not landed yet; the entries are consumed by this call. */
+   transcript has not landed yet; the entries are consumed by this call. Speech still in progress
+   (not yet committed) belongs to the next turn and stays. */
 async function liveEarSince(){
  const deadline=Date.now()+LIVE_POLICY.transcript_wait_ms,epoch=LIVE.epoch;
- while(Date.now()<deadline&&LIVE.ear.slice(LIVE.earCursor).some(e=>e.committed&&e.text===null))await new Promise(r=>setTimeout(r,100));
+ while(Date.now()<deadline&&LIVE.ear.some(e=>!e.used&&e.committed&&e.text===null))await new Promise(r=>setTimeout(r,100));
  if(epoch!==LIVE.epoch)return [];
- const take=LIVE.ear.slice(LIVE.earCursor);LIVE.earCursor=LIVE.ear.length;
+ const take=LIVE.ear.filter(e=>!e.used&&e.committed);take.forEach(e=>{e.used=true;});
  return take.filter(e=>!e.skip&&e.text).map(e=>e.text);}
+/* A reply that finished without the tool answered what was said before it was asked for:
+   those utterances were handled in conversation and do not ride along to the brain later.
+   Words said after the reply was asked for (an overlap she answers next) stay. */
+function liveEarAnswered(){LIVE.ear.slice(0,LIVE.earMark).forEach(e=>{if(e.committed)e.used=true;});}
 /* THE TOOL: one call, through the kernel, with this panel's own code. The
    answer the mouth reads is the server's voice_output — LIA's answer and its
    evidence — never a sentence shaped here. A refused code (401) is what the
@@ -4179,7 +4185,7 @@ function liveTeardown(reason){
     session-local and dies here — measured 29.9: toolBusy and responseActive
     survived a stop and deferred or silenced the next session's first turns. */
  if(LIVE.sessionId)liveRecord('SESSION','סשן נסגר ('+String(reason||'')+')',{continuity_state:'session_teardown',continuity_result:String(reason||'').slice(0,40),outcome:'n/a'});
- LIVE.epoch++;LIVE.toolBusy=false;LIVE.replyOwed=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;LIVE.ear=[];LIVE.earCursor=0;
+ LIVE.epoch++;LIVE.toolBusy=false;LIVE.replyOwed=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;LIVE.ear=[];LIVE.earMark=0;
  clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;liveClearTimers();LIVE.userSpeaking=false;LIVE.overlap=null;LIVE.pending=null;LIVE.audioStartedAt=0;LIVE.responseActive=false;
  const dc=LIVE.dc,pc=LIVE.pc;LIVE.dc=null;LIVE.pc=null;
  try{if(dc)dc.close();}catch(e){}try{if(pc)pc.close();}catch(e){}

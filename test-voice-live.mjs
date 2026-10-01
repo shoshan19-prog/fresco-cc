@@ -67,6 +67,8 @@ ok('a user stop is never retried', !P.liveShouldReconnect({ attempt: 0, userStop
   ok('audio start: WebRTC event and WebSocket delta both count', r({ type: 'output_audio_buffer.started' })[0].kind === 'audio_started' && r({ type: 'response.output_audio.delta', delta: 'AAAA' })[0].kind === 'audio_started');
   ok('audio cleared = stopped by barge-in', r({ type: 'output_audio_buffer.cleared' })[0].cleared === true);
   ok('response.done carries the status', r({ type: 'response.done', response: { status: 'completed' } })[0].status === 'completed');
+  ok('response.done says whether the reply called the tool', r({ type: 'response.done', response: { status: 'completed', output: [{ type: 'message' }, { type: 'function_call' }] } })[0].tool === true
+     && r({ type: 'response.done', response: { status: 'completed', output: [{ type: 'message' }] } })[0].tool === false && r({ type: 'response.done', response: { status: 'completed' } })[0].tool === false);
   ok('an error event carries the message', r({ type: 'error', error: { message: 'boom', code: 'x' } })[0].message === 'boom');
   ok('an unknown event is nothing', r({ type: 'rate_limits.updated' }).length === 0 && r(null).length === 0);
 }
@@ -683,7 +685,7 @@ ok('the question is bounded', P.liveQuestionFrom(['א'.repeat(3000)], '').questi
 {
   // the ear's ledger, run against a stand-in LIVE: open → commit → transcript → consumed once
   const helpers = slice('function liveEarOpen(', '/* THE TOOL: one call');
-  const E = new Function('LIVE_POLICY', helpers + '\nconst LIVE={ear:[],earCursor:0,epoch:0};\nreturn {LIVE, liveEarOpen, liveEarCommit, liveEarHeard, liveEarSince};')({ transcript_wait_ms: 300 });
+  const E = new Function('LIVE_POLICY', helpers + '\nconst LIVE={ear:[],earMark:0,epoch:0};\nreturn {LIVE, liveEarOpen, liveEarCommit, liveEarHeard, liveEarSince, liveEarAnswered};')({ transcript_wait_ms: 300 });
   E.liveEarOpen('i1'); E.liveEarCommit('i1'); E.liveEarHeard('i1', 'מה מצב ההזמנות?', false);
   E.liveEarOpen('i2'); E.liveEarCommit('i2'); E.liveEarHeard('i2', 'כן', true);          // a backchannel is not a question
   E.liveEarOpen('i3'); E.liveEarCommit('i3'); E.liveEarHeard('i3', 'ומה עם החשבוניות?', false);
@@ -696,16 +698,26 @@ ok('the question is bounded', P.liveQuestionFrom(['א'.repeat(3000)], '').questi
   E.liveEarOpen('i5'); E.liveEarCommit('i5');                                            // never transcribed
   const t0 = Date.now(); const none = await E.liveEarSince();
   ok('a transcript that never lands costs at most the wait, then the model\'s wording is used', none.length === 0 && Date.now() - t0 < 600);
-  E.liveEarOpen('i6');                                                                   // speech the VAD never committed
-  const t1 = Date.now(); await E.liveEarSince();
-  ok('an uncommitted utterance is not waited for', Date.now() - t1 < 100);
+  E.liveEarOpen('i6');                                                                   // David still speaking when the tool is called
+  const t1 = Date.now(); const early = await E.liveEarSince();
+  ok('an uncommitted utterance is not waited for', Date.now() - t1 < 100 && early.length === 0);
+  E.liveEarCommit('i6'); E.liveEarHeard('i6', 'ומה עם הלקוח החדש?', false);
+  ok('…and it is not lost: it belongs to the next call', JSON.stringify(await E.liveEarSince()) === JSON.stringify(['ומה עם הלקוח החדש?']));
+  // a reply that finished without the tool answered what came before it — small talk does not ride along later
+  E.liveEarOpen('g1'); E.liveEarCommit('g1'); E.liveEarHeard('g1', 'שלום, את שומעת אותי?', false);
+  E.LIVE.earMark = E.LIVE.ear.length;                                                     // the panel asked for a reply here
+  E.liveEarOpen('g2'); E.liveEarCommit('g2'); E.liveEarHeard('g2', 'רגע, עוד משהו', false); // said after the reply was asked for
+  E.liveEarAnswered();
+  ok('a conversational reply consumes what it answered, and only that', JSON.stringify(await E.liveEarSince()) === JSON.stringify(['רגע, עוד משהו']));
 }
 {
   const live = slice('async function liveRunTool(', 'function liveTeardown(');
   ok('the tool sends the chosen question — the ear first — and records which one', /const asked=liveQuestionFrom\(await liveEarSince\(\),d\.question\);/.test(live) && /const text=asked\.question,reqId=run\.request_id;/.test(live) && /continuity_result:'question:'\+asked\.source/.test(live) && /outcome_evidence:\('model: '\+d\.question\)/.test(live));
   const td = slice('function liveTeardown(', 'function liveReleaseMic(');
-  ok('the ear belongs to its session (teardown resets it)', /LIVE\.ear=\[\];LIVE\.earCursor=0;/.test(td));
+  ok('the ear belongs to its session (teardown resets it)', /LIVE\.ear=\[\];LIVE\.earMark=0;/.test(td));
+  ok('every reply the panel asks for marks how far the ear had got', /function liveCreateResponse\(\)\{LIVE\.responseActive=true;LIVE\.earMark=LIVE\.ear\.length;/.test(src));
   const on = slice('function liveOn(ev){', '/* The ear\'s ledger');
+  ok('a reply that completed without the tool, while no tool runs, settles what it answered', /if\(a\.status==='completed'&&!a\.tool&&!LIVE\.toolBusy\)liveEarAnswered\(\);/.test(on));
   ok('every utterance opens, commits and settles its ledger entry', /liveEarOpen\(a\.item_id\)/.test(on) && /if\(a\.committed\)liveEarCommit\(a\.item_id\);/.test(on) && /liveEarHeard\(a\.item_id,a\.text,bc\);/.test(on) && /a\.kind==='ear_failed'\)\{liveEarHeard\(a\.item_id,'',false\);/.test(on));
 }
 console.log(bad ? `${total - bad}/${total} passed — ${bad} FAILED` : `${total}/${total} live-voice asserts passed`);
