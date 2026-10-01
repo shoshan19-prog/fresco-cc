@@ -3768,7 +3768,7 @@ function liveReduce(ev,st){
  else if(t==='output_audio_buffer.stopped'||t==='output_audio_buffer.cleared')out.push({kind:'audio_stopped',cleared:/cleared$/.test(t)});
  else if(t==='response.function_call_arguments.done')call(ev.call_id,ev.name,ev.arguments);
  else if(t==='response.output_item.done'&&ev.item&&ev.item.type==='function_call')call(ev.item.call_id,ev.item.name,ev.item.arguments);
- else if(t==='response.done')out.push({kind:'response_done',status:String((ev.response&&ev.response.status)||''),tool:(ev.response&&Array.isArray(ev.response.output)?ev.response.output:[]).some(o=>o&&o.type==='function_call')});
+ else if(t==='response.done')out.push({kind:'response_done',status:String((ev.response&&ev.response.status)||''),tool:(ev.response&&Array.isArray(ev.response.output)?ev.response.output:[]).some(o=>o&&o.type==='function_call'),said:(ev.response&&Array.isArray(ev.response.output)?ev.response.output:[]).some(o=>o&&o.type==='message')});
  else if(t==='error')out.push({kind:'error',message:String((ev.error&&ev.error.message)||ev.message||'unknown'),code:String((ev.error&&ev.error.code)||'')});
  return out;}
 /* The tool gate: the model may ask for exactly one thing, and only with a
@@ -4099,7 +4099,7 @@ function liveOn(ev){
    LIVE.lastSaid=a.text;LIVE.interrupted=false;}
   else if(a.kind==='truncated'){const y=liveLastRecord(r=>r.decision==='YIELD');if(y)y.continuity_result='truncated_'+a.audio_end_ms+'ms';}
   else if(a.kind==='response_done'){LIVE.responseActive=false;if(a.status==='failed')stat('התשובה הקולית נכשלה — נסה שוב');
-   if(a.status==='completed'&&!a.tool&&!LIVE.toolBusy)liveEarAnswered();
+   if(a.status==='completed'&&a.said&&!a.tool&&!LIVE.toolBusy)liveEarAnswered();
    if(!LIVE.speaking&&LIVE.pending&&LIVE.pending.answer_after){LIVE.pending=null;liveSpeak('התשובה הקודמת הסתיימה — עונה לדברי דוד שהצטברו');}}
   else if(a.kind==='error'){
    if(/truncat/i.test(a.message+' '+a.code)){const y=liveLastRecord(r=>r.decision==='YIELD'&&r.continuity_result==='n/a');if(y)y.continuity_result='truncate_error:'+String(a.message).slice(0,40);}

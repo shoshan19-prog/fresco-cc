@@ -69,6 +69,8 @@ ok('a user stop is never retried', !P.liveShouldReconnect({ attempt: 0, userStop
   ok('response.done carries the status', r({ type: 'response.done', response: { status: 'completed' } })[0].status === 'completed');
   ok('response.done says whether the reply called the tool', r({ type: 'response.done', response: { status: 'completed', output: [{ type: 'message' }, { type: 'function_call' }] } })[0].tool === true
      && r({ type: 'response.done', response: { status: 'completed', output: [{ type: 'message' }] } })[0].tool === false && r({ type: 'response.done', response: { status: 'completed' } })[0].tool === false);
+  ok('response.done says whether the reply said anything', r({ type: 'response.done', response: { status: 'completed', output: [{ type: 'message' }] } })[0].said === true
+     && r({ type: 'response.done', response: { status: 'completed', output: [] } })[0].said === false && r({ type: 'response.done', response: { status: 'completed' } })[0].said === false);
   ok('an error event carries the message', r({ type: 'error', error: { message: 'boom', code: 'x' } })[0].message === 'boom');
   ok('an unknown event is nothing', r({ type: 'rate_limits.updated' }).length === 0 && r(null).length === 0);
 }
@@ -717,7 +719,7 @@ ok('the question is bounded', P.liveQuestionFrom(['א'.repeat(3000)], '').questi
   ok('the ear belongs to its session (teardown resets it)', /LIVE\.ear=\[\];LIVE\.earMark=0;/.test(td));
   ok('every reply the panel asks for marks how far the ear had got', /function liveCreateResponse\(\)\{LIVE\.responseActive=true;LIVE\.earMark=LIVE\.ear\.length;/.test(src));
   const on = slice('function liveOn(ev){', '/* The ear\'s ledger');
-  ok('a reply that completed without the tool, while no tool runs, settles what it answered', /if\(a\.status==='completed'&&!a\.tool&&!LIVE\.toolBusy\)liveEarAnswered\(\);/.test(on));
+  ok('a reply that SAID something, completed without the tool, while no tool runs, settles what it answered (a silent reply answered nothing)', /if\(a\.status==='completed'&&a\.said&&!a\.tool&&!LIVE\.toolBusy\)liveEarAnswered\(\);/.test(on));
   ok('every utterance opens, commits and settles its ledger entry', /liveEarOpen\(a\.item_id\)/.test(on) && /if\(a\.committed\)liveEarCommit\(a\.item_id\);/.test(on) && /liveEarHeard\(a\.item_id,a\.text,bc\);/.test(on) && /a\.kind==='ear_failed'\)\{liveEarHeard\(a\.item_id,'',false\);/.test(on));
 }
 console.log(bad ? `${total - bad}/${total} passed — ${bad} FAILED` : `${total}/${total} live-voice asserts passed`);
