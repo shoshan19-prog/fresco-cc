@@ -556,6 +556,7 @@ button#live.wait{opacity:.6}
  <span id="ctxLine">פרסקו</span>
  <span id="clock"></span>
  <button onclick="newSession()" title="שיחה חדשה">✎</button>
+ <button id="controlCenterMobile" type="button" onclick="location.href='index.html'" title="Control Center" aria-label="Control Center" data-lia-change="8db89f9c" style="display:none">מרכז</button>
  <button onclick="openPanel()" title="עוד">⋯</button>
 </header>
 
@@ -789,6 +790,7 @@ async function login(){
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function stat(s){document.getElementById('noteStat').textContent=s;}
 function boot(st){document.getElementById('login').style.display='none';document.getElementById('app').style.display='flex';
+ const ccMobile=document.getElementById('controlCenterMobile');if(ccMobile&&SURFACE==='phone')ccMobile.style.display='inline-flex';
  openSession();setMode('idle');render(st);
  tickClock();loadRails().catch(()=>{}).then(bootOrgRoute);loadOrgMobile().catch(()=>{});probeLiveVoice().catch(()=>{});initNotifications();
  bootPanelRoute();
