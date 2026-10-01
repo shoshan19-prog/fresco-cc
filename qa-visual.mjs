@@ -87,9 +87,8 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok(`${tag}: home screen greets and asks`, /(טוב|טובים), דוד/.test(await page.textContent('#thread')));
   // David, 25.8: a control that looks live but does nothing is worse than none.
   ok(`${tag}: no dead expert-system controls`, (await page.$$('#chips, .chip')).length === 0);
-  // David, 30.9: the phone bar is the mark, the name and two small controls — the LIVE pill is a desktop mark.
-  ok(`${tag}: LIVE indicator ${tag === 'desktop' ? 'present' : 'is not on the phone bar'}`,
-    tag === 'desktop' ? await page.isVisible('.live') : !(await page.isVisible('.live')));
+  // David, 1.10 ("להחזיר הדר"): the phone keeps its header — LIVE is on the bar on every screen again.
+  ok(`${tag}: LIVE indicator present`, await page.isVisible('.live'));
   ok(`${tag}: orb present`, await page.isVisible('.orb.lg'));
   // Light theme (David, 25.8): a bright ground and dark text, everywhere.
   const skin = await page.evaluate(() => {
@@ -453,7 +452,7 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
     { w: 600, h: 900, name: 'phone 600x900 (the largest width)' },
     { w: 844, h: 390, name: 'phone on its side 844x390', touch: true },
   ];
-  const HIDDEN = ['#orgMobile', '#stateStrip', '#notifCta', '#chatSyncLine', '#clock', '#seal', '#ctxLine', '#osName'];
+  const HIDDEN = ['#orgMobile', '#stateStrip', '#notifCta', '#chatSyncLine', '#seal', '#ctxLine', '#osName'];   // 1.10: the clock is header, not clutter
   for (const P of PHONES) {
     const extra = { isMobile: true, hasTouch: true };
     const { page, ctx } = await open({ width: P.w, height: P.h }, P.name, false, extra);
@@ -471,12 +470,15 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
         spill: document.documentElement.scrollWidth - document.documentElement.clientWidth };
     }, HIDDEN);
     await shot(page, 'phone-clean-' + P.name.replace(/[^0-9a-z]+/gi, '-'));
-    ok(`${P.name}: none of the dashboard clutter is on screen (organizer, running-tasks strip, notification banner, sync line, clock, footer)`,
+    ok(`${P.name}: none of the dashboard clutter is on screen (organizer, running-tasks strip, notification banner, sync line, footer)`,
       m.hidden.length === 0, JSON.stringify(m.hidden));
     ok(`${P.name}: ✎ and ⋯ stay — small, thumb-reachable, on screen`,
       !!m.pen && !!m.dots && m.pen.w >= 30 && m.pen.w <= 40 && m.dots.w >= 30 && m.dots.w <= 40 && m.pen.fs <= 16 && m.dots.fs <= 16
       && m.pen.l >= 0 && m.dots.l >= 0 && m.pen.r <= m.vw && m.dots.r <= m.vw, JSON.stringify({ pen: m.pen, dots: m.dots }));
     ok(`${P.name}: the bar is slim`, m.topbar.h <= (P.h < 500 ? 46 : 48), JSON.stringify(m.topbar));
+    const hdr = await page.evaluate(() => { const on = (s) => { const e = document.querySelector(s); if (!e) return false; const b = e.getBoundingClientRect(); const cs = getComputedStyle(e); return b.width > 0 && b.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+      const tb = getComputedStyle(document.querySelector('#topbar')); return { live: on('#topbar .live'), clock: on('#clock'), rule: tb.borderBottomWidth, ground: tb.backgroundColor }; });
+    ok(`${P.name}: the header is a header — LIVE, the clock, its own ground and the rule under it (David, 1.10)`, hdr.live && hdr.clock && hdr.rule !== '0px' && hdr.ground !== 'rgba(0, 0, 0, 0)', JSON.stringify(hdr));
     ok(`${P.name}: the composer is one slim line`, m.composer.h <= (P.h < 500 ? 60 : 64), JSON.stringify(m.composer));
     const share = m.thread.h / m.vh;
     ok(`${P.name}: the conversation is the middle of the screen (${Math.round(share * 100)}% of the height)`, share >= (P.h < 500 ? 0.4 : 0.66), JSON.stringify(m.thread));

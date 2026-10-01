@@ -516,11 +516,16 @@ button#live.wait{opacity:.6}
    the clock/context/LIVE marks and the "secured" footer. The notification switch
    and the history are still one tap away behind ⋯. */
 @media(max-width:600px),(pointer:coarse) and (max-height:500px){
- #orgMobile,#stateStrip,#notifCta,#chatSyncLine,#ctxLine,#clock,#osName,#topbar .live,#seal{display:none!important}
- /* the bar: a mark, a name and two small controls — no rule under it, no chrome */
- #topbar{padding:calc(6px + env(safe-area-inset-top)) 10px 2px;gap:2px;background:var(--bg);border-bottom:0}
+ #orgMobile,#stateStrip,#notifCta,#chatSyncLine,#ctxLine,#osName,#seal{display:none!important}
+ /* THE BAR STAYS A BAR (David, 1.10: "אני לא רואה את ההדר … במובייל — להחזיר הדר"). The 30.9 pass hid the clock and
+    the LIVE mark and took the bar's ground and rule away — on a phone that read as the header being gone. The bar keeps
+    its compact phone sizing (the full desktop bar overflows a 320px screen), and gets back what makes it a header:
+    its own background, the rule under it, LIVE and the clock. */
+ #topbar{padding:calc(6px + env(safe-area-inset-top)) 10px 5px;gap:4px;background:var(--bg2);border-bottom:1px solid var(--line)}
  #topbar .brand{font-size:15px;letter-spacing:1.2px;gap:7px;margin-inline-end:auto}
  #topbar .orb.sm{width:17px;height:17px}
+ #topbar .live{font-size:9px}
+ #clock{font-size:11.5px}
  #topbar button{width:34px;height:34px;padding:0;font-size:15px;line-height:1;
   display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
  /* the conversation takes what the chrome gave back: the 42vh floor existed for
@@ -726,7 +731,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-09-30.2';
+const LIA_BUILD='2026-10-01.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
