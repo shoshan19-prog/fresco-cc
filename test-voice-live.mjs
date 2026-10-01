@@ -35,7 +35,7 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio};')();
+  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom};')();
 const POL = P.LIVE_POLICY;
 
 ok('the one tool is deep_answer — LIA\'s own deeper processing; the old name is still accepted during the rollout', P.LIVE_TOOL === 'deep_answer' && P.LIVE_TOOLS.join(',') === 'deep_answer,ask_lia');
@@ -50,8 +50,10 @@ ok('a user stop is never retried', !P.liveShouldReconnect({ attempt: 0, userStop
   const r = (ev) => P.liveReduce(ev, st);
   ok('session.created → ready', r({ type: 'session.created' })[0].kind === 'ready');
   ok('speech_started / speech_stopped are recognized', r({ type: 'input_audio_buffer.speech_started' })[0].kind === 'speech_started' && r({ type: 'input_audio_buffer.speech_stopped' })[0].kind === 'speech_stopped');
-  ok('the user transcript is trimmed', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.completed', transcript: '  ליה, מה מצב REAL·LOCATION?  ' })) === '[{"kind":"user_said","text":"ליה, מה מצב REAL·LOCATION?"}]');
-  ok('an empty transcript is nothing', r({ type: 'conversation.item.input_audio_transcription.completed', transcript: '  ' }).length === 0);
+  ok('the user transcript is trimmed and keeps its utterance id', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_u1', transcript: '  ליה, מה מצב REAL·LOCATION?  ' })) === '[{"kind":"user_said","text":"ליה, מה מצב REAL·LOCATION?","item_id":"item_u1"}]');
+  ok('an empty transcript settles its utterance as heard-nothing (nothing waits on it)', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_u2', transcript: '  ' })) === '[{"kind":"ear_failed","item_id":"item_u2"}]');
+  ok('a failed transcription settles its utterance too', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.failed', item_id: 'item_u3' })) === '[{"kind":"ear_failed","item_id":"item_u3"}]');
+  ok('a commit names its utterance', JSON.stringify(r({ type: 'input_audio_buffer.committed', item_id: 'item_u4' })) === '[{"kind":"speech_stopped","item_id":"item_u4","committed":true}]');
   const fc = r({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'c1', name: 'ask_lia', arguments: '{"question":"מה מצב REAL·LOCATION?"}' } });
   ok('a function call is one action with parsed arguments', fc.length === 1 && fc[0].kind === 'tool_call' && fc[0].call_id === 'c1' && fc[0].args.question === 'מה מצב REAL·LOCATION?');
   ok('the same call announced again (arguments.done) is NOT a second action', r({ type: 'response.function_call_arguments.done', call_id: 'c1', name: 'ask_lia', arguments: '{"question":"x"}' }).length === 0);
@@ -135,13 +137,13 @@ ok('a synced message keeps its server time (created_at, else server_at) — so t
 ok('nothing on the screen calls the tool "checking with LIA"', !/בודקת אצל ליה/.test(src) && !/להגיע לליה/.test(src));
 ok('what goes back to the model is the server\'s voice_output', /output=res\.voice_output\|\|\{error:'no_voice_output'/.test(live));
 ok('the SDP goes to OpenAI with the client secret only', /Authorization:'Bearer '\+mint\.client_secret/.test(live) && !/sk-/.test(live) && !/sk-[A-Za-z0-9_-]{20,}/.test(src));
-ok('the secret is minted by command-center (voice_session), never held in the page', /ccApi\(\{action:'voice_session'\}\)/.test(live) && !/localStorage\.setItem\('[^']*(secret|ek)/.test(live));
+ok('the secret is minted by command-center (voice_session), never held in the page — and the panel says it sends David\'s transcript', /ccApi\(\{action:'voice_session',transcript_question:true\}\)/.test(live) && !/localStorage\.setItem\('[^']*(secret|ek)/.test(live));
 ok('the button exists and starts hidden', /id="live" onclick="liveTap\(\)"[^>]*display:none/.test(html));
 ok('response.create has ONE door (liveCreateResponse); nothing else asks the model to speak', (live.match(/type:'response\.create'/g) || []).length === 1 && /function liveCreateResponse\(\)\{LIVE\.responseActive=true;/.test(live));
 ok('a YIELD sends the wire of liveYieldActions and nothing decides an interruption elsewhere', /const acts=liveYieldActions\(\{item_id:LIVE\.itemId,audio_started_at:LIVE\.audioStartedAt/.test(live) && /acts\.forEach\(m=>liveSend\(m\)\)/.test(live));
 ok('the trace reaches the ledger through voice_trace_log, in batches of 50', /cap\('voice_trace_log',\{session_id:LIVE\.sessionId\|\|'',model:LIVE\.model\|\|'',events:batch\}\)/.test(live) && /i\+=50/.test(live));
 ok('a stop flushes what is left (pending → no_repair); EVERY connect (tap, reconnect, renewal) seeds the new channel from the recent conversation', /liveFlushTrace\(true\)/.test(live) && /LIVE\.renewing=true;liveTeardown\('renewal'\);liveFlushTrace\(false\)/.test(live) && /const seed=liveSeedItems\(SESSION\.turns,LIVE_POLICY\.seed_turns,Date\.now\(\),LIVE_POLICY\.seed_window_ms\);/.test(live));
-ok('the build is bumped', /const LIA_BUILD='2026-09-29\.3'/.test(src));
+ok('the build is bumped', /const LIA_BUILD='2026-10-01\.2'/.test(src));
 ok('the tap-microphone is shut while live', /function micAllowed\(\)\{return TURN==='IDLE'&&!TTS&&!\(typeof LIVE!=='undefined'&&LIVE\.on\);\}/.test(src));
 ok('the browser speech engine yields while live', /if\(typeof LIVE!=='undefined'&&LIVE\.on\)\{TTS=false;if\(done\)setTimeout\(done,0\);return;\}/.test(src));
 
@@ -671,5 +673,40 @@ const stat = (page) => page.textContent('#noteStat');
 
 await browser.close();
 ok('no page errors', errors.length === 0, errors.join('\n      '));
+
+// ── WHAT THE BRAIN HEARS (David, 1.10): David's transcript, never the voice model's rewording ──
+ok('the transcript is the question when the ear heard Hebrew', JSON.stringify(P.liveQuestionFrom(['ליה, מה מצב ההזמנות של רילוקיישן?'], 'דוד, מה מצב הצוואז מנוצ׳יל Relocation?')) === JSON.stringify({ question: 'ליה, מה מצב ההזמנות של רילוקיישן?', source: 'transcript' }));
+ok('a monologue in several utterances reaches the brain whole, in order', P.liveQuestionFrom(['איך אנחנו יודעים שהמבצע יתפוס אותה,', ' מה  אנחנו צריכים לעשות?'], 'x').question === 'איך אנחנו יודעים שהמבצע יתפוס אותה, מה אנחנו צריכים לעשות?');
+ok('no transcript → the model\'s wording, marked as such', JSON.stringify(P.liveQuestionFrom([], 'מה מצב הפרויקט?')) === JSON.stringify({ question: 'מה מצב הפרויקט?', source: 'model' }));
+ok('a transcript with no Hebrew (the ear misheard the script) → the model\'s wording', P.liveQuestionFrom(['Niya, mamycava projekt.'], 'ליה, מה מצב הפרויקט?').source === 'model');
+ok('the question is bounded', P.liveQuestionFrom(['א'.repeat(3000)], '').question.length === 2000);
+{
+  // the ear's ledger, run against a stand-in LIVE: open → commit → transcript → consumed once
+  const helpers = slice('function liveEarOpen(', '/* THE TOOL: one call');
+  const E = new Function('LIVE_POLICY', helpers + '\nconst LIVE={ear:[],earCursor:0,epoch:0};\nreturn {LIVE, liveEarOpen, liveEarCommit, liveEarHeard, liveEarSince};')({ transcript_wait_ms: 300 });
+  E.liveEarOpen('i1'); E.liveEarCommit('i1'); E.liveEarHeard('i1', 'מה מצב ההזמנות?', false);
+  E.liveEarOpen('i2'); E.liveEarCommit('i2'); E.liveEarHeard('i2', 'כן', true);          // a backchannel is not a question
+  E.liveEarOpen('i3'); E.liveEarCommit('i3'); E.liveEarHeard('i3', 'ומה עם החשבוניות?', false);
+  const first = await E.liveEarSince();
+  ok('the ledger hands over every utterance since the last call, backchannels excluded', JSON.stringify(first) === JSON.stringify(['מה מצב ההזמנות?', 'ומה עם החשבוניות?']), JSON.stringify(first));
+  ok('…and each utterance is consumed once', (await E.liveEarSince()).length === 0);
+  E.liveEarOpen('i4'); E.liveEarCommit('i4');                                            // committed, transcript still in flight
+  setTimeout(() => E.liveEarHeard('i4', 'תודה, ומה עוד?', false), 120);
+  ok('a committed utterance whose transcript is in flight is waited for (bounded)', JSON.stringify(await E.liveEarSince()) === JSON.stringify(['תודה, ומה עוד?']));
+  E.liveEarOpen('i5'); E.liveEarCommit('i5');                                            // never transcribed
+  const t0 = Date.now(); const none = await E.liveEarSince();
+  ok('a transcript that never lands costs at most the wait, then the model\'s wording is used', none.length === 0 && Date.now() - t0 < 600);
+  E.liveEarOpen('i6');                                                                   // speech the VAD never committed
+  const t1 = Date.now(); await E.liveEarSince();
+  ok('an uncommitted utterance is not waited for', Date.now() - t1 < 100);
+}
+{
+  const live = slice('async function liveRunTool(', 'function liveTeardown(');
+  ok('the tool sends the chosen question — the ear first — and records which one', /const asked=liveQuestionFrom\(await liveEarSince\(\),d\.question\);/.test(live) && /const text=asked\.question,reqId=run\.request_id;/.test(live) && /continuity_result:'question:'\+asked\.source/.test(live) && /outcome_evidence:\('model: '\+d\.question\)/.test(live));
+  const td = slice('function liveTeardown(', 'function liveReleaseMic(');
+  ok('the ear belongs to its session (teardown resets it)', /LIVE\.ear=\[\];LIVE\.earCursor=0;/.test(td));
+  const on = slice('function liveOn(ev){', '/* The ear\'s ledger');
+  ok('every utterance opens, commits and settles its ledger entry', /liveEarOpen\(a\.item_id\)/.test(on) && /if\(a\.committed\)liveEarCommit\(a\.item_id\);/.test(on) && /liveEarHeard\(a\.item_id,a\.text,bc\);/.test(on) && /a\.kind==='ear_failed'\)\{liveEarHeard\(a\.item_id,'',false\);/.test(on));
+}
 console.log(bad ? `${total - bad}/${total} passed — ${bad} FAILED` : `${total}/${total} live-voice asserts passed`);
 process.exit(bad ? 1 : 0);

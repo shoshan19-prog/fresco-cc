@@ -731,7 +731,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-01.1';
+const LIA_BUILD='2026-10-01.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -3759,8 +3759,9 @@ function liveReduce(ev,st){
  else if(t==='input_audio_buffer.speech_started')out.push({kind:'speech_started',audio_start_ms:Number(ev.audio_start_ms)||0,item_id:String(ev.item_id||'')});
  else if(t==='response.output_item.added'&&ev.item&&ev.item.type==='message'&&ev.item.role==='assistant')out.push({kind:'item_added',item_id:String(ev.item.id||''),response_id:String(ev.response_id||'')});
  else if(t==='conversation.item.truncated')out.push({kind:'truncated',item_id:String(ev.item_id||''),audio_end_ms:Number(ev.audio_end_ms)||0});
- else if(t==='input_audio_buffer.speech_stopped'||t==='input_audio_buffer.committed')out.push({kind:'speech_stopped'});
- else if(t==='conversation.item.input_audio_transcription.completed'){const s=String(ev.transcript||'').trim();if(s)out.push({kind:'user_said',text:s});}
+ else if(t==='input_audio_buffer.speech_stopped'||t==='input_audio_buffer.committed')out.push({kind:'speech_stopped',item_id:String(ev.item_id||''),committed:t==='input_audio_buffer.committed'});
+ else if(t==='conversation.item.input_audio_transcription.completed'){const s=String(ev.transcript||'').trim();if(s)out.push({kind:'user_said',text:s,item_id:String(ev.item_id||'')});else out.push({kind:'ear_failed',item_id:String(ev.item_id||'')});}
+ else if(t==='conversation.item.input_audio_transcription.failed')out.push({kind:'ear_failed',item_id:String(ev.item_id||'')});
  else if(t==='response.output_audio_transcript.delta'||t==='response.audio_transcript.delta')st.lia+=String(ev.delta||'');
  else if(t==='response.output_audio_transcript.done'||t==='response.audio_transcript.done'){const s=String(ev.transcript||st.lia||'').trim();st.lia='';if(s)out.push({kind:'lia_said',text:s});}
  else if(t==='output_audio_buffer.started'||t==='response.output_audio.delta'||t==='response.audio.delta')out.push({kind:'audio_started'});
@@ -3785,6 +3786,16 @@ function liveHeardText(ear,toolQ){
  const e=String(ear||'').trim(),q=String(toolQ||'').trim();
  if(/[֐-׿]/.test(e)||!q)return e;
  return q;}
+/* WHAT THE BRAIN HEARS (David, 1.10): David's own words — the ear's transcript of every
+   utterance since the last delegation — never the voice model's rewording of them. Measured
+   1.10 on gpt-realtime-2.1-mini: "מה מצב ההזמנות של ריל לוקיישן?" reached the kernel as
+   "דוד, מה מצב הצוואז מנוצ'יל Relocation?". The model's wording is the fallback only when the
+   ear has no Hebrew (nothing transcribed, or a transcript in the wrong script). Pure. */
+function liveQuestionFrom(ear,modelQ){
+ const t=(ear||[]).map(x=>String(x||'').replace(/\s+/g,' ').trim()).filter(Boolean).join(' ').trim();
+ const m=String(modelQ||'').replace(/\s+/g,' ').trim();
+ if(t&&/[\u0590-\u05FF]/.test(t))return {question:t.slice(0,2000),source:'transcript'};
+ return {question:m.slice(0,2000),source:'model'};}
 /* End of speech → first sound of the reply, in milliseconds. */
 function liveLatency(t){if(!t||!t.speech_stopped||!t.audio_started||t.audio_started<t.speech_stopped)return null;return t.audio_started-t.speech_stopped;}
 /* A refused mint, in David's words — with the provider's evidence attached. */
@@ -3855,7 +3866,7 @@ function liveSeedItems(turns,n,now,windowMs){
 
 const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audio:null,model:'',expires:0,
   attempt:0,userStopped:false,ready:false,speaking:false,interrupted:false,t:{},lat:[],red:null,res:null,
-  timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0,
+  timer:null,reconnectTimer:null,tools:0,earIdx:null,lastQ:'',lastQAt:0,ear:[],earCursor:0,
   /* turn control (28.9) */
   userSpeaking:false,itemId:'',responseId:'',audioStartedAt:0,overlap:null,pending:null,toolBusy:false,
   graceTimer:null,overlapTimer:null,transcriptTimer:null,trace:[],seq:0,sessionId:'',renewing:false,lastHeard:'',lastSaid:'',turnPolicy:null,uttStartedAt:0,responseActive:false,lastCreateFor:0,afterYield:false,
@@ -3896,7 +3907,7 @@ async function liveStart(){
 function liveSend(msg){try{if(LIVE.dc&&LIVE.dc.readyState==='open'){LIVE.dc.send(JSON.stringify(msg));return true;}}catch(e){}return false;}
 async function liveConnect(){
  let mint;
- try{mint=await ccApi({action:'voice_session'});}
+ try{mint=await ccApi({action:'voice_session',transcript_question:true});}
  catch(e){liveFail('לא הצלחתי לפתוח קול ('+e.message+')');return;}
  if(!mint||mint.error||!mint.client_secret){liveFail(liveMintError(mint));return;}
  LIVE.model=String(mint.model||'');LIVE.expires=Number(mint.expires_at||0)*1000;LIVE.red={lia:'',calls:{}};LIVE.t={};
@@ -4007,6 +4018,7 @@ function liveOn(ev){
   else if(a.kind==='item_added'){LIVE.itemId=a.item_id;LIVE.responseId=a.response_id;}
   else if(a.kind==='speech_started'){
    LIVE.userSpeaking=true;LIVE.t={speech_started:Date.now()};LIVE.uttStartedAt=Date.now();LIVE.userItemId=String(a.item_id||'');
+   liveEarOpen(a.item_id);
    if(LIVE.graceTimer){clearTimeout(LIVE.graceTimer);LIVE.graceTimer=null;const w=liveLastRecord(r=>r.decision==='WAIT'&&r.continuity_result==='n/a');if(w)w.continuity_result='user_resumed';}
    if(LIVE.speaking){
     /* David over LIA. Long = he is taking the turn → YIELD when the threshold passes;
@@ -4019,6 +4031,7 @@ function liveOn(ev){
    }
    liveLabel('מקשיבה…');}
   else if(a.kind==='speech_stopped'){
+   if(a.committed)liveEarCommit(a.item_id);
    if(!LIVE.userSpeaking)continue;                       // the commit that follows a stop we already handled
    LIVE.userSpeaking=false;if(!LIVE.t.speech_stopped)LIVE.t.speech_stopped=Date.now();
    LIVE.lastCommittedUtt=LIVE.uttStartedAt;               // Phase A: a reply may cover this utterance from now on, not before
@@ -4044,7 +4057,9 @@ function liveOn(ev){
    const heard=liveHeardText(a.text,recent);
    const short=LIVE.pending&&LIVE.pending.short?LIVE.pending:null;
    if(short){clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;LIVE.pending=null;}
-   if(short&&liveIsBackchannel(a.text,short.overlap_ms)){
+   const bc=!!(short&&liveIsBackchannel(a.text,short.overlap_ms));
+   liveEarHeard(a.item_id,a.text,bc);
+   if(bc){
     liveRecord('BACKCHANNEL','"'+a.text.slice(0,30)+'" ('+short.overlap_ms+' מ״ש) — אישור, לא שאלה'+(short.server_cut?'; השרת כבר חתך את האודיו':'; ליה ממשיכה'),{lia_speaking:!short.server_cut,overlap_state:'overlap',overlap_ms:short.overlap_ms,interruption_source:'backchannel',continuity_state:short.server_cut?'cut_by_server':'lia_continues'});
     liveResolveOutcomes(a.text,{only_during:true});
     LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;continue;}
@@ -4053,6 +4068,7 @@ function liveOn(ev){
    if(short){
     if(LIVE.speaking){liveYield('חפיפה קצרה ('+short.overlap_ms+' מ״ש) שאינה אישור: "'+a.text.slice(0,30)+'"',short.overlap_ms);liveSpeak('תשובה לדברי דוד אחרי שנעצרה');}
     else liveSpeak(short.server_cut?'תשובה לדברי דוד אחרי שהשרת חתך את ליה':'דיבור קצר שהסתיים אחרי שליה סיימה');}}
+  else if(a.kind==='ear_failed'){liveEarHeard(a.item_id,'',false);}
   else if(a.kind==='tool_call'){
    const d=liveToolCall(a.name,a.args);
    if(d.ok){LIVE.lastQ=d.question;LIVE.lastQAt=Date.now();
@@ -4088,6 +4104,19 @@ function liveOn(ev){
    if(/truncat/i.test(a.message+' '+a.code)){const y=liveLastRecord(r=>r.decision==='YIELD'&&r.continuity_result==='n/a');if(y)y.continuity_result='truncate_error:'+String(a.message).slice(0,40);}
    stat('שגיאת קול: '+a.message);}
  }}
+/* The ear's ledger: one entry per utterance (VAD item), its transcript when it lands. */
+function liveEarOpen(id){id=String(id||'');if(id&&LIVE.ear.some(e=>e.id===id))return;LIVE.ear.push({id:id,text:null,committed:false,skip:false});}
+function liveEarCommit(id){id=String(id||'');const e=id?LIVE.ear.find(x=>x.id===id):null;if(e)e.committed=true;else if(id)LIVE.ear.push({id:id,text:null,committed:true,skip:false});}
+function liveEarHeard(id,text,skip){id=String(id||'');let e=id?LIVE.ear.find(x=>x.id===id):null;
+ if(!e){e={id:id,text:null,committed:true,skip:false};LIVE.ear.push(e);}e.text=String(text||'');e.committed=true;e.skip=!!skip;}
+/* David's words since the last delegation — waiting (bounded) for a committed utterance whose
+   transcript has not landed yet; the entries are consumed by this call. */
+async function liveEarSince(){
+ const deadline=Date.now()+LIVE_POLICY.transcript_wait_ms,epoch=LIVE.epoch;
+ while(Date.now()<deadline&&LIVE.ear.slice(LIVE.earCursor).some(e=>e.committed&&e.text===null))await new Promise(r=>setTimeout(r,100));
+ if(epoch!==LIVE.epoch)return [];
+ const take=LIVE.ear.slice(LIVE.earCursor);LIVE.earCursor=LIVE.ear.length;
+ return take.filter(e=>!e.skip&&e.text).map(e=>e.text);}
 /* THE TOOL: one call, through the kernel, with this panel's own code. The
    answer the mouth reads is the server's voice_output — LIA's answer and its
    evidence — never a sentence shaped here. A refused code (401) is what the
@@ -4104,8 +4133,11 @@ async function liveRunTool(a){
   const run={epoch:LIVE.epoch,session_id:LIVE.sessionId||'',request_id:uuid(),call_id:String(a.call_id||''),item_id:LIVE.userItemId||'',started:Date.now(),settled:false};
   const ids={session_id:run.session_id,request_id:run.request_id,call_id:run.call_id,item_id:run.item_id};
   LIVE.tools++;LIVE.t.tool_started=run.started;LIVE.toolBusy=true;liveLabel('בודקת…');
-  liveRecord('TOOL','בקשה לעיבוד עמוק נשלחה',Object.assign({continuity_state:'tool_started',outcome:'n/a'},ids));
-  const text=d.question,reqId=run.request_id;
+  const asked=liveQuestionFrom(await liveEarSince(),d.question);
+  LIVE.lastQ=asked.question;LIVE.lastQAt=Date.now();
+  liveRecord('TOOL','בקשה לעיבוד עמוק נשלחה',Object.assign({continuity_state:'tool_started',continuity_result:'question:'+asked.source,outcome:'n/a',
+    heard_head:asked.question.slice(0,120),outcome_evidence:('model: '+d.question).slice(0,160)},ids));
+  const text=asked.question,reqId=run.request_id;
   /* the correlation ids ride first so the call keeps the shape every kernel call in this file has (and the pins that read it) */
   const call=ccApi({voice_session_id:run.session_id,voice_request_id:run.request_id,parent_item_id:run.item_id,call_id:run.call_id,
     action:'kernel',body:text,history:historyForKernel(text),retracted:retractedForKernel(),request_id:reqId,voice:true});
@@ -4147,7 +4179,7 @@ function liveTeardown(reason){
     session-local and dies here — measured 29.9: toolBusy and responseActive
     survived a stop and deferred or silenced the next session's first turns. */
  if(LIVE.sessionId)liveRecord('SESSION','סשן נסגר ('+String(reason||'')+')',{continuity_state:'session_teardown',continuity_result:String(reason||'').slice(0,40),outcome:'n/a'});
- LIVE.epoch++;LIVE.toolBusy=false;LIVE.replyOwed=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;
+ LIVE.epoch++;LIVE.toolBusy=false;LIVE.replyOwed=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;LIVE.ear=[];LIVE.earCursor=0;
  clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;liveClearTimers();LIVE.userSpeaking=false;LIVE.overlap=null;LIVE.pending=null;LIVE.audioStartedAt=0;LIVE.responseActive=false;
  const dc=LIVE.dc,pc=LIVE.pc;LIVE.dc=null;LIVE.pc=null;
  try{if(dc)dc.close();}catch(e){}try{if(pc)pc.close();}catch(e){}
