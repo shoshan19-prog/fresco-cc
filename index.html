@@ -80,7 +80,7 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .brand span{display:block;font-size:11.5px;color:var(--dim);letter-spacing:.3px}
 #when{text-align:center;font-variant-numeric:tabular-nums;line-height:1.15;min-width:0}
 #when .d{font-size:11.5px;color:var(--dim);white-space:nowrap}
-#when .t{font-size:19px;font-weight:600;letter-spacing:-.3px}
+#when .t{font-size:19px;font-weight:600;letter-spacing:-.3px;white-space:nowrap}
 .tools{display:flex;align-items:center;gap:2px}
 .tools button,.tools a{width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--dim);position:relative}
 .tools button.on{color:var(--acc);background:var(--accSoft)}
@@ -216,6 +216,33 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .stline.warn .dot{background:var(--warn)}.stline.warn .lbl{color:var(--warn);font-weight:600}
 .chatLink{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(150deg,var(--acc),var(--acc2));color:#fff;border-radius:12px;padding:11px 18px;font-weight:600;margin-top:4px}
 
+/* THE DAILY SCREEN — FRESCO EXECUTIVE OS (David, 2.10): five answers, nothing else in the first view.
+   Every number comes from a production record at load time; a missing source is said, never filled. */
+#exec{display:flex;flex-direction:column;gap:7px}
+.xi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px 13px;display:grid;grid-template-columns:26px 1fr;
+ column-gap:10px;row-gap:1px;text-align:start;width:100%;color:var(--txt)}
+.xi .xn{grid-column:1;grid-row:1/span 9;width:24px;height:24px;border-radius:50%;background:var(--accSoft);color:var(--acc);font-weight:700;font-size:12.5px;
+ display:flex;align-items:center;justify-content:center;margin-top:1px}
+.xi .xk,.xi .xv,.xi .xs{grid-column:2;min-width:0}
+.xi .xk{font-size:12px;color:var(--dim);font-weight:600;letter-spacing:.1px}
+.xi .xv{font-size:16.5px;font-weight:700;line-height:1.3}
+.xi .xs{font-size:13px;color:var(--dim);line-height:1.4}
+.xi .xs b{color:var(--txt);font-weight:600}
+.xi.warn{border-inline-start:3px solid var(--warn)}.xi.warn .xn{background:#fdf3e3;color:var(--warn)}
+.xi.ok .xn{background:#eaf7ee;color:var(--ok)}
+.xi.wait .xv{color:var(--dim);font-weight:600}
+.xi[data-x="needs"] .xs{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-height:740px){#exec{gap:5px}.xi{padding:7px 11px}.xi .xv{font-size:15px}.xi .xs{font-size:12.5px;line-height:1.35}
+ main{padding-top:8px}#drillBtn{min-height:36px}}
+@media(max-height:700px){#topbar{padding-top:calc(4px + env(safe-area-inset-top));padding-bottom:4px}
+ #bottom a{min-height:46px;padding:4px 4px 3px}.xi[data-x="needs"] .xs{display:none}.xi[data-x="needs"] .xs:last-child{display:block}}
+button.xi{cursor:pointer}
+#drillBtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:42px;border-radius:12px;background:var(--card2);
+ border:1px solid var(--line);color:var(--dim);font-size:14px;font-weight:600;margin-top:2px}
+#drillBtn.on{color:var(--acc)}
+#drill[hidden]{display:none}
+#domains.off{display:none}
+
 /* bottom nav: Chat · Command Center · History · Settings — nothing else */
 #bottom{position:fixed;inset-inline:0;bottom:0;background:var(--bg2);border-top:1px solid var(--line);z-index:10;
  padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
@@ -256,7 +283,7 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 </header>
 <div id="search"><input id="q" type="search" placeholder="חיפוש בעבודה הפעילה…" aria-label="חיפוש"></div>
 <nav id="domains" aria-label="תחומים"></nav>
-<main id="m" data-lia-change="c95722c2"></main>
+<main id="m" data-lia-change="c95722c2"><section id="exec" aria-label="המסך היומי" data-lia-change="47d7d786"></section><div id="drill" hidden></div></main>
 <nav id="bottom" aria-label="ניווט"><div class="in" id="bottomIn"></div></nav>
 </div>
 
@@ -268,7 +295,7 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-09-28.3';
+var CC_BUILD='2026-10-02.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -497,9 +524,147 @@ function summarize(alive,closed,extraNeeds,now){
 }
 /* CC_STATE_END */
 
+/* ── THE DAILY SCREEN — FRESCO EXECUTIVE OS (David, 2.10) ─────────────────────
+   "בתוך 5 שניות דוד רואה רק: איפה אנחנו מול היעד · מה השתנה מאז אתמול · איפה
+   נמצא הכסף הבא · מה בסיכון · מה באמת דורש את דוד. כל השאר secondary /
+   drill-down." Pure derivation over what production returned at load time —
+   the canonical snapshot engine (fresco_snapshot: Priority CINVOICES · ORDERS ·
+   DOCUMENTS_D), the WORK rows, the open recommendations and the open alerts.
+   A source that holds nothing is said in words; nothing is filled in.
+   THE TARGET (David, 2.10): the number defined in a source of truth, shown by
+   name with the position and the gap — or, when none is defined, "לא הוגדר
+   יעד". Measured 2.10: no source the system reads holds one (Fresco OS and the
+   decisions log hold none; Priority has SALESTARGETS, closed to the API user).
+   (test-command-center.mjs drives everything between CC_EXEC_BEGIN and CC_EXEC_END.) */
+/* CC_EXEC_BEGIN */
+var EXEC_TARGET=null;   /* {name,value,source} the day a source of truth holds one — never chosen here */
+function money(n){
+  if(n==null||!isFinite(n))return '—';
+  var a=Math.abs(n);
+  if(a>=1e6)return '₪'+(n/1e6).toLocaleString('he-IL',{maximumFractionDigits:2})+'M';
+  if(a>=1e4)return '₪'+Math.round(n/1e3).toLocaleString('he-IL')+'K';
+  return '₪'+Math.round(n).toLocaleString('he-IL');
+}
+function plural(n,one,many){return n===1?one:(n+' '+many);}
+function cleanTitle(t){return String(t||'').replace(/^\s*>\s*/,'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim();}
+/* subs are HTML: only this file's own <b> ever survives — every string from a record is escaped here */
+function xesc(t){return String(t==null?'':t).replace(/[<>&"]/g,function(c){return c==='<'?'&lt;':c==='>'?'&gt;':c==='&'?'&amp;':'&quot;';});}
+function execModel(src,nowMs){
+  var sn=src&&src.snap,alive=src&&src.alive,appr=src&&src.appr,alerts=src&&src.alerts;
+  var out=[];
+  /* 1 · מול היעד */
+  if(!sn)out.push({k:'target',n:1,label:'מול היעד',head:'טוען…',subs:[],tone:'wait',ready:false});
+  else{
+    var ytd=sn.ytd,yr=(sn.windows&&sn.windows.year)||new Date(nowMs).getFullYear();
+    if(EXEC_TARGET&&isFinite(EXEC_TARGET.value)&&ytd){
+      var gap=EXEC_TARGET.value-ytd.net;
+      out.push({k:'target',n:1,label:'מול היעד',head:'יעד: '+money(EXEC_TARGET.value)+' ('+EXEC_TARGET.name+')',
+        subs:['הושג: '+money(ytd.net)+' · פער: '+money(gap)+' ('+Math.round(gap/EXEC_TARGET.value*100)+'%)','מקור: '+xesc(EXEC_TARGET.source)],tone:gap>0?'warn':'ok',ready:true});
+    }else{
+      out.push({k:'target',n:1,label:'מול היעד',head:'לא הוגדר יעד',
+        subs:[ytd?('הושג מתחילת '+yr+': <b>'+money(ytd.net)+'</b> לפני מע״מ'):'אין נתון מכירות מתחילת השנה',
+              'מסך היעדים של פריוריטי (SALESTARGETS) סגור לממשק'],tone:'',ready:true});
+    }
+  }
+  /* 2 · מה השתנה מאז אתמול — today's movement, as of the snapshot's own moment */
+  if(!sn)out.push({k:'changed',n:2,label:'מה השתנה מאז אתמול',head:'טוען…',subs:[],tone:'wait',ready:false});
+  else{
+    var ot=(sn.orders&&sn.orders.today)||{count:0,net:0},it=(sn.invoices&&sn.invoices.today)||{count:0,net:0};
+    var head=ot.count?('היום: '+plural(ot.count,'הזמנה חדשה אחת','הזמנות חדשות')+' · '+money(ot.net)):'אין הזמנות חדשות היום';
+    var sub=it.count?('חשבוניות היום: '+it.count+' · '+money(it.net)):'לא הופקו חשבוניות היום';
+    out.push({k:'changed',n:2,label:'מה השתנה מאז אתמול',head:head,subs:[sub+' · לפני מע״מ'],tone:'',ready:true,asof:src.snapAt||''});
+  }
+  /* 3 · איפה נמצא הכסף הבא — billable now first, then what is ordered and not yet delivered */
+  if(!sn)out.push({k:'money',n:3,label:'איפה נמצא הכסף הבא',head:'טוען…',subs:[],tone:'wait',ready:false});
+  else{
+    var ub=sn.unbilled,oo=sn.open_orders,subs3=[];
+    var head3;
+    if(ub&&ub.count){head3=ub.count+' תעודות משלוח לחיוב · '+money(ub.net);
+      subs3.push('לפני מע״מ · הוותיקה מחכה '+((ub.age&&ub.age.max_days)||0)+' ימים');}
+    else head3=ub?'אין תעודות משלוח שממתינות לחיוב':'תעודות משלוח: אין נתון';
+    if(oo)subs3.push('הזמנות פתוחות לאספקה: <b>'+money(oo.open_value)+'</b> ('+oo.count+')');
+    out.push({k:'money',n:3,label:'איפה נמצא הכסף הבא',head:head3,subs:subs3,tone:'',ready:true});
+  }
+  /* 4 · מה בסיכון — only what a record shows */
+  if(!sn)out.push({k:'risk',n:4,label:'מה בסיכון',head:'טוען…',subs:[],tone:'wait',ready:false});
+  else{
+    var risks=[],riskSub='';
+    if(sn.ytd&&sn.ly_ytd&&sn.ly_ytd.net>0&&sn.ytd.net<sn.ly_ytd.net){
+      risks.push('מכירות מתחילת השנה: '+Math.round((1-sn.ytd.net/sn.ly_ytd.net)*1000)/10+'% פחות מאשתקד');
+      riskSub='באותה תקופה: '+money(sn.ytd.net)+' מול '+money(sn.ly_ytd.net);
+    }
+    if(sn.unbilled&&sn.unbilled.age&&sn.unbilled.age.over_30>0)risks.push(sn.unbilled.age.over_30+' תעודות משלוח ממתינות לחיוב מעל 30 יום');
+    (Array.isArray(sn.failures)?sn.failures:[]).forEach(function(f){risks.push('לא מאומת — '+String(f));});
+    var subs4=(riskSub?[xesc(riskSub)]:[]).concat(risks.slice(1).map(xesc)).slice(0,2);
+    out.push({k:'risk',n:4,label:'מה בסיכון',head:risks.length?risks[0]:'אין סיכון שמסומן בנתונים',subs:subs4,tone:risks.length?'warn':'ok',ready:true});
+  }
+  /* 5 · מה באמת דורש את דוד — exactly what is waiting on him: parked/approval WORK, open recommendations, open alerts */
+  if(!alive||!appr||!alerts)out.push({k:'needs',n:5,label:'מה באמת דורש אותך',head:'טוען…',subs:[],tone:'wait',ready:false});
+  else{
+    var items=[];
+    alive.forEach(function(r){if(!isTerminal(stateOf(r))&&deriveRow(r).needs)items.push({t:cleanTitle(r.objective||r.goal||r.work_id),id:r.work_id});});
+    appr.forEach(function(a){items.push({t:'המלצה לאישור: '+cleanTitle(a.claim)});});
+    alerts.forEach(function(al){if(al.state!=='resolved')items.push({t:'התראה: '+cleanTitle(al.title)});});
+    var n5=items.length;
+    var subs5=items.slice(0,2).map(function(x){return xesc(x.t.length>70?x.t.slice(0,69)+'…':x.t);});
+    if(n5>2)subs5.push('ועוד '+(n5-2));
+    out.push({k:'needs',n:5,label:'מה באמת דורש אותך',head:n5?(n5===1?'דבר אחד מחכה להכרעה שלך':n5+' דברים מחכים להכרעה שלך'):'שום דבר לא מחכה להכרעה שלך',
+      subs:subs5,tone:n5?'warn':'ok',ready:true,count:n5,ids:items.map(function(x){return x.id||'';}).filter(Boolean)});
+  }
+  return out;
+}
+/* CC_EXEC_END */
+
 /* ── state ───────────────────────────────────────────────────────────────── */
 var D={tower:null,alive:[],closed:[],at:0,att:{dept:{},proj:{}}};
 var VIEW='overview',Q='';
+var DRILL=false;
+/* the daily screen's own reads: four fast calls in parallel, none of them the tower (3–5 s measured 2.10) */
+var X={snap:null,snapAt:'',alive:null,appr:null,alerts:null,t0:0,readyMs:null,err:''};
+function cachedAtOf(r){var m=((r&&r.evidence)||[]).map(function(e){return /מהמטמון — חושב ב-(\S+)/.exec(String(e));}).filter(Boolean)[0];return m?m[1]:new Date().toISOString();}
+function takeSnap(x){var r=rowsOf(x)[0]||{};if(r.snapshot){X.snap=r.snapshot;X.snapAt=cachedAtOf(r);}renderExec();return r;}
+function loadExec(){
+  X.t0=Date.now();X.readyMs=null;
+  /* stale_ok: the last computed snapshot NOW, with its moment shown; a stale one is recomputed right after */
+  cap('fresco_snapshot',{stale_ok:true}).then(function(x){
+    var r=takeSnap(x);
+    var age=Date.now()-tms(X.snapAt),stale=!X.snap||age>10*60000||String(X.snap.today||'')!==new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Jerusalem'});
+    if(stale)return cap('fresco_snapshot',{}).then(takeSnap);
+  }).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
+  cap('work_status').then(function(x){X.alive=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
+  api({action:'state'}).then(function(st){X.appr=(st&&Array.isArray(st.approvals))?st.approvals:[];renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
+  cap('alerts').then(function(x){X.alerts=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
+}
+function renderExec(){
+  var el=B('#exec');if(!el)return;
+  if(VIEW!=='overview'){el.hidden=true;return;}
+  el.hidden=false;
+  var m=execModel(X,Date.now());
+  var all=m.every(function(x){return x.ready;});
+  if(all&&X.readyMs==null){X.readyMs=Date.now()-X.t0;el.setAttribute('data-ready-ms',String(X.readyMs));}
+  el.setAttribute('data-ready',all?'1':'0');
+  var asof=X.snapAt?new Date(tms(X.snapAt)).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}):'';
+  el.innerHTML=m.map(function(x){
+    var tag=x.k==='needs'&&x.count?'button':'div';
+    return '<'+tag+' class="xi '+(x.tone||'')+'" data-x="'+x.k+'"'+(tag==='button'?' type="button" id="xNeeds"':'')+'>'
+      +'<span class="xn" aria-hidden="true">'+x.n+'</span>'
+      +'<div class="xk">'+esc(x.label)+(x.k==='changed'&&asof?' · נכון ל-'+esc(asof):'')+'</div>'
+      +'<div class="xv">'+esc(x.head)+'</div>'
+      +x.subs.map(function(t){return '<div class="xs">'+t+'</div>';}).join('')
+      +'</'+tag+'>';
+  }).join('')
+  +(X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
+  +'<button id="drillBtn" type="button" class="'+(DRILL?'on':'')+'" aria-expanded="'+DRILL+'" aria-controls="drill">'+(DRILL?'הסתר את השאר':'כל השאר · פירוט')+'</button>';
+  B('#drillBtn').onclick=function(){setDrill(!DRILL,true);};
+  var xn=B('#xNeeds');if(xn)xn.onclick=function(){setDrill(true,false);var t=document.getElementById('needs');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};
+}
+function setDrill(on,scroll){
+  DRILL=!!on;
+  B('#drill').hidden=!DRILL&&VIEW==='overview';
+  B('#domains').classList.toggle('off',!DRILL&&VIEW==='overview');
+  renderExec();
+  if(DRILL&&scroll){var d=B('#drill');if(d)d.scrollIntoView({behavior:'smooth',block:'start'});}
+}
 var SETUP=false;
 
 api({action:'status'},false).then(function(s){
@@ -524,13 +689,14 @@ function fetchAll(){
   });
 }
 function load(){
-  B('#login').innerHTML='<p class="dim" style="text-align:center;margin-top:60px">טוען…</p>';
+  /* the daily screen opens at once and fills from its four fast reads; the tower (3–5 s) feeds the drill-down behind it */
+  B('#login').style.display='none';B('#app').classList.add('on');
+  renderNav();setDrill(VIEW!=='overview',false);tickClock();loadExec();
   return fetchAll().then(function(){
-    B('#login').style.display='none';B('#app').classList.add('on');
-    renderNav();render();tickClock();
+    render();
     if(!window._ccClock)window._ccClock=setInterval(tickClock,30000);
-    if(!window._ccPoll)window._ccPoll=setInterval(function(){if(!code())return;fetchAll().then(render).catch(function(){});},60000);
-  }).catch(function(e){B('#login').innerHTML='<p class="dim" style="text-align:center;margin-top:60px">לא הצלחתי להגיע לשרת: '+esc(e.message)+'</p>';});
+    if(!window._ccPoll)window._ccPoll=setInterval(function(){if(!code())return;fetchAll().then(render).catch(function(){});loadExec();},60000);
+  }).catch(function(e){B('#drill').innerHTML='<p class="dim" style="text-align:center;margin-top:24px">לא הצלחתי להגיע לשרת: '+esc(e.message)+'</p>';});
 }
 function tickClock(){
   var n=new Date();
@@ -552,7 +718,7 @@ function renderNav(){
   B('#searchBtn').onclick=function(){var s=B('#search');s.classList.toggle('on');B('#searchBtn').classList.toggle('on',s.classList.contains('on'));
     if(s.classList.contains('on'))B('#q').focus();else{Q='';B('#q').value='';render();}};
   B('#q').oninput=function(){Q=B('#q').value.trim();render();};
-  B('#bellBtn').onclick=function(){var t=document.getElementById('needs');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};
+  B('#bellBtn').onclick=function(){setDrill(true,false);var t=document.getElementById('needs');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};
   B('#back').onclick=closeDetail;
   window.addEventListener('hashchange',function(){var v=viewFromHash();if(v!==VIEW)setView(v,true);});
   var v0=viewFromHash();if(v0!==VIEW){VIEW=v0;}
@@ -562,7 +728,7 @@ function setView(v,fromHash){
   VIEW=v;
   if(!fromHash){var h=v==='overview'?'':'#'+v;if((location.hash||'')!==h){try{history.replaceState(null,'',location.pathname+h);}catch(e){}}}
   Array.prototype.forEach.call(B('#domains').querySelectorAll('button'),function(b){var on=b.getAttribute('data-v')===v;b.className=on?'on':'';b.setAttribute('aria-pressed',on);});
-  window.scrollTo(0,0);render();
+  window.scrollTo(0,0);setDrill(v!=='overview'||DRILL,false);render();
 }
 
 /* ── render ──────────────────────────────────────────────────────────────── */
@@ -656,7 +822,7 @@ function render(){
   else h+=closed.slice(0,12).map(function(r){return doneRow(r,now);}).join('');
 
   h+='<p class="foot">עודכן '+esc(new Date(D.at).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}))+' · מהמצב השמור, לא מהשיחה · build '+CC_BUILD+'</p>';
-  B('#m').innerHTML=h;
+  B('#drill').innerHTML=h;
 
   Array.prototype.forEach.call(B('#m').querySelectorAll('[data-open]'),function(b){b.onclick=function(){openDetail(b.getAttribute('data-open'));};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.btns button[data-a]'),function(b){b.onclick=function(){decide(b.getAttribute('data-a'),Number(b.getAttribute('data-i')),b);};});
