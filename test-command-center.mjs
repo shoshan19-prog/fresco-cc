@@ -190,5 +190,58 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('the old dark tower is gone', !/#101214|#C8102E|מגדל הבקרה/.test(html));
 }
 
+// ── THE DAILY SCREEN — FRESCO EXECUTIVE OS (David, 2.10) ────────────────────
+// Five answers in the first view, every one from a record; a missing source said in words.
+{
+  const E = new Function(slice('var DOMAINS=', '/* CC_EXEC_END */')
+    + '\nreturn {execModel,money,setTarget:function(t){EXEC_TARGET=t;}};')();
+  const SNAP = { today: '2026-10-02', windows: { year: 2026 }, invoices: { today: { count: 0, net: 0 }, mtd: { count: 2, net: 21870 } },
+    orders: { today: { count: 3, net: 41200 } }, unbilled: { count: 13, net: 70020, gross: 82623.6, age: { max_days: 8, over_30: 0 } },
+    open_orders: { count: 24, open_value: 788997.92 }, ytd: { count: 1559, net: 8355709.96 }, ly_ytd: { count: 1852, net: 9351560.86 },
+    failures: ['חייבים: אין KPI מאומת ≤24 שעות'] };
+  const W = (o) => Object.assign({ work_id: 'w', status: 'QUEUED', state: 'QUEUED', objective: 'x' }, o);
+  const full = { snap: SNAP, snapAt: '2026-10-02T15:50:18.443Z',
+    alive: [W({ work_id: 'a', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION', objective: '> ארגני מחדש את המסך' }),
+            W({ work_id: 'b', status: 'WAITING_APPROVAL', state: 'WAITING_APPROVAL', objective: 'טיוטת מייל' }),
+            W({ work_id: 'c', status: 'RUNNING', state: 'RUNNING', objective: 'רץ' }),
+            W({ work_id: 'd', status: 'DONE', state: 'DONE', parked_for_david: true, objective: 'סגור' })],
+    appr: [{ claim: 'לפרסם את עמוד הפרויקט' }], alerts: [{ title: 'חבילה חסומה', state: 'unread' }, { title: 'נפתרה', state: 'resolved' }] };
+  const m = E.execModel(full, Date.parse('2026-10-02T16:00:00Z'));
+  eq('the daily screen is exactly five answers, in David\'s order', m.map((x) => x.n + x.k).join(','), '1target,2changed,3money,4risk,5needs');
+  ok('all five are ready once the four reads are in', m.every((x) => x.ready));
+  // 1 — the target: shown from a source of truth, or "לא הוגדר יעד" — never chosen
+  eq('1: no target in any source the system reads → "לא הוגדר יעד"', m[0].head, 'לא הוגדר יעד');
+  ok('1: what exists is shown beside it — the year so far, before VAT — and why Priority\'s target is not seen', /הושג מתחילת 2026: <b>₪8\.36M<\/b>/.test(m[0].subs[0]) && /SALESTARGETS/.test(m[0].subs[1]), JSON.stringify(m[0].subs));
+  E.setTarget({ name: 'יעד מכירות 2026', value: 12000000, source: 'priority:SALESTARGETS' });
+  const t = E.execModel(full, Date.parse('2026-10-02T16:00:00Z'))[0];
+  ok('1: a target from a source of truth is shown by name and number, with the position and the gap', /יעד: ₪12M \(יעד מכירות 2026\)/.test(t.head) && /הושג: ₪8\.36M · פער: ₪3\.64M \(30%\)/.test(t.subs[0]) && /priority:SALESTARGETS/.test(t.subs[1]), JSON.stringify(t));
+  E.setTarget(null);
+  // 2 — since yesterday: today's movement from the snapshot, as of its own moment
+  ok('2: today\'s new orders lead, invoices follow, before VAT', m[1].head === 'היום: 3 הזמנות חדשות · ₪41K' && /לא הופקו חשבוניות היום · לפני מע״מ/.test(m[1].subs[0]), JSON.stringify(m[1]));
+  // 3 — the next money: billable now first
+  ok('3: delivery notes ready to invoice first, then open orders', m[2].head === '13 תעודות משלוח לחיוב · ₪70K' && /הזמנות פתוחות לאספקה: <b>₪789K<\/b> \(24\)/.test(m[2].subs[1]), JSON.stringify(m[2]));
+  // 4 — at risk: only what a record shows
+  ok('4: the year-so-far decline against last year, from the two records', m[3].head === 'מכירות מתחילת השנה: 10.6% פחות מאשתקד' && /₪8\.36M מול ₪9\.35M/.test(m[3].subs[0]) && m[3].tone === 'warn', JSON.stringify(m[3]));
+  ok('4: an unverified number is a risk, said as unverified', m[3].subs.some((x) => /לא מאומת — חייבים/.test(x)), JSON.stringify(m[3].subs));
+  const calm = E.execModel(Object.assign({}, full, { snap: Object.assign({}, SNAP, { ly_ytd: { net: 1 }, failures: [] }) }), 0)[3];
+  ok('4: no risk in the records → it says so, never invents one', calm.head === 'אין סיכון שמסומן בנתונים' && calm.tone === 'ok', JSON.stringify(calm));
+  const inj = E.execModel(Object.assign({}, full, { snap: Object.assign({}, SNAP, { failures: ['<img src=x onerror=alert(1)>'] }) }), 0)[3];
+  ok('4: text from a record is escaped', inj.subs.every((x) => !/<img/.test(x)) && inj.subs.some((x) => /&lt;img/.test(x)), JSON.stringify(inj.subs));
+  // 5 — exactly what waits on David: parked/approval WORK + open recommendations + open alerts
+  eq('5: two waiting packages + one recommendation + one open alert = 4 (a closed package and a resolved alert are not)', m[4].count, 4);
+  ok('5: the first two are named, the rest counted', m[4].head === '4 דברים מחכים להכרעה שלך' && m[4].subs.length === 3 && m[4].subs[2] === 'ועוד 2' && /^ארגני מחדש/.test(m[4].subs[0]), JSON.stringify(m[4]));
+  const none = E.execModel(Object.assign({}, full, { alive: [], appr: [], alerts: [] }), 0)[4];
+  ok('5: nothing waiting → it says so', none.head === 'שום דבר לא מחכה להכרעה שלך' && none.tone === 'ok');
+  const loading = E.execModel({ snap: null, alive: null, appr: null, alerts: null }, 0);
+  ok('before the reads land every item says it is loading — no number before its record', loading.every((x) => !x.ready && x.head === 'טוען…'));
+  // the screen's own wiring
+  ok('the daily screen is the first thing in main; the rest is the drill-down, hidden until asked', /<main id="m"[^>]*><section id="exec"[^>]*><\/section><div id="drill" hidden><\/div><\/main>/.test(html));
+  ok('the daily screen\'s reads are four fast calls — none of them the tower', (() => { const f = slice('function loadExec(){', '\nfunction renderExec('); return /fresco_snapshot',\{stale_ok:true\}/.test(f) && /cap\('work_status'\)/.test(f) && /action:'state'/.test(f) && /cap\('alerts'\)/.test(f) && !/tower/.test(f); })());
+  ok('the app opens on the daily screen at once — the tower feeds the drill-down behind it', /B\('#app'\)\.classList\.add\('on'\);\s*renderNav\(\);setDrill\(VIEW!=='overview',false\);tickClock\(\);loadExec\(\);\s*return fetchAll\(\)/.test(src));
+  ok('the old view renders into the drill-down, unchanged', /B\('#drill'\)\.innerHTML=h;/.test(src) && !/B\('#m'\)\.innerHTML=h;/.test(src));
+  ok('the domain nav is part of the drill-down on the overview', /#domains\.off\{display:none\}/.test(css) && /B\('#domains'\)\.classList\.toggle\('off',!DRILL&&VIEW==='overview'\)/.test(src));
+  ok('the screen states when it was ready (verifiable in production)', /data-ready-ms/.test(src));
+}
+
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);
