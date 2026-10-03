@@ -750,7 +750,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-03.3';
+const LIA_BUILD='2026-10-03.4';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1747,7 +1747,10 @@ async function showTask(id){
   w.progress&&w.progress.text?('התקדמות: '+w.progress.text):'',
   w.waiting_on?('ממתין ל: '+w.waiting_on):'',
   w.blocker?('חסם: '+w.blocker):''].filter(Boolean);
- showAnswer(said((w.objective||'משימה')+'\n'+lines.join('\n'),[],[],[]));}
+ /* THE PRODUCT ITSELF (3.10): a background run's deliverable (a weekly briefing, a plan) is what David opened the notice
+    to read — the server hands it here from storage (work_status .report); the status lines stay above it */
+ const rep=w.report&&w.report.text?String(w.report.text):'';
+ showAnswer(said((w.objective||'משימה')+'\n'+lines.join('\n')+(rep?'\n\n'+rep:''),[],[],[]));}
 
 /* Opened FROM a push: say so on the ledger (push_opened) — the only proof that
    a knock reached this device and led back to the right task. A digest knock
