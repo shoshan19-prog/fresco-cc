@@ -1,5 +1,13 @@
 <!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>LIA</title>
+<script id="vpAndroid">/* THE BOTTOM BAR HID THE COMPOSER (David, 3.10, screenshot: Android, installed app, the three-button bar drawn
+   over the box with the mic, the headphones and the clip — and minutes later it was back, nothing deployed). With
+   viewport-fit=cover Chrome on Android draws the page UNDER the system bars and leaves it to env(safe-area-inset-*),
+   which it does not always report: when it reports 0 the bottom 50px of the page — the whole composer — sit under
+   the bar. On Android the page now asks for the safe area itself: Chrome keeps it between the status bar and the
+   navigation bar and no inset has to be right. iPhone keeps cover (its notch needs it and its insets are reported). */
+(function(){try{if(/Android/i.test(navigator.userAgent)){var m=document.querySelector('meta[name=viewport]');
+ if(m)m.setAttribute('content','width=device-width,initial-scale=1');}}catch(e){}})();</script>
 <link rel="manifest" href="lia.webmanifest">
 <link rel="icon" type="image/png" href="lia-icon-192.png">
 <link rel="apple-touch-icon" href="lia-icon-180.png">
@@ -534,7 +542,7 @@ button#live.wait{opacity:.6}
  #thread{padding:6px 12px 8px;gap:14px}
  .hero{padding-top:14px}
  /* the bottom: one slim input, its buttons sized to the row, no dead lines */
- #composer{padding:4px 12px calc(6px + env(safe-area-inset-bottom))}
+ #composer{padding:4px 12px calc(6px + max(env(safe-area-inset-bottom,0px),env(safe-area-max-inset-bottom,0px)))}
  #composer .line{gap:4px;border-radius:22px;padding:3px 3px 3px 8px}
  #composer #note{padding:8px 10px;max-height:28vh}
  #composer .line button{width:36px;height:36px;font-size:16px}
@@ -731,7 +739,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-01.2';
+const LIA_BUILD='2026-10-03.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1463,6 +1471,30 @@ function pushLog(stage,extra){
    permission:(typeof Notification!=='undefined'&&Notification&&Notification.permission)||'none'},extra||{});
   if(CODE)cap('push_register_log',o).catch(function(){});
  }catch(e){}}
+/* WHERE THE COMPOSER IS, MEASURED ON THE DEVICE (3.10). The emulator never reproduced the hidden composer — only
+   David's phone did. Each open (and up to three resizes) leaves one row on the same trail as the push log: the
+   viewport, the screen, the insets the browser reports, and where the input row actually sits. Read-only. */
+let LAYOUT_LOGS=0;
+function layoutLog(stage){
+ try{
+  if(SURFACE!=='phone'||LAYOUT_LOGS>=4)return;LAYOUT_LOGS++;
+  const px=(prop)=>{const d=document.createElement('div');d.style.cssText='position:fixed;visibility:hidden;'+prop;
+   document.body.appendChild(d);const v=parseFloat(getComputedStyle(d).paddingBottom||getComputedStyle(d).paddingTop)||0;d.remove();return Math.round(v);};
+  const sab=px('padding-bottom:env(safe-area-inset-bottom,0px)'),sat=px('padding-top:env(safe-area-inset-top,0px)');
+  const line=document.querySelector('#composer .line');const r=line?line.getBoundingClientRect():null;
+  const vv=window.visualViewport;const vh=Math.round(vv?vv.height:innerHeight);
+  const m=document.querySelector('meta[name=viewport]');
+  const hit=r?document.elementFromPoint(Math.round(r.left+r.width/2),Math.round(Math.min(r.top+r.height/2,innerHeight-1))):null;
+  const inView=!!r&&r.height>0&&r.bottom<=vh+1;
+  /* the server keeps 200 characters of detail — every field is short on purpose */
+  pushLog('layout',{ok:inView,detail:'s='+stage+' b='+LIA_BUILD+' vp='+(m&&/cover/.test(m.content)?'cover':'safe')+' win='+innerWidth+'x'+innerHeight
+   +' vv='+(vv?Math.round(vv.width)+'x'+vh:'-')+' scr='+screen.width+'x'+screen.height+' d='+Math.round((window.devicePixelRatio||1)*100)/100
+   +' sa='+sat+'/'+sab+' line='+(r?Math.round(r.top)+'-'+Math.round(r.bottom):'-')+' in='+(inView?1:0)
+   +' hit='+String(hit?(hit.id||hit.className||hit.tagName):'-').slice(0,12)});
+ }catch(e){}}
+(function(){try{let t=null;
+ window.addEventListener('load',()=>setTimeout(()=>layoutLog('open'),1500));
+ window.addEventListener('resize',()=>{clearTimeout(t);t=setTimeout(()=>layoutLog('resize'),900);});}catch(e){}})();
 /* navigator.serviceWorker.ready never rejects: on a page the worker does not
    control it simply never resolves, and the registration hung there with
    nothing to show. Race it against the registration's own worker, bounded. */
