@@ -7,7 +7,18 @@
    the bar. On Android the page now asks for the safe area itself: Chrome keeps it between the status bar and the
    navigation bar and no inset has to be right. iPhone keeps cover (its notch needs it and its insets are reported). */
 (function(){try{if(/Android/i.test(navigator.userAgent)){var m=document.querySelector('meta[name=viewport]');
- if(m)m.setAttribute('content','width=device-width,initial-scale=1');}}catch(e){}})();</script>
+ if(m)m.setAttribute('content','width=device-width,initial-scale=1');}}catch(e){}})();
+/* THE PAGE IS AS TALL AS THE WINDOW, NOT AS THE CSS UNIT SAYS (measured on David's phone, 3.10, build 2026-10-03.2):
+   at open the window was 750px tall (innerHeight) while 100dvh laid the page out ~56px taller — the composer's input
+   row sat at 751-800, under the button bar — and only the next resize (the keyboard) corrected it to 695-744. On
+   Android the page height now follows window.innerHeight from the first frame and on every resize, return or
+   rotation; the keyboard does not change innerHeight (visual-viewport resize), so typing behaves as before. */
+(function(){try{if(!/Android/i.test(navigator.userAgent))return;var de=document.documentElement;
+ var fit=function(){var h=window.innerHeight;if(h>200)de.style.setProperty('--app-h',h+'px');};
+ fit();['resize','orientationchange','pageshow','load'].forEach(function(e){window.addEventListener(e,fit);});
+ document.addEventListener('visibilitychange',function(){if(!document.hidden){fit();setTimeout(fit,300);}});
+ document.addEventListener('DOMContentLoaded',fit);[250,1000,3000].forEach(function(t){setTimeout(fit,t);});
+}catch(e){}})();</script>
 <link rel="manifest" href="lia.webmanifest">
 <link rel="icon" type="image/png" href="lia-icon-192.png">
 <link rel="apple-touch-icon" href="lia-icon-180.png">
@@ -39,7 +50,7 @@
 html,body{height:100%}
 body{background:var(--bg);color:var(--txt);
  font:16px/1.6 system-ui,'Segoe UI',Arial,sans-serif;margin:0;width:100%;
- display:flex;flex-direction:column;height:100dvh;overflow:hidden;
+ display:flex;flex-direction:column;height:var(--app-h,100dvh);overflow:hidden;
  -webkit-tap-highlight-color:transparent}
 h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:var(--txt)}
 .dim{color:var(--dim);font-size:13px}
@@ -739,7 +750,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-03.2';
+const LIA_BUILD='2026-10-03.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1482,14 +1493,17 @@ function layoutLog(stage){
    document.body.appendChild(d);const v=parseFloat(getComputedStyle(d).paddingBottom||getComputedStyle(d).paddingTop)||0;d.remove();return Math.round(v);};
   const sab=px('padding-bottom:env(safe-area-inset-bottom,0px)'),sat=px('padding-top:env(safe-area-inset-top,0px)');
   const line=document.querySelector('#composer .line');const r=line?line.getBoundingClientRect():null;
-  const vv=window.visualViewport;const vh=Math.round(vv?vv.height:innerHeight);
+  const vv=window.visualViewport;const vh=Math.round(vv?vv.height:innerHeight);const ot=Math.round(vv?vv.offsetTop:0);
+  const dv=(()=>{const d=document.createElement('div');d.style.cssText='position:fixed;visibility:hidden;height:100dvh;width:1px;top:0';
+   document.body.appendChild(d);const h=Math.round(d.getBoundingClientRect().height);d.remove();return h;})();
+  const ah=Math.round(document.body.getBoundingClientRect().height);
   const m=document.querySelector('meta[name=viewport]');
   const hit=r?document.elementFromPoint(Math.round(r.left+r.width/2),Math.round(Math.min(r.top+r.height/2,innerHeight-1))):null;
-  const inView=!!r&&r.height>0&&r.bottom<=vh+1;
+  const inView=!!r&&r.height>0&&r.bottom<=ot+vh+1;
   /* the server keeps 200 characters of detail — every field is short on purpose */
   pushLog('layout',{ok:inView,detail:'s='+stage+' b='+LIA_BUILD+' vp='+(m&&/cover/.test(m.content)?'cover':'safe')+' win='+innerWidth+'x'+innerHeight
    +' vv='+(vv?Math.round(vv.width)+'x'+vh:'-')+' scr='+screen.width+'x'+screen.height+' d='+Math.round((window.devicePixelRatio||1)*100)/100
-   +' sa='+sat+'/'+sab+' line='+(r?Math.round(r.top)+'-'+Math.round(r.bottom):'-')+' in='+(inView?1:0)
+   +' ot='+ot+' dvh='+dv+' body='+ah+' sa='+sat+'/'+sab+' line='+(r?Math.round(r.top)+'-'+Math.round(r.bottom):'-')+' in='+(inView?1:0)
    +' hit='+String(hit?(hit.id||hit.className||hit.tagName):'-').slice(0,12)});
  }catch(e){}}
 /* measured once the app is on screen: the open row used to fire 1.5 s after load, before boot had shown the app on a
