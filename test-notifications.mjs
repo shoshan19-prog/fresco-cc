@@ -216,6 +216,21 @@ function panel(opts = {}) {
 }
 
 {
+  /* 3.10 — the background runner: the notice says the briefing is ready; the tap must show the briefing itself */
+  const report = 'תקינה ורגולציה\nעובדה: עודכן תקן ישראלי 755 לבדיקת עמידות אש (מקור: מכון התקנים).\nמהלכי יצרנים\nלא נמצא השבוע.';
+  const p = panel({ cap: async (name) => (name === 'work_status'
+    ? { rows: [{ work_id: 'w7', objective: 'תדריך שבועי', status_line: 'בתור · ההרצה המתוזמנת הבאה', outcome: 'תקינה ורגולציה', report: { text: report, run_no: 1 } }] }
+    : { rows: [] }) });
+  await p.api.showTask('w7');
+  ok('a stored product (the background runner\'s briefing) is shown in full under the status, not only its one-line notice',
+     p.answers[0].answer.includes('עודכן תקן ישראלי 755') && p.answers[0].answer.includes('לא נמצא השבוע')
+     && p.answers[0].answer.indexOf('בתור') < p.answers[0].answer.indexOf('עודכן תקן'), JSON.stringify(p.answers[0]));
+  const q = panel({ cap: async (name) => (name === 'work_status' ? { rows: [{ work_id: 'w8', objective: 'משימה', status_line: 'הושלמה' }] } : { rows: [] }) });
+  await q.api.showTask('w8');
+  ok('…and a package with no stored product looks exactly as before', q.answers[0].answer === 'משימה\nהושלמה', JSON.stringify(q.answers[0]));
+}
+
+{
   const p = panel({ cap: async (name) => (name === 'work_status' ? { rows: [] } : { rows: [] }) });
   await p.api.showTask('missing');
   ok('a task that is not there says so instead of showing a blank card',
