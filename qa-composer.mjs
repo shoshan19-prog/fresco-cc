@@ -27,8 +27,21 @@ for (const [tag, vp, ua, mob] of [['android', { width: 412, height: 839 }, AND, 
       pad: getComputedStyle(document.getElementById('composer')).paddingBottom }; });
   const lay = logs.filter((x) => x.stage === 'layout');
   console.log(tag, JSON.stringify(m), lay.length ? lay[0].detail : '(no layout log)');
-  if (tag === 'android') ok('android: viewport-fit=cover dropped', m.vp === 'width=device-width,initial-scale=1', m.vp);
-  else ok(tag + ': viewport keeps cover', /viewport-fit=cover/.test(m.vp), m.vp);
+  if (tag === 'android') {
+    ok('android: viewport-fit=cover dropped', m.vp === 'width=device-width,initial-scale=1', m.vp);
+    // the page is as tall as the window (David's phone, 3.10: 100dvh laid it out ~56px taller than innerHeight)
+    const h = await page.evaluate(() => ({ ah: getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim(), body: Math.round(document.body.getBoundingClientRect().height), H: innerHeight }));
+    ok('android: --app-h = innerHeight and the body takes it', h.ah === h.H + 'px' && h.body === h.H, JSON.stringify(h));
+    await page.setViewportSize({ width: 412, height: 700 }); await page.waitForTimeout(400);
+    const h2 = await page.evaluate(() => { const l = document.querySelector('#composer .line').getBoundingClientRect();
+      return { ah: getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim(), body: Math.round(document.body.getBoundingClientRect().height), H: innerHeight, bottom: Math.round(l.bottom) }; });
+    ok('android: a resize moves the page height and keeps the input row in the window', h2.ah === '700px' && h2.body === 700 && h2.bottom <= 700, JSON.stringify(h2));
+  }
+  else {
+    ok(tag + ': viewport keeps cover', /viewport-fit=cover/.test(m.vp), m.vp);
+    const ah = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim());
+    ok(tag + ': height stays 100dvh (no --app-h off Android)', ah === '', ah);
+  }
   ok(tag + ': input row inside the viewport', m.bottom <= m.H && m.top > m.H / 2, JSON.stringify(m));
   if (tag !== 'desktop') ok(tag + ': one layout row, in-view, ≤200 chars', lay.length === 1 && lay[0].ok === true && lay[0].detail.length <= 200, JSON.stringify(lay));
   else ok('desktop: no layout row', lay.length === 0, JSON.stringify(lay));
