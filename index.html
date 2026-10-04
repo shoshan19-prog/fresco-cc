@@ -295,7 +295,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-04.2';
+var CC_BUILD='2026-10-04.3';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -374,7 +374,7 @@ var DOMAINS=[
 /* CC_STATE_BEGIN */
 var STATE_HE={QUEUED:'בתור',RUNNING:'רץ',WAITING_INTERNAL:'ממתין — פנימי',WAITING_EXTERNAL:'ממתין לגורם חיצוני',
  WAITING_APPROVAL:'מחכה להכרעה שלך',DONE:'הושלם',FAILED:'נכשל',CANCELLED:'בוטל'};
-var DISP_HE={NEEDS_DAVID_DECISION:'חונה להכרעת דוד',PLANNER_NOT_CONVERGED:'חונה — התכנון לא התכנס'};
+var DISP_HE={NEEDS_DAVID_DECISION:'חונה להכרעת דוד',PLANNER_NOT_CONVERGED:'חונה — התכנון לא התכנס',AWAITING_LAUNCH:'ממתינה לאישור שלך לשיגור'};
 var LEGACY={RETRYING:'WAITING_INTERNAL',BLOCKED:'WAITING_INTERNAL',OPEN:'QUEUED',PENDING:'QUEUED',NEW:'QUEUED',PAUSED:'WAITING_INTERNAL',
  PARKED:'WAITING_INTERNAL',SUPERSEDED:'CANCELLED',DUPLICATE:'CANCELLED',STALE:'CANCELLED',FIXED:'DONE',COMPLETED:'DONE',CLOSED:'DONE'};
 function stateOf(r){
@@ -988,9 +988,22 @@ function openDetail(id){
 /* DAVID DECIDES HERE (4.10: "יש בקשות לעבודה … רק ממתינות"). A card that waits on him offers the decision it waits on —
    accept the product, send it back to work, or close it — instead of only a link to the chat. The server runs each one
    through the existing doors (verify · close · wake), under David's credential only, and answers with what the row now says. */
-var DEC_DONE={ACCEPT:'אושרה ונסגרה',RETRY:'הוחזרה לביצוע',REJECT:'נסגרה'};
+var DEC_DONE={ACCEPT:'אושרה ונסגרה',RETRY:'הוחזרה לביצוע',REJECT:'נסגרה',LAUNCH:'יצאה לדרך'};
 function decisionCard(r){
   if(!(r&&r.parked_for_david===true))return '';
+  /* 4.10 — CONFIRMED BEFORE IT LAUNCHES: a work order held for him shows what LIA understood, and launch / close */
+  if(String(r.disposition||'').toUpperCase()==='AWAITING_LAUNCH'){
+    var L=r.launch||{};var dw=(L.done_when||[]).filter(Boolean);
+    return '<div class="card" id="dec"><h3>לזה התכוונת?</h3>'
+      +'<p class="dim">העבודה עוד לא יצאה לדרך. זה מה שליה הבינה:</p>'
+      +'<div class="li">'+esc(L.understood||r.objective||'')+'</div>'
+      +(L.deliverable?'<p class="dim" style="margin-top:6px">התוצר: '+esc(L.deliverable)+'</p>':'')
+      +(dw.length?'<p class="dim">נדע שזה גמור כש: '+dw.map(esc).join(' · ')+'</p>':'')
+      +'<div class="btns"><button class="b-ok" data-dec="LAUNCH">שגרי — לזה התכוונתי</button>'
+      +'<button class="b-no" data-dec="REJECT">סגרי</button></div>'
+      +'<p class="dim" style="margin-top:6px">משהו לא מדויק? כתוב לליה בשיחה מה לתקן — היא תעדכן ותשאל שוב.</p>'
+      +'<div id="decRes" class="note" style="margin-top:8px"></div></div>';
+  }
   return '<div class="card" id="dec"><h3>ההכרעה שלך</h3>'
     +'<p class="dim">החבילה ממתינה לך. אפשר לקרוא את התוצר, ואז לאשר, להחזיר לביצוע או לסגור.</p>'
     +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">אשר — זה מה שביקשתי</button>'
@@ -1008,6 +1021,7 @@ function decideWork(r,dec,btn){
   var note='';
   if(dec==='REJECT'){note=prompt('למה לסגור? (לא חובה)','');if(note===null)return;}
   if(dec==='ACCEPT'&&!confirm('לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
+  if(dec==='LAUNCH'&&!confirm('לשגר את העבודה כפי שליה הבינה אותה?'))return;
   var all=B('#dec').querySelectorAll('button[data-dec]');for(var i=0;i<all.length;i++)all[i].disabled=true;
   var was=btn.textContent;btn.textContent='…';
   var out=B('#decRes');
