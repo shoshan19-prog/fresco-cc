@@ -35,7 +35,7 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom};')();
+  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom, livePreambles};')();
 const POL = P.LIVE_POLICY;
 
 ok('the one tool is deep_answer — LIA\'s own deeper processing; the old name is still accepted during the rollout', P.LIVE_TOOL === 'deep_answer' && P.LIVE_TOOLS.join(',') === 'deep_answer,ask_lia');
@@ -128,10 +128,28 @@ ok('outcome: nothing said yet = nothing to read', P.liveOutcome('', {}) === null
   ok('…seeding is bounded by recency (Phase A): an hour-old turn is not resurrected, a fresh one and an undated one are', aged.length === 2 && aged[0].item.content[0].text === 'טרי' && aged[1].item.content[0].text === 'בלי זמן');
   ok('the policy names the tool bound (doAsk\'s 150 s) and the seed window', POL.tool_timeout_ms === 150000 && POL.seed_window_ms === 1800000);
 }
+// ── ONE CONVERSATION (David, 4.10): the 🎧 session and the microphone road are one thread ──
+{
+  ok('4.10: the seed is as deep as the text road\'s history — four exchanges, eight turns', POL.seed_turns === 8);
+  const mixed = [{ role: 'me', text: 'מה מצב ההזמנות?' }, { role: 'lia', text: '⏳ חושבת על זה…', pending: true }, { role: 'lia', text: 'רגע, אני בודקת.', preamble: true }, { role: 'lia', text: 'שלוש הזמנות פתוחות' }];
+  const seed = P.liveSeedItems(mixed, 8);
+  ok('4.10: the seed skips what the text road\'s history skips — a pending bubble and a preamble are never seeded as something LIA said',
+    seed.length === 2 && seed[1].item.content[0].text === 'שלוש הזמנות פתוחות', JSON.stringify(seed.map((m) => m.item.content[0].text)));
+  const ask = { role: 'me', text: 'את יכולה לסכם לנו את השיחה שלנו?' };
+  const filler = { role: 'lia', text: 'רגע, אני בודקת.', live: true, res: null };
+  const earlier = { role: 'lia', text: 'שלוש הזמנות פתוחות', live: true, res: { answer: 'x' } };
+  const typed = { role: 'lia', text: 'תשובה מהמקלדת', res: null };
+  const before = { role: 'lia', text: 'היי, שלום!', live: true, res: null };
+  const turns = [before, ask, filler, earlier, typed];
+  const pre = P.livePreambles(turns, ask);
+  ok('4.10: a line the voice session spoke after the ask began, with no answer of the brain on it, is a preamble — only that one',
+    pre.length === 1 && pre[0] === filler, JSON.stringify(pre.map((t) => t.text)));
+  ok('4.10: no ask on the screen → nothing is a preamble', P.livePreambles(turns, null).length === 0 && P.livePreambles(turns, { role: 'me', text: 'אחר' }).length === 0);
+}
 
 // ── wiring, as text ────────────────────────────────────────────────────────
 const live = slice('/* ── LIVE VOICE', '/* ── the keyless road');
-ok('the tool runs through action:kernel with voice:true and its correlation ids, nothing else', /const call=ccApi\(\{voice_session_id:run\.session_id,voice_request_id:run\.request_id,parent_item_id:run\.item_id,call_id:run\.call_id,\s*action:'kernel',body:text,history:historyForKernel\(text\),retracted:retractedForKernel\(\),request_id:reqId,voice:true\}\)/.test(live) && !/action:'cap'/.test(live));
+ok('the tool runs through action:kernel with voice:true, its correlation ids and the conversation it belongs to (4.10), nothing else', /const call=ccApi\(\{voice_session_id:run\.session_id,voice_request_id:run\.request_id,parent_item_id:run\.item_id,call_id:run\.call_id,\s*action:'kernel',body:text,history:historyForKernel\(text\),retracted:retractedForKernel\(\),request_id:reqId,voice:true,conversation_id:CHAT\.conv\|\|''\}\)/.test(live) && !/action:'cap'/.test(live));
 ok('a tool reply never starts over David: while he speaks the output is returned and the reply waits for his turn end (replyOwed → the next SPEAK)', /if\(LIVE\.userSpeaking&&d\.ok\)\{LIVE\.replyOwed=true;liveRecord\('TOOL'/.test(live) && /continuity_state:LIVE\.replyOwed\?'turn_end_with_tool_reply'/.test(live) && /LIVE\.replyOwed=false;LIVE\.lastCreateFor=0;/.test(live));
 ok('the tool leg is bounded by the policy (Promise.race with tool_timeout_ms), and a result is accepted only in the epoch that asked', /Promise\.race\(\[call,new Promise\(\(_,rej\)=>setTimeout\(\(\)=>rej\(new Error\('timeout'\)\),LIVE_POLICY\.tool_timeout_ms\)\)\]\)/.test(live) && /if\(run\.epoch!==LIVE\.epoch\)\{/.test(live));
 ok('teardown moves the epoch and kills every session-local flag (toolBusy, lastCreateFor, pending, responseActive)', /function liveTeardown\(reason\)\{/.test(live) && /LIVE\.epoch\+\+;LIVE\.toolBusy=false;LIVE\.replyOwed=false;LIVE\.lastCreateFor=0;/.test(live) && /LIVE\.pending=null;LIVE\.audioStartedAt=0;LIVE\.responseActive=false;/.test(live));
@@ -147,7 +165,7 @@ ok('response.create has ONE door (liveCreateResponse); nothing else asks the mod
 ok('a YIELD sends the wire of liveYieldActions and nothing decides an interruption elsewhere', /const acts=liveYieldActions\(\{item_id:LIVE\.itemId,audio_started_at:LIVE\.audioStartedAt/.test(live) && /acts\.forEach\(m=>liveSend\(m\)\)/.test(live));
 ok('the trace reaches the ledger through voice_trace_log, in batches of 50', /cap\('voice_trace_log',\{session_id:LIVE\.sessionId\|\|'',model:LIVE\.model\|\|'',events:batch\}\)/.test(live) && /i\+=50/.test(live));
 ok('a stop flushes what is left (pending → no_repair); EVERY connect (tap, reconnect, renewal) seeds the new channel from the recent conversation', /liveFlushTrace\(true\)/.test(live) && /LIVE\.renewing=true;liveTeardown\('renewal'\);liveFlushTrace\(false\)/.test(live) && /const seed=liveSeedItems\(SESSION\.turns,LIVE_POLICY\.seed_turns,Date\.now\(\),LIVE_POLICY\.seed_window_ms\);/.test(live));
-ok('the build is bumped', /const LIA_BUILD='2026-10-03\.4'/.test(src));
+ok('the build is bumped', /const LIA_BUILD='2026-10-04\.1'/.test(src));
 ok('the tap-microphone is shut while live', /function micAllowed\(\)\{return TURN==='IDLE'&&!TTS&&!\(typeof LIVE!=='undefined'&&LIVE\.on\);\}/.test(src));
 ok('the browser speech engine yields while live', /if\(typeof LIVE!=='undefined'&&LIVE\.on\)\{TTS=false;if\(done\)setTimeout\(done,0\);return;\}/.test(src));
 
@@ -672,6 +690,72 @@ const stat = (page) => page.textContent('#noteStat');
   await page.waitForTimeout(POL.grace_ms + 200);
   ok('H3. his turn end + grace → exactly one response.create, after he finished', sent.slice(n0).filter((m) => m.type === 'response.create').length === 1, JSON.stringify(sent.slice(n0).map((m) => m.type)));
   await page.click('#live');
+  await page.close();
+}
+
+// ── 1i. ONE CONVERSATION (David, 4.10 — "האוזניות לא יודעות את הקונטקסט של השיחה עם המיקרופון") ──
+// The 00:19 night, replayed: a microphone conversation, then 🎧 — "היי ליה", then "את יכולה לסכם
+// לנו את השיחה שלנו?" with the voice model's own "רגע, אני בודקת." before the tool. Measured: the
+// session opened on six raw turns; the brain got the ask paired with its own filler as the newest
+// exchange, the greeting as the one before it, two microphone exchanges and no conversation id —
+// and answered "אין תוכן מהשיחה שלנו". The headphones must start from, and send, the text road's history.
+{
+  const { page, calls } = await session('oneconv');
+  await page.waitForFunction(() => document.getElementById('live').style.display !== 'none', null, { timeout: 5000 });
+  const CONV = 'db024f44aa0b4c1d9e2f30415263748a';
+  await page.evaluate((conv) => {
+    CHAT.conv = conv; chatSaveState();
+    for (let i = 1; i <= 5; i++) { addTurn('me', 'שאלה במיקרופון ' + i); addTurn('lia', 'תשובה לשאלה ' + i); }
+  }, CONV);
+  const textRoad = await page.evaluate(() => historyForKernel('x'));
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === true && LIVE.ready === true, null, { timeout: 5000 });
+  await feed(page, { type: 'session.created' });
+  const dcSent = () => page.evaluate(() => window.__live.dcs[window.__live.dcs.length - 1].sent.slice());
+  const seed = (await dcSent()).filter((m) => m.type === 'conversation.item.create').map((m) => m.item.content[0].text);
+  ok('O1. the 🎧 session starts from the text road\'s history — the same four microphone exchanges, in order',
+    JSON.stringify(seed) === JSON.stringify(textRoad.flatMap((p) => [p.q, p.a])), JSON.stringify({ seed, textRoad }));
+  // "היי ליה." — a greeting the voice session answers itself
+  await feed(page, { type: 'input_audio_buffer.speech_started', item_id: 'v1' });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped', item_id: 'v1' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', item_id: 'v1', transcript: 'היי ליה.' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'היי, שלום! מה אני יכולה לעזור לך היום?' });
+  await feed(page, { type: 'response.done', response: { status: 'completed', output: [{ type: 'message' }] } });
+  // the ask, the filler, the tool call
+  await feed(page, { type: 'input_audio_buffer.speech_started', item_id: 'v2' });
+  await feed(page, { type: 'input_audio_buffer.speech_stopped', item_id: 'v2' });
+  await feed(page, { type: 'conversation.item.input_audio_transcription.completed', item_id: 'v2', transcript: 'את יכולה לסכם לנו את השיחה שלנו?' });
+  await page.waitForTimeout(POL.grace_ms + 150);
+  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'רגע, אני בודקת.' });
+  await feed(page, { type: 'response.output_item.done', item: { type: 'function_call', call_id: 'call_S', name: 'deep_answer', arguments: JSON.stringify({ question: 'סכמי את השיחה שלנו' }) } });
+  await page.waitForFunction(() => LIVE.toolBusy === false && LIVE.tools === 1, null, { timeout: 5000 });
+  const k = calls.filter((c) => c.action === 'kernel').pop();
+  ok('O2. the voice turn names the conversation the microphone road writes to', !!k && k.conversation_id === CONV, JSON.stringify(k && { conversation_id: k.conversation_id }));
+  const wantVoice = [...textRoad.slice(1), { q: 'היי ליה.', a: 'היי, שלום! מה אני יכולה לעזור לך היום?' }];
+  ok('O3. the brain hears the history the text road would send for this ask — the ask is not paired with its own "רגע, אני בודקת."',
+    !!k && JSON.stringify(k.history) === JSON.stringify(wantVoice), JSON.stringify(k && k.history));
+  // the brain's answer is spoken
+  await feed(page, { type: 'response.output_audio_transcript.done', transcript: 'סיכמתי: דיברנו על חמש שאלות.' });
+  await feed(page, { type: 'response.done', response: { status: 'completed', output: [{ type: 'message' }] } });
+  await page.click('#live');
+  await page.waitForFunction(() => LIVE.on === false, null, { timeout: 5000 });
+  // back to the microphone road: the spoken exchange is part of its history, answered by the answer
+  const nKernel = calls.filter((c) => c.action === 'kernel').length;
+  await page.fill('#note', 'ומה הלאה?');
+  await page.evaluate(() => sendPrimary());
+  for (let i = 0; i < 50 && calls.filter((c) => c.action === 'kernel').length === nKernel; i++) await page.waitForTimeout(100);
+  const typedK = calls.filter((c) => c.action === 'kernel').slice(nKernel)[0];
+  const last = typedK && typedK.history[typedK.history.length - 1];
+  ok('O4. the next typed/dictated turn reads the spoken ask as answered by the brain\'s answer, not by the filler',
+    !!last && last.q === 'את יכולה לסכם לנו את השיחה שלנו?' && last.a === 'סיכמתי: דיברנו על חמש שאלות.', JSON.stringify(typedK && typedK.history));
+  ok('O4a. …and it carries the same conversation', !!typedK && typedK.conversation_id === CONV);
+  const spoken = ['היי ליה.', 'את יכולה לסכם לנו את השיחה שלנו?', 'סיכמתי: דיברנו על חמש שאלות.'];
+  const pushedNow = () => calls.filter((c) => c.action === 'chat_sync' && c.conversation_id === CONV).flatMap((c) => c.messages || []).map((m) => m.content);
+  for (let i = 0; i < 30 && !spoken.every((t) => pushedNow().includes(t)); i++) await page.waitForTimeout(100);
+  const pushed = pushedNow();
+  ok('O5. what was said in the headphones lands in that same thread (queued to the canonical conversation)',
+    spoken.every((t) => pushed.includes(t)), JSON.stringify(pushed.slice(-8)));
   await page.close();
 }
 

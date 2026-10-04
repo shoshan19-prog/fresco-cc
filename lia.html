@@ -1287,6 +1287,7 @@ function historyForKernel(currentText){
  for(const t of SESSION.turns){
   if(t.role==='me')q=t.text;
   else if(t.pending)continue;              // an unanswered ask is not an answer
+  else if(t.preamble)continue;             // nor is the line the voice session spoke before the answer (4.10, livePreambles)
   else if(q!=null&&t.text){out.push({q,a:t.text});q=null;}}
  /* An entity question that does not mention pictures gets a history with the
     image-description turns removed: on the old backend those turns pulled
@@ -3909,7 +3910,7 @@ function liveMintError(j){
    the records land on the ledger through voice_trace_log (decision_event
    voice_turn). The policy is ONE object, so the pilot changes numbers, not
    decisions. Pure rules first, so test-voice-live.mjs can run them. */
-const LIVE_POLICY={grace_ms:600,overlap_yield_ms:350,backchannel_max_ms:1500,transcript_wait_ms:2500,truncate_margin_ms:60,seed_turns:6,tool_timeout_ms:150000,seed_window_ms:1800000};
+const LIVE_POLICY={grace_ms:600,overlap_yield_ms:350,backchannel_max_ms:1500,transcript_wait_ms:2500,truncate_margin_ms:60,seed_turns:8,tool_timeout_ms:150000,seed_window_ms:1800000};
 const LIVE_BACKCHANNEL_RE=/^(?:(?:כן|אוקיי|אוקי|או\s?קיי|אה+|אהא|אמ+|ממ+|המ+|הממ+|מהם|נכון|בסדר|יופי|מעולה|טוב|סבבה|ברור|הבנתי|כמובן|ok|okay|yes|yeah|yep|uh[\s-]?huh|mm+|hmm+|mhm+|right|sure|got it)[\s,.!?…]*){1,3}$/i;
 const LIVE_SIGNAL_RE=/(?:^|[\s,])(?:עצרי|תעצרי|עצור|רגע|שנייה|שניה|חכי|תחכי|תני לי לסיים|אל תקטעי|אל תפריעי|המשיכי|תמשיכי|תסיימי|סיימי|די|מספיק|stop|wait|hold on|let me finish|go on|continue|enough)(?:$|[\s,.!?…])/i;
 const LIVE_CORRECTION_RE=/^(?:לא[,.\s]|לא ביקשתי|לא לזה|לא זה|לא התכוונתי|התכוונתי|לא נכון|טעות|לא אמרתי|לא על זה|no[,.\s]|not that|i meant|wrong)/i;
@@ -3937,14 +3938,36 @@ function liveYieldActions(st){
 /* A renewed session (new secret, new realtime context) is seeded from the
    conversation David can see — the last turns as text items — so the thread
    continues instead of starting from nothing. No new state: SESSION.turns is it. */
+/* ONE CONVERSATION (David, 4.10 — "האוזניות לא יודעות את הקונטקסט של השיחה עם
+   המיקרופון"): measured 00:19:24, the 🎧 session opened on six raw turns of a
+   microphone conversation the brain reads four whole exchanges of — and the six
+   could carry a "⏳ חושבת על זה…" bubble as something LIA said. The seed now skips
+   exactly what the text road's history skips (a pending bubble, a preamble) and
+   is as deep as it: four exchanges, eight turns (seed_turns). */
 function liveSeedItems(turns,n,now,windowMs){
  /* PHASE A (29.9): seeded on EVERY connect — a re-tap or a drop lost the whole
     thread before (0 of 5 sessions seeded on 29.9). Bounded by recency so a tap
     hours later does not resurrect yesterday. */
  const cut=(now&&windowMs)?now-windowMs:null;
- const last=(turns||[]).filter(t=>t&&(t.role==='me'||t.role==='lia')&&String(t.text||'').trim()&&(cut==null||!Number.isFinite(Number(t.at))||Number(t.at)>=cut)).slice(-(n||LIVE_POLICY.seed_turns));
+ const last=(turns||[]).filter(t=>t&&(t.role==='me'||t.role==='lia')&&!t.pending&&!t.preamble&&String(t.text||'').trim()&&(cut==null||!Number.isFinite(Number(t.at))||Number(t.at)>=cut)).slice(-(n||LIVE_POLICY.seed_turns));
  return last.map(t=>({type:'conversation.item.create',item:{type:'message',role:t.role==='me'?'user':'assistant',
    content:[t.role==='me'?{type:'input_text',text:String(t.text).slice(0,600)}:{type:'output_text',text:String(t.text).replace(/^\(נקטע\)\s*/,'').slice(0,600)}]}}));}
+/* ONE CONVERSATION (David, 4.10): what the voice session SAYS between the first
+   words of a spoken ask and the brain's answer — "רגע, אני בודקת.", a reply David
+   talked over — is a preamble, never the answer to that ask. Measured 4.10
+   00:19:40: "את יכולה לסכם לנו את השיחה שלנו" reached the brain with its own
+   "רגע, אני בודקת." as the newest exchange of its history (historyForKernel pairs
+   an ask with the FIRST line after it), so the voice session's greeting and that
+   pair took two of the four places the microphone conversation had on the text
+   road — and every later typed turn would have read the ask as answered by the
+   filler. The lines found here are marked; historyForKernel and the seed skip
+   them. Only lines this session spoke (live) that carry no answer of the brain
+   (res): the reply to an earlier ask, spoken after these words began, stays the
+   answer it is; a typed turn's answer is never one. Pure. */
+function livePreambles(turns,askTurn){
+ const i=askTurn?(turns||[]).indexOf(askTurn):-1;
+ if(i<0)return [];
+ return turns.slice(i+1).filter(t=>t&&t.role==='lia'&&t.live&&!t.res&&!t.pending);}
 
 const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audio:null,model:'',expires:0,
   attempt:0,userStopped:false,ready:false,speaking:false,interrupted:false,t:{},lat:[],red:null,res:null,
@@ -3953,7 +3976,9 @@ const LIVE={on:false,available:false,probe:null,pc:null,dc:null,stream:null,audi
   userSpeaking:false,itemId:'',responseId:'',audioStartedAt:0,overlap:null,pending:null,toolBusy:false,
   graceTimer:null,overlapTimer:null,transcriptTimer:null,trace:[],seq:0,sessionId:'',renewing:false,lastHeard:'',lastSaid:'',turnPolicy:null,uttStartedAt:0,responseActive:false,lastCreateFor:0,afterYield:false,
   /* Phase A (29.9): epoch = which session a tool result belongs to; lastCommittedUtt = the last utterance the VAD closed; userItemId = the provider's item for it */
-  epoch:0,lastCommittedUtt:0,userItemId:'',replyOwed:false};
+  epoch:0,lastCommittedUtt:0,userItemId:'',replyOwed:false,
+  /* 4.10: the turn on the screen where the words of the current spoken ask begin (liveEarSince) */
+  askTurn:null};
 /* The button appears only when the server can actually mint a session for
    the model David named — a button that fails on tap is worse than none. */
 async function probeLiveVoice(){
@@ -4140,13 +4165,13 @@ function liveOn(ev){
    const short=LIVE.pending&&LIVE.pending.short?LIVE.pending:null;
    if(short){clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;LIVE.pending=null;}
    const bc=!!(short&&liveIsBackchannel(a.text,short.overlap_ms));
-   liveEarHeard(a.item_id,a.text,bc);
+   const he=liveEarHeard(a.item_id,a.text,bc);
    if(bc){
     liveRecord('BACKCHANNEL','"'+a.text.slice(0,30)+'" ('+short.overlap_ms+' מ״ש) — אישור, לא שאלה'+(short.server_cut?'; השרת כבר חתך את האודיו':'; ליה ממשיכה'),{lia_speaking:!short.server_cut,overlap_state:'overlap',overlap_ms:short.overlap_ms,interruption_source:'backchannel',continuity_state:short.server_cut?'cut_by_server':'lia_continues'});
     liveResolveOutcomes(a.text,{only_during:true});
     LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;continue;}
    liveResolveOutcomes(a.text);
-   LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;
+   LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;he.turn=SESSION.turns[LIVE.earIdx];
    if(short){
     if(LIVE.speaking){liveYield('חפיפה קצרה ('+short.overlap_ms+' מ״ש) שאינה אישור: "'+a.text.slice(0,30)+'"',short.overlap_ms);liveSpeak('תשובה לדברי דוד אחרי שנעצרה');}
     else liveSpeak(short.server_cut?'תשובה לדברי דוד אחרי שהשרת חתך את ליה':'דיבור קצר שהסתיים אחרי שליה סיימה');}}
@@ -4176,7 +4201,7 @@ function liveOn(ev){
    LIVE.speaking=false;LIVE.audioStartedAt=0;LIVE.overlap=null;
    if(LIVE.pending&&LIVE.pending.answer_after){LIVE.pending=null;liveSpeak('ליה סיימה — עונה לדברי דוד שנאמרו בזמן שדיברה');}
    else liveLabel('שיחה חיה — דבר; לחץ ⏹ לסיום');}
-  else if(a.kind==='lia_said'){addTurn('lia',(LIVE.interrupted?'(נקטע) ':'')+a.text,LIVE.res);LIVE.res=null;
+  else if(a.kind==='lia_said'){addTurn('lia',(LIVE.interrupted?'(נקטע) ':'')+a.text,LIVE.res);LIVE.res=null;SESSION.turns[SESSION.turns.length-1].live=true;
    if(LIVE.interrupted){const y=liveLastRecord(r=>r.decision==='YIELD'&&!r.said_head);if(y)y.said_head=a.text.slice(0,120);}
    LIVE.lastSaid=a.text;LIVE.interrupted=false;}
   else if(a.kind==='truncated'){const y=liveLastRecord(r=>r.decision==='YIELD');if(y)y.continuity_result='truncated_'+a.audio_end_ms+'ms';}
@@ -4191,16 +4216,18 @@ function liveOn(ev){
 function liveEarOpen(id){id=String(id||'');if(id&&LIVE.ear.some(e=>e.id===id))return;LIVE.ear.push({id:id,text:null,committed:false,skip:false,used:false});}
 function liveEarCommit(id){id=String(id||'');const e=id?LIVE.ear.find(x=>x.id===id):null;if(e)e.committed=true;else if(id)LIVE.ear.push({id:id,text:null,committed:true,skip:false,used:false});}
 function liveEarHeard(id,text,skip){id=String(id||'');let e=id?LIVE.ear.find(x=>x.id===id):null;
- if(!e){e={id:id,text:null,committed:true,skip:false,used:false};LIVE.ear.push(e);}e.text=String(text||'');e.committed=true;e.skip=!!skip;}
+ if(!e){e={id:id,text:null,committed:true,skip:false,used:false};LIVE.ear.push(e);}e.text=String(text||'');e.committed=true;e.skip=!!skip;return e;}
 /* David's words since the last delegation — waiting (bounded) for a committed utterance whose
    transcript has not landed yet; the entries are consumed by this call. Speech still in progress
    (not yet committed) belongs to the next turn and stays. */
 async function liveEarSince(){
- const deadline=Date.now()+LIVE_POLICY.transcript_wait_ms,epoch=LIVE.epoch;
+ const deadline=Date.now()+LIVE_POLICY.transcript_wait_ms,epoch=LIVE.epoch;LIVE.askTurn=null;
  while(Date.now()<deadline&&LIVE.ear.some(e=>!e.used&&e.committed&&e.text===null))await new Promise(r=>setTimeout(r,100));
  if(epoch!==LIVE.epoch)return [];
  const take=LIVE.ear.filter(e=>!e.used&&e.committed);take.forEach(e=>{e.used=true;});
- return take.filter(e=>!e.skip&&e.text).map(e=>e.text);}
+ const words=take.filter(e=>!e.skip&&e.text);
+ LIVE.askTurn=(words.find(e=>e.turn)||{}).turn||null;   // 4.10: where this ask's words begin on the screen (livePreambles)
+ return words.map(e=>e.text);}
 /* A reply that finished without the tool answered what was said before it was asked for:
    those utterances were handled in conversation and do not ride along to the brain later.
    Words said after the reply was asked for (an overlap she answers next) stay. */
@@ -4223,12 +4250,17 @@ async function liveRunTool(a){
   LIVE.tools++;LIVE.t.tool_started=run.started;LIVE.toolBusy=true;liveLabel('בודקת…');
   const asked=liveQuestionFrom(await liveEarSince(),d.question);
   LIVE.lastQ=asked.question;LIVE.lastQAt=Date.now();
+  /* ONE CONVERSATION (David, 4.10): the brain hears the history the text road would
+     send for this ask — the filler she said before it is not its answer — and the
+     conversation it belongs to, so the server reads that thread's own record
+     (previous turn, open work, LIA's messages since) exactly as on a typed turn. */
+  const pre=livePreambles(SESSION.turns,LIVE.askTurn);pre.forEach(t=>{t.preamble=true;});if(pre.length)saveSession();
   liveRecord('TOOL','בקשה לעיבוד עמוק נשלחה',Object.assign({continuity_state:'tool_started',continuity_result:'question:'+asked.source,outcome:'n/a',
     heard_head:asked.question.slice(0,120),outcome_evidence:('model: '+d.question).slice(0,160)},ids));
   const text=asked.question,reqId=run.request_id;
   /* the correlation ids ride first so the call keeps the shape every kernel call in this file has (and the pins that read it) */
   const call=ccApi({voice_session_id:run.session_id,voice_request_id:run.request_id,parent_item_id:run.item_id,call_id:run.call_id,
-    action:'kernel',body:text,history:historyForKernel(text),retracted:retractedForKernel(),request_id:reqId,voice:true});
+    action:'kernel',body:text,history:historyForKernel(text),retracted:retractedForKernel(),request_id:reqId,voice:true,conversation_id:CHAT.conv||''});
   let res=null,err=null,timedOut=false;
   try{res=await Promise.race([call,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),LIVE_POLICY.tool_timeout_ms))]);}
   catch(e){err=e||new Error('failed');timedOut=err.message==='timeout';}
