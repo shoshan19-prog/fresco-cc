@@ -181,7 +181,7 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('long Hebrew titles clamp instead of clipping', /\.row \.ttl\{[^}]*-webkit-line-clamp:2/.test(css) && /overflow-wrap:anywhere/.test(css));
   ok('the bottom nav is Chat · Command Center · History · Settings, nothing else', /\['chat',CHAT,'צ׳אט',''\],\['grid','index\.html','מרכז הפיקוד','on'\],\['history',CHAT\+'#history','היסטוריה',''\],\['settings',CHAT\+'#settings','הגדרות',''\]/.test(src));
   ok('no tagline', !html.includes('כל העבודה במקום אחד'));
-  ok('the page writes no WORK — only the tower\'s three actions remain', !/work_intake|work_open|work_checkpoint|work_complete|work_claim/.test(src) && /name:'alert_ack'|cap\('alert_ack'/.test(src) && /target:'recommendation'/.test(src));
+  ok('the page writes no WORK itself — the tower\'s three actions, plus David\'s decision through the server', !/work_intake|work_open|work_checkpoint|work_complete|work_claim|work_wake|work_verify/.test(src) && /name:'alert_ack'|cap\('alert_ack'/.test(src) && /target:'recommendation'/.test(src) && (src.match(/action:'work_decide'/g) || []).length === 1);
   ok('the closed list is read through closed_since, seven days', /cap\('work_status',\{closed_since:isoDaysAgo\(7\)\}\)/.test(src));
   ok('the same code as the chat is accepted (one login for both surfaces)', /localStorage\.getItem\('lia_code'\)/.test(src) && /'x-fresco-code'/.test(src));
   ok('no credential in the page', !/eyJ[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|service_role/.test(html));
@@ -254,6 +254,37 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('4.10: other capabilities are untouched', sent[3].args.limit === undefined && sent[3].name === 'alerts', JSON.stringify(sent[3]));
   const callerArgs = { closed_since: 'x' }; capFn('work_status', callerArgs);
   ok('4.10: the caller\'s object is not mutated', callerArgs.limit === undefined);
+}
+
+// ── 4.10: a card that waits on David offers the decision it waits on ──
+{
+  const D = new Function('esc', slice('var DEC_DONE=', '\nfunction wireDecision(') + '\nreturn {decisionCard,DEC_DONE};')((x) => String(x));
+  const parked = D.decisionCard({ work_id: 'w1', parked_for_david: true });
+  ok('4.10: a parked package shows approve · retry · close · read', /data-dec="ACCEPT"/.test(parked) && /data-dec="RETRY"/.test(parked) && /data-dec="REJECT"/.test(parked) && /data-read="1"/.test(parked), parked);
+  ok('4.10: nothing else shows the decision', D.decisionCard({ work_id: 'w2', status: 'RUNNING' }) === '' && D.decisionCard({ work_id: 'w3', parked_for_david: 'true' }) === '' && D.decisionCard(null) === '');
+  // decideWork through stubs: the request it sends, and what it does on a refusal
+  const sent = []; let refreshed = 0; let reply = { ok: true };
+  const btns = [{ disabled: false }, { disabled: false }, { disabled: false }];
+  const out = { textContent: '' };
+  const B = (q) => q === '#dec' ? { querySelectorAll: () => btns } : out;
+  const mk = (promptVal, confirmVal) => new Function('B', 'api', 'fetchAll', 'render', 'prompt', 'confirm', 'DEC_DONE',
+    slice('function decideWork(r,dec,btn){', '\nfunction readProduct(') + '\nreturn decideWork;')(
+    B, (b) => { sent.push(b); return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply); },
+    () => { refreshed++; return Promise.resolve(); }, () => {}, () => promptVal, () => confirmVal, D.DEC_DONE);
+  const btn = { textContent: 'x' };
+  await mk(null, true)({ work_id: 'w1' }, 'ACCEPT', btn); await new Promise((r) => setTimeout(r, 0));
+  ok('4.10: ACCEPT sends work_decide with the package id', sent[0] && sent[0].action === 'work_decide' && sent[0].work_id === 'w1' && sent[0].decision === 'ACCEPT', JSON.stringify(sent));
+  ok('4.10: … and the screen re-reads the store', refreshed === 1 && out.textContent === 'אושרה ונסגרה', out.textContent);
+  await mk(null, false)({ work_id: 'w1' }, 'ACCEPT', btn);
+  ok('4.10: ACCEPT asks first — a cancelled confirm sends nothing', sent.length === 1);
+  await mk(null, true)({ work_id: 'w1' }, 'REJECT', btn);
+  ok('4.10: REJECT asks for a reason — a cancelled prompt sends nothing', sent.length === 1);
+  await mk('כבר לא רלוונטי', true)({ work_id: 'w1' }, 'REJECT', btn); await new Promise((r) => setTimeout(r, 0));
+  ok('4.10: REJECT carries his reason', sent[1] && sent[1].decision === 'REJECT' && sent[1].note === 'כבר לא רלוונטי', JSON.stringify(sent[1]));
+  reply = new Error(JSON.stringify({ ok: false, reason: 'החבילה כבר סגורה' }));
+  await mk(null, true)({ work_id: 'w1' }, 'RETRY', btn); await new Promise((r) => setTimeout(r, 0));
+  ok('4.10: a refusal is said in words and the buttons come back', out.textContent === 'לא בוצע: החבילה כבר סגורה' && btns.every((b) => b.disabled === false), out.textContent);
+  ok('4.10: the detail sheet renders the card and wires it', /h\+=decisionCard\(r\);/.test(src) && /wireDecision\(r\);/.test(src));
 }
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
