@@ -287,5 +287,20 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('4.10: the detail sheet renders the card and wires it', /h\+=decisionCard\(r\);/.test(src) && /wireDecision\(r\);/.test(src));
 }
 
+// ── 4.10: an order held for his confirmation shows what LIA understood, and launch / close ──
+{
+  const D = new Function('esc', slice('var DEC_DONE=', '\nfunction wireDecision(') + '\nreturn {decisionCard,DEC_DONE};')((x) => String(x).replace(/</g, '&lt;'));
+  const held = { work_id: 'w9', parked_for_david: true, disposition: 'AWAITING_LAUNCH', objective: 'תוכנית',
+    launch: { understood: 'תוכנית ל-+15% מכירות עם מדדים וניסויים', deliverable: 'מסמך תוכנית', done_when: ['יש מדד לכל מנוע', 'יש תאריכי בקרה'] } };
+  const h = D.decisionCard(held);
+  ok('4.10 launch: the card asks "לזה התכוונת?" and shows what she understood, the product and the done conditions',
+    /לזה התכוונת\?/.test(h) && /תוכנית ל-\+15% מכירות/.test(h) && /התוצר: מסמך תוכנית/.test(h) && /יש מדד לכל מנוע · יש תאריכי בקרה/.test(h), h);
+  ok('4.10 launch: launch and close only — no accept-as-done, no retry', /data-dec="LAUNCH"/.test(h) && /data-dec="REJECT"/.test(h) && !/data-dec="ACCEPT"/.test(h) && !/data-dec="RETRY"/.test(h));
+  ok('4.10 launch: what she understood is escaped', !/<script/.test(D.decisionCard({ ...held, launch: { understood: '<script>x</script>' } })));
+  ok('4.10 launch: the other parks keep their own card', /data-dec="ACCEPT"/.test(D.decisionCard({ work_id: 'w1', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION' })));
+  ok('4.10 launch: the label and the done line', /AWAITING_LAUNCH:'ממתינה לאישור שלך לשיגור'/.test(src) && D.DEC_DONE.LAUNCH === 'יצאה לדרך');
+  ok('4.10 launch: launching asks once before it sends', /if\(dec==='LAUNCH'&&!confirm\(/.test(src));
+}
+
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);
