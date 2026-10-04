@@ -295,7 +295,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-04.1';
+var CC_BUILD='2026-10-04.2';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -908,6 +908,7 @@ function openDetail(id){
     +(ago(lastActivityMs(r),now)?'<span>·</span><span>עודכן '+esc(ago(lastActivityMs(r),now))+'</span>':'')+'</div>';
   if(d.note)h+='<p class="note" style="margin-top:6px">'+esc(d.note)+(d.persisted?' <span class="tag">תווית שמורה על השורה</span>':'')+'</p>';
 
+  h+=decisionCard(r);
   h+='<div class="card"><h3>המטרה</h3><p>'+esc(sc.original_goal||r.goal||r.objective||'—')+'</p>'
     +(r.success_condition?'<p class="dim" style="margin-top:6px">תנאי הצלחה: '+esc(r.success_condition)+'</p>':'')+'</div>';
 
@@ -980,8 +981,53 @@ function openDetail(id){
   h+='<a class="chatLink" href="'+CHAT+'">'+ic('chat',18)+'<span>להמשיך בשיחה עם LIA</span></a>';
   B('#dh').textContent=r.objective||r.goal||'';
   B('#db').innerHTML=h;
+  wireDecision(r);
   B('#detail').classList.add('on');B('#detail').scrollTop=0;
   document.body.style.overflow='hidden';
+}
+/* DAVID DECIDES HERE (4.10: "יש בקשות לעבודה … רק ממתינות"). A card that waits on him offers the decision it waits on —
+   accept the product, send it back to work, or close it — instead of only a link to the chat. The server runs each one
+   through the existing doors (verify · close · wake), under David's credential only, and answers with what the row now says. */
+var DEC_DONE={ACCEPT:'אושרה ונסגרה',RETRY:'הוחזרה לביצוע',REJECT:'נסגרה'};
+function decisionCard(r){
+  if(!(r&&r.parked_for_david===true))return '';
+  return '<div class="card" id="dec"><h3>ההכרעה שלך</h3>'
+    +'<p class="dim">החבילה ממתינה לך. אפשר לקרוא את התוצר, ואז לאשר, להחזיר לביצוע או לסגור.</p>'
+    +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">אשר — זה מה שביקשתי</button>'
+    +'<button class="b-ed" data-dec="RETRY">נסי שוב</button>'
+    +'<button class="b-no" data-dec="REJECT">סגרי</button></div>'
+    +'<div class="btns"><button class="b-ed" data-read="1">קרא את התוצר</button></div>'
+    +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
+}
+function wireDecision(r){
+  var c=B('#dec');if(!c)return;
+  Array.prototype.forEach.call(c.querySelectorAll('button[data-dec]'),function(b){b.onclick=function(){decideWork(r,b.getAttribute('data-dec'),b);};});
+  var rb=c.querySelector('button[data-read]');if(rb)rb.onclick=function(){readProduct(r,rb);};
+}
+function decideWork(r,dec,btn){
+  var note='';
+  if(dec==='REJECT'){note=prompt('למה לסגור? (לא חובה)','');if(note===null)return;}
+  if(dec==='ACCEPT'&&!confirm('לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
+  var all=B('#dec').querySelectorAll('button[data-dec]');for(var i=0;i<all.length;i++)all[i].disabled=true;
+  var was=btn.textContent;btn.textContent='…';
+  var out=B('#decRes');
+  api({action:'work_decide',work_id:r.work_id,decision:dec,note:note}).then(function(x){
+    out.textContent=(x&&x.ok)?(DEC_DONE[dec]||'בוצע'):('לא הושלם: '+((x&&x.summary)||''));
+    return fetchAll().then(render);
+  }).catch(function(e){
+    var m=String(e.message||e);try{var j=JSON.parse(m);m=j.reason||j.summary||m;}catch(_){}
+    out.textContent='לא בוצע: '+m.slice(0,240);
+    for(var k=0;k<all.length;k++)all[k].disabled=false;btn.textContent=was;
+  });
+}
+function readProduct(r,btn){
+  btn.disabled=true;btn.textContent='…';
+  cap('work_status',{work_id:r.work_id}).then(function(x){
+    var row=rowsOf(x)[0]||{};var t=row.report&&row.report.text;
+    B('#prod').innerHTML=t?'<div class="li" style="white-space:pre-wrap;max-height:60vh;overflow:auto">'+esc(t)+'</div>'
+      :'<p class="dim">לא נשמר תוצר כתוב לחבילה הזו — מה שנעשה מופיע בהיסטוריה למטה.</p>';
+    btn.textContent='קרא את התוצר';btn.disabled=false;
+  }).catch(function(e){B('#prod').innerHTML='<p class="dim">לא הצלחתי לקרוא את התוצר: '+esc(String(e.message||e).slice(0,160))+'</p>';btn.disabled=false;btn.textContent='קרא את התוצר';});
 }
 function closeDetail(){B('#detail').classList.remove('on');document.body.style.overflow='';}
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&B('#detail').classList.contains('on'))closeDetail();});
