@@ -204,17 +204,17 @@ const wait = (page, ms) => page.waitForTimeout(ms);
   await d.ctx.close();
 }
 
-// ── E: READ-ONLY on the execution road is answered as a read ────────────────
+// ── E: the execution road IS the ask road (4.10 — the kernel opens, holds and asks "לזה התכוונת?") ───────────
 {
   SERVER.kernel = 'ok'; SERVER.kernelCalls = []; SERVER.intakeCalls = [];
   const d = await device('E');
   await d.page.evaluate(() => doExecute('ליה, בצעי רק את NEXT_ACTION הקנוני: 1. אמתי שהטלפון של דוד מדווח build 2026-09-10.3'));
   await wait(d.page, 1200);
   const v = await view(d.page);
-  ok('E1. intake was asked first (the execution road) and refused READ_ONLY', SERVER.intakeCalls.length === 1);
-  ok('E2. the order then went to the kernel as a read — one kernel call with the text', SERVER.kernelCalls.length === 1 && /אמתי/.test(SERVER.kernelCalls[0].body), JSON.stringify(SERVER.kernelCalls.map((c) => c.body)));
+  ok('E1. the panel opens no package itself — no direct intake call (the server holds an order for David; the panel never goes around it)', SERVER.intakeCalls.length === 0, JSON.stringify(SERVER.intakeCalls));
+  ok('E2. the order went to the kernel — one kernel call with the text', SERVER.kernelCalls.length === 1 && /אמתי/.test(SERVER.kernelCalls[0].body), JSON.stringify(SERVER.kernelCalls.map((c) => c.body)));
   ok('E3. never "לא הצלחתי לפתוח חבילת עבודה", never "התחלתי · חבילה"', !v.some((t) => /לא הצלחתי לפתוח חבילת עבודה|התחלתי · חבילה/.test(t.text)), JSON.stringify(v));
-  ok('E4. the read was answered', v.some((t) => t.role === 'lia' && /תשובה מלאה/.test(t.text)));
+  ok('E4. the answer landed', v.some((t) => t.role === 'lia' && /תשובה מלאה/.test(t.text)));
   await d.ctx.close();
 }
 
@@ -227,7 +227,7 @@ ok('SRC: the server reply lands in the awaiting bubble inside applyServerMessage
 ok('SRC: the derived reply id is computed the same way (sha256 "reply:"+turn_id, 32 hex)', /'reply:'\+turnId/.test(SRC) && /slice\(0,32\)/.test(SRC));
 ok('SRC: a reload keeps a durable bubble waiting and re-arms its wait', /if\(t\.turn_id\)\{delete t\.__wd;delete t\.__await;continue;\}/.test(SRC) && /if\(t&&t\.pending&&t\.turn_id\)turnAwait\(/.test(SRC));
 ok('SRC: the wait is bounded (10 minutes) and polls chat_sync', /TURN_AWAIT_MAX_MS=10\*60\*1000/.test(SRC) && /TURN_AWAIT_POLL_MS=5000/.test(SRC));
-ok('SRC: intake READ_ONLY falls back to the kernel ask', /if\(w&&w\.action==='READ_ONLY'\)\{[\s\S]{0,400}return doAsk\(text,id\);\}/.test(SRC));
+ok('SRC: the execution road is the ask road — the panel never opens a package by name', /async function doExecute\(text,turnId\)\{\n return doAsk\(text,turnId\);\}/.test(SRC) && !/name:'work_intake'/.test(SRC));
 ok('SRC: build 2026-09-12.1', /const LIA_BUILD='2026-09-12\.1';/.test(SRC));
 ok('no page errors', errors.length === 0, errors.join('\n'));
 

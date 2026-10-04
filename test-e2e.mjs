@@ -220,7 +220,7 @@ const seen = (page) => page.evaluate(() => {
 
   const { page } = await session({ width: 1280, height: 900 }, 'large-work');
   let noteCalls = 0, kernelCalls = 0;
-  const intakes = [];
+  const intakes = [], kernelBodies = [];
   /* One server-side package, keyed the way work_intake keys it: the same text
      twice must find the same row rather than open a second. */
   const store = new Map();
@@ -247,7 +247,7 @@ const seen = (page) => page.evaluate(() => {
         source: 'WORK · 1c530aac' }) });
     }
     if (body.action === 'kernel') {
-      kernelCalls++;
+      kernelCalls++; kernelBodies.push(String(body.body || ''));
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
         answer: 'הקמתי את הגרף. שלושת הצמתים עונים.', facts: [], inferences: [], sources: [],
         risks_opportunities: [], missing_information: [], recommended_next_action: '',
@@ -263,34 +263,30 @@ const seen = (page) => page.evaluate(() => {
   ok('an execution specification is never filed as a note', noteCalls === 0, `note calls: ${noteCalls}`);
   ok('   the panel classified it as EXECUTE',
     await page.evaluate((t) => classify(t, false) === 'EXECUTE', LANGGRAPH));
-  ok('   PERSISTENCE BEFORE PROMISE: work_intake ran first', intakes.length === 1, `intakes: ${intakes.length}`);
-  ok('   and it was given his words, not a summary',
-    (intakes[0] || '').includes('קריטריוני הצלחה'), `sent: ${JSON.stringify((intakes[0] || '').slice(0, 60))}`);
+  /* 4.10 — the order goes to the conversation, which asks "לזה התכוונת?" before anything launches: the panel opens no package */
+  ok('   the panel opens no package itself — no direct work_intake', intakes.length === 0, `intakes: ${intakes.length}`);
+  ok('   and the kernel was given his words, not a summary',
+    (kernelBodies[0] || '').includes('קריטריוני הצלחה'), `sent: ${JSON.stringify((kernelBodies[0] || '').slice(0, 60))}`);
   const bubbles = await page.$$eval('#thread .msg.lia .bubble', n => n.map(x => x.textContent));
   const all = bubbles.join('\n');
   ok('   the note refusal never appears', !/לא זיהיתי פריט עסקי חדש/.test(all), all.slice(0, 120));
-  ok('   the package id is on the screen', /1c530aac/.test(all), all.slice(0, 200));
-  ok('   the checkpoint and the next step are on the screen',
-    /צ׳קפוינט/.test(all) && /הצעד הבא/.test(all), all.slice(0, 200));
-  ok('EXECUTION BEGINS: the first unit ran in the same turn', kernelCalls === 1, `kernel calls: ${kernelCalls}`);
-  ok('   and the kernel was told which package it is inside',
-    await page.evaluate(() => LAST && LAST.res && LAST.res.work_id === '1c530aac61887dbf19ac8e922b41ba09'));
+  ok('   the kernel\'s whole answer is on the screen', /הקמתי את הגרף\. שלושת הצמתים עונים/.test(all), all.slice(0, 200));
+  ok('ONE TURN: the order reached the kernel once', kernelCalls === 1, `kernel calls: ${kernelCalls}`);
 
   /* THE SAME MESSAGE AGAIN. One job stays one job, and the second answer
      RESUMES — it does not restart and it does not open a second package. */
   await ask(page, LANGGRAPH);
   await page.waitForTimeout(300);
-  ok('a repeated identical request opens NO second package', store.size === 1, `packages: ${store.size}`);
-  ok('   and the second answer resumes rather than restarts', (await page.$$eval(
-    '#thread .msg.lia .bubble', n => n.map(x => x.textContent).join('\n'))).includes('חיבור checkpointer'));
+  ok('a repeated identical request opens nothing on the panel side either', store.size === 0 && intakes.length === 0, `packages: ${store.size}`);
+  ok('   and it went to the kernel again — the server finds the same package', kernelCalls === 2, `kernel calls: ${kernelCalls}`);
 
   /* A GREETING MUST NOT ERASE RUNNING WORK. A new conversation is a new
      screen, never a new operational context (Interaction Contract §2). */
   await ask(page, 'בוקר טוב');
   await page.waitForTimeout(200);
-  ok('a greeting does not open work', intakes.length === 2, `intakes: ${intakes.length}`);
-  ok('   and the running package is still on the thread', (await page.$$eval(
-    '#thread .msg.lia .bubble', n => n.map(x => x.textContent).join('\n'))).includes('1c530aac'));
+  ok('a greeting does not open work', intakes.length === 0 && store.size === 0, `intakes: ${intakes.length}`);
+  ok('   and the answer about the running work is still on the thread', /הקמתי את הגרף/.test(await page.$$eval(
+    '#thread .msg.lia .bubble', n => n.map(x => x.textContent).join('\n'))));
 }
 
 /* ── the retraction that came back ──────────────────────────────────────────

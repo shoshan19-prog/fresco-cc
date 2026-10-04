@@ -69,7 +69,7 @@ check('no separate HISTORY array remains', !/\blet\s+HISTORY\b/.test(src));
    call anywhere carries a hand-rolled history. */
 {
   const calls = src.match(/action:'kernel'[\s\S]{0,200}?\}\)/g) || [];
-  check('every kernel call exists to be checked', calls.length >= 3);
+  check('every kernel call exists to be checked', calls.length >= 2);   // 4.10: the execution road is the ask road — two kernel callers remain
   check('kernel calls send the derived history, with the current turn for context filtering',
     calls.every((c) => c.includes('history:historyForKernel(text)')));
 }
