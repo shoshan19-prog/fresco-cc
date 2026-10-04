@@ -750,7 +750,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-04.2';
+const LIA_BUILD='2026-10-04.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -4679,40 +4679,13 @@ function explainLast(){
    point of the protocol is that "אני על זה" is never the only trace.
    Then execution starts by itself: authority he already granted is not asked
    for again, and his specification is not read back to him. */
+/* THE ORDER GOES TO THE CONVERSATION, WHICH ASKS FIRST (David, 4.10 — "לפני שליה מוציאה עבודה, היא צריכה לשאול אותי אם לזה
+   התכוונתי"). This road used to open the package itself (work_intake by name) and then run the kernel on it: at 15:42 his
+   October-forecast order launched without "לזה התכוונת?", and the answer came back as the two spoken sentences with its table
+   flattened into one line. The kernel now owns the whole order — it opens the package, holds it, asks him, and launches on his
+   "כן" — so the execution road is the ask road, and the full answer lands in the bubble like any other. */
 async function doExecute(text,turnId){
- const id=turnId||beginTurn();
- if(!id)return;
- const reqId=id+':exec';
- if(!issue(reqId))return;
- try{
-  const intake=await ccApi({action:'cap',name:'work_intake',
-    args:{text:text,requested_by:'david',source:'david'}});
-  const w=(intake.rows||[])[0];
-  if(w&&w.action==='READ_ONLY'){
-   /* READ-ONLY MUST NEVER CREATE WORK (David, 10.9 #5): the server refused a
-      package for a verification / status / readback order — it is a READ,
-      answered through the kernel, which holds the same law on every call. */
-   return doAsk(text,id);}
-  if(!w||!w.work_id){
-   /* No row means no promise. Say what is missing instead of claiming to have
-      started — the failure this protocol replaces was a confident sentence
-      with nothing behind it. */
-   const r=said('לא הצלחתי לפתוח חבילת עבודה, ולכן לא התחלתי. '
-     +(intake.source||'אין פרטים מהשרת'),[],[intake.source||''],['שמירת חבילת עבודה']);
-   LAST={q:text,res:r};showAnswer(r,'חסום:');deliverText(r.answer);return;}
-  addTurn('lia',(w.reply_text||'')||('התחלתי · חבילה: '+String(w.work_id).slice(0,8)));
-  /* The package exists and is on screen. Now the kernel does the first unit of
-     work, told which package it is inside so its checkpoints land on the row
-     David is already watching. */
-  const res=await ccApi({action:'kernel',body:text,history:historyForKernel(text),
-    retracted:retractedForKernel(),request_id:reqId,work_id:w.work_id,modality:INPUT_MODALITY});
-  rememberRetracted(res);
-  LAST={q:text,res:res};
-  const spoken=spokenAnswer(res);
-  res.__plain=spoken;showAnswer(res,'ביצוע:');
-  deliverText(spoken);
- }catch(e){stat('לא הצלחתי ('+e.message+')');
-  deliverText('לא הצלחתי להתחיל את העבודה. '+e.message);}}
+ return doAsk(text,turnId);}
 
 async function doAct(text,turnId){
  const id=turnId||beginTurn();
@@ -4737,7 +4710,11 @@ async function doAct(text,turnId){
   LAST={q:text,res:res};
   let spoken=spokenAnswer(res);
   if(outward)spoken+=' זו פעולה שיוצאת החוצה — לא בוצעה ולא נרשמה.';
-  res.__plain=spoken;showAnswer(res,outward?'לא בוצע:':'תשובה:');
+  /* THE SCREEN SHOWS THE WHOLE ANSWER (4.10). The two spoken sentences were put on the screen too, so a table arrived as
+     one flattened line and everything after the second sentence was gone. The voice stays short; the bubble carries the
+     answer as the kernel wrote it, with the outward note when the ask reached out of the OS. */
+  if(outward)res.answer=String(res.answer||'').trim()+'\n\nזו פעולה שיוצאת החוצה — לא בוצעה ולא נרשמה.';
+  showAnswer(res,outward?'לא בוצע:':'');
   deliverText(spoken);
  }catch(e){stat('לא הצלחתי ('+e.message+')');deliverText('לא הצלחתי לבצע את זה.');}}
 /* The composer grows with what is typed — and SHRINKS BACK when it is sent.
