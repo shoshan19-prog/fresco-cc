@@ -243,5 +243,18 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('the screen states when it was ready (verifiable in production)', /data-ready-ms/.test(src));
 }
 
+// ── 4.10: every package is on this screen (56 live, 31 were on no screen) ──
+{
+  const sent = [];
+  const capFn = new Function('api', slice('var LIST_ALL=', '\nfunction ') .replace(/^/, '') + '\n' + slice('function cap(name,args){', 'return api({action:\'cap\',name:name,args:args});}') + "return api({action:'cap',name:name,args:args});}\nreturn cap;")((b) => { sent.push(b); return b; });
+  capFn('work_status'); capFn('work_status', { closed_since: '2026-09-27T00:00:00Z' }); capFn('work_status', { work_id: 'abc' }); capFn('alerts');
+  ok('4.10: the live list asks for the whole list', sent[0].args.limit === 200, JSON.stringify(sent[0]));
+  ok('4.10: the closed list too, and its own filter is kept', sent[1].args.limit === 200 && sent[1].args.closed_since === '2026-09-27T00:00:00Z', JSON.stringify(sent[1]));
+  ok('4.10: a read by id is one package — left alone', sent[2].args.limit === undefined && sent[2].args.work_id === 'abc', JSON.stringify(sent[2]));
+  ok('4.10: other capabilities are untouched', sent[3].args.limit === undefined && sent[3].name === 'alerts', JSON.stringify(sent[3]));
+  const callerArgs = { closed_since: 'x' }; capFn('work_status', callerArgs);
+  ok('4.10: the caller\'s object is not mutated', callerArgs.limit === undefined);
+}
+
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);

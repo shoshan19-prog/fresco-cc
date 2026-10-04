@@ -295,7 +295,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-02.1';
+var CC_BUILD='2026-10-04.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -316,7 +316,13 @@ function api(b,auth){
 }
 // Same command-center capability router the chat uses (action:'cap') — one
 // state, read the same way from either interface.
-function cap(name,args){return api({action:'cap',name:name,args:args||{}});}
+/* THE WHOLE LIST (David, 4.10: "אני גם לא רואה את זה במרכז בקרה"). work_status pages its list for the model (25 live,
+   40 closed); this screen is where every package must be visible, so its list reads ask for all of it — 56 live
+   packages had 31 that appeared nowhere. A read by work_id is one package and is left as it is. */
+var LIST_ALL=200;
+function cap(name,args){args=args||{};
+  if(name==='work_status'&&!args.work_id&&args.limit==null){var a={};for(var k in args)a[k]=args[k];a.limit=LIST_ALL;args=a;}
+  return api({action:'cap',name:name,args:args});}
 function esc(s){return (s==null?'':String(s)).replace(/[<>&"]/g,function(c){
   return c==='<'?'&lt;':c==='>'?'&gt;':c==='&'?'&amp;':'&quot;';});}
 
