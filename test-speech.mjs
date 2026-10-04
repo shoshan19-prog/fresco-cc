@@ -44,6 +44,26 @@ eq('a repeat of the tail is not appended again',
   mergeSpeech(['בוקר טוב', 'טוב']),
   'בוקר טוב');
 
+// 4.10, David's phone: the whole utterance came back a SECOND time, re-recognized —
+// a few words corrected and the sentence finished — so neither string starts with
+// the other. Appending sent the paragraph to LIA twice. Verbatim from production.
+{
+  const A = 'יופי אז באלה בכיוונים האלה במטריה וכיוונים האלה את צריכה להיות מומחית כלומר את צריכה לדעת לדבר איתי על הגנה מאש אלקורוזיה על שיקום על מעטף אלה הדברים שבעצם צריכה להיות בהם מומחית בחלק הזה של מטריה ולכן ביקשתי ממך אז להתלבש על מטריה ולהגיד לי מה המצב אבל זה לא לעכשיו קודם כל נסגור את העניין של';
+  const A2 = 'יופי אז באלה בכיוונים האלה במטריה וכיוונים האלה את צריכה להיות מומחית כלומר את צריכה לדעת לדבר איתי על הגנה על קורוזיה על שיקום על מעטף אלה הדברים שבעצם צריכה להיות בהם מומחית בחלק הזה של מטריה ולכן ביקשתי ממך אז להתלבש על מטריה ולהגיד לי מה המצב אבל זה לא לעכשיו קודם כל נסגור את העניין של הכרה של התפקיד';
+  eq('a re-recognized paragraph replaces the first recognition (4.10)', mergeSpeech([A, A2]), A2);
+  const B = 'לאט לאט אנחנו מתחילים לגבש את התמונה ואת מתחילה לקבל את הרעיונות או בעצם איך החברה עובדת אני חושב שכרגע נעשה מאחרי הקלעים יכולת של סריקה של מעילים שבעצם וסריקה של השייר פוינט בשבילך כדי שאת תוכלי להבין וליצור את ההקשרים הכי מדויקים לטובת';
+  const B2 = 'לאט לאט אנחנו מתחילים לגבש את התמונה ואת מתחילה לקבל את הרעיונות או בעצם איך החברה עובדת אני חושב שכרגע נעשה מאחרי הקלעים יכולת של סריקה של מיילים שבעצם וסריקה של השייר פוינט בשבילך כדי שאת תוכלי להבין וליצור את ההקשרים הכי מדויקים לטובת ההתפתחות של החברה';
+  eq('the corrected word wins and the ending is kept (4.10)', mergeSpeech([B, B2]), B2);
+  eq('an older shorter recognition after the full one is dropped', mergeSpeech([B2, B]), B2);
+  const S1 = 'קודם כל תבדקי את המיילים של אריק מהשבוע.';
+  eq('a re-recognition of the LAST sentence replaces only that sentence', mergeSpeech([S1, A, A2]), S1 + ' ' + A2);
+  eq('a new sentence with common words is still joined, not swallowed',
+    mergeSpeech([A2, 'את צריכה לדעת מה המצב של המעבדה']), A2 + ' את צריכה לדעת מה המצב של המעבדה');
+  eq('two different long sentences are both kept',
+    mergeSpeech(['אני רוצה שתבדקי את המכירות של החודש מול השנה שעברה', 'ואחר כך תכיני לי טיוטת מייל לאורנה על התשלומים הפתוחים']),
+    'אני רוצה שתבדקי את המכירות של החודש מול השנה שעברה ואחר כך תכיני לי טיוטת מייל לאורנה על התשלומים הפתוחים');
+}
+
 // Shape safety — these come straight off a browser event.
 eq('empty and whitespace segments vanish', mergeSpeech(['', '   ', 'שלום']), 'שלום');
 eq('no segments at all is empty, not undefined', mergeSpeech([]), '');
@@ -73,6 +93,14 @@ eq('the corrupted production string is not reachable any more',
   if (/fin\s*\+=|interim\s*\+=/.test(onresult) || !/mergeSpeech/.test(onresult)) {
     console.log('FAIL  onresult must merge segments, never accumulate them'); bad++;
   }
+}
+
+// A result arriving after the recognition ended, failed or was submitted must be ignored —
+// 4.10: a late final put the sent paragraph back in the box and the next recording was
+// appended to it.
+{
+  total++;
+  if (!/r\.onresult=e=>\{if\(r\._killed\|\|SR!==r\)return;/.test(src)) { console.log('FAIL  onresult ignores a recognition that is no longer current'); bad++; }
 }
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
