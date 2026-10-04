@@ -750,7 +750,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-03.4';
+const LIA_BUILD='2026-10-04.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -3212,7 +3212,7 @@ function stopRec(why){
    is dropped; only genuinely new speech is added. Pure, so test-speech.mjs can
    run it against the real corrupted transcript. */
 function mergeSpeech(segments){
- let out='';
+ let out='';const starts=[0];   // the word where each kept segment begins
  for(const raw of segments||[]){
   const seg=(raw||'').trim();
   if(!seg)continue;
@@ -3221,9 +3221,36 @@ function mergeSpeech(segments){
   if(seg.startsWith(out)){out=seg;continue;} // a growing restatement of one utterance
   if(out.startsWith(seg))continue;           // an older, shorter state arriving late
   if(out.endsWith(seg))continue;             // already sitting at the tail
+  /* The same utterance RE-RECOGNIZED with a few words corrected (4.10, David's
+     phone: a whole paragraph came back a second time with "מאש אלקורוזיה" now
+     "על קורוזיה" and three more words at the end). Neither string starts with
+     the other, so the rules above appended it and the message reached LIA twice.
+     Measured word by word against what the last kept segments said. */
+  const re=restated(out,starts,seg);
+  if(re!==null){out=re;continue;}
+  starts.push(out.split(/\s+/).length);
   out=out+' '+seg;                           // genuinely the next thing said
  }
  return out;
+}
+/* Does seg say again what out already holds from one of its segment starts on?
+   Longer → it replaces that tail (the later recognition wins); shorter → it is an
+   older state of that tail and is dropped. In-order word overlap (LCS) of at
+   least 3/4, anchored on the same first two words, and never on fewer than four
+   words — two different sentences share function words, not their opening. */
+function restated(out,starts,seg){
+ const a=out.split(/\s+/),b=seg.split(/\s+/);
+ const lcs=(x,y)=>{let prev=new Array(y.length+1).fill(0);
+  for(let i=1;i<=x.length;i++){const cur=[0];for(let j=1;j<=y.length;j++)
+   cur[j]=x[i-1]===y[j-1]?prev[j-1]+1:Math.max(prev[j],cur[j-1]);prev=cur;}return prev[y.length];};
+ for(const k of starts){
+  const tail=a.slice(k);
+  if(tail.length<4||b.length<4||tail[0]!==b[0]||tail[1]!==b[1])continue;   // a restatement starts where that segment started
+  if(b.length>=tail.length){
+   if(lcs(tail,b.slice(0,tail.length+3))>=0.75*tail.length)return a.slice(0,k).concat(b).join(' ');
+  }else if(lcs(b,tail.slice(0,b.length+3))>=0.75*b.length)return out;
+ }
+ return null;
 }
 function startSR(){
  let r;try{r=new SRC();}catch(e){startRecorder();return;}
@@ -3237,7 +3264,10 @@ function startSR(){
     replacing the last, so summing them (interim += …) produced the repeated,
     garbled live text David saw on mobile. Only the LAST non-final entry is the
     current guess — take it, never add it to the ones before it. */
- r.onresult=e=>{const fins=[];let interimLast='';conf.length=0;
+ /* A result that arrives after this recognition ended, failed or was handed over
+    as a turn belongs to nobody (4.10: a late final put the whole sent paragraph
+    back in the box, and the next recording was appended to it). */
+ r.onresult=e=>{if(r._killed||SR!==r)return;const fins=[];let interimLast='';conf.length=0;
   for(let i=0;i<e.results.length;i++){const res=e.results[i];
    if(res.isFinal){fins.push(res[0].transcript);if(res[0].confidence>0)conf.push(res[0].confidence);}
    else interimLast=res[0].transcript;}
