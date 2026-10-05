@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fresco · פרויקט</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="lia-icon-192.png">
+<link rel="apple-touch-icon" href="lia-icon-180.png">
+<meta name="theme-color" content="#f7f8fa">
+<!--
+  ONE PROJECT, FOUR LAYERS (David, 5.10): "לוחצים למשל על מונטיפיורי 7 במפה ורואים: מהו המבנה → מי היה
+  מעורב → מה הייתה בעיית השימור → אילו מערכות Fresco סיפקה → כמויות → גוונים → תמונות → מסמכים ומיילים".
+  The project is Priority's own key (PR…). This page reads, in parallel and each on its own:
+    1. Priority by that key — quotes, orders, delivery notes, invoices, and the materials off the order lines  (ודאי)
+    2. what the office wrote about it — the workbook's three tabs, bound by name/address               (לא מאומת)
+    3. mail — threads bound by a document number in the subject (ודאי) and a search by name           (לא מאומת)
+    4. SharePoint — documents and photos found by name                                                 (לא מאומת)
+  and says in words what is missing. The outside world (history, architect, conservation status) is not
+  connected yet, and the page says so instead of inventing it. Static page, no credential inside.
+-->
+<style>
+:root{
+ --bg:#f7f8fa;--bg2:#ffffff;--card:#ffffff;--card2:#f2f4f7;--line:#e4e7ec;--line2:#d0d5dd;
+ --txt:#16181d;--dim:#667085;--acc:#2f6bff;--accSoft:#eaf0ff;--ok:#12a150;--warn:#c77700;--r:18px;--rs:14px;
+}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--bg);color:var(--txt);font:16px/1.55 system-ui,'Segoe UI',Arial,sans-serif;min-height:100dvh;overflow-x:hidden;overflow-wrap:anywhere}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+#login{max-width:380px;margin:22vh auto 0;padding:16px;display:none}
+#login .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+#login h1{font-size:21px;margin-bottom:4px}
+#login input{width:100%;background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;margin-top:10px}
+#login button{width:100%;margin-top:10px;background:var(--acc);color:#fff;border-radius:12px;padding:12px 20px}
+#topbar{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;
+ padding:calc(8px + env(safe-area-inset-top)) 12px 8px;background:var(--bg2);border-bottom:1px solid var(--line)}
+#topbar .back{width:42px;height:42px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--dim)}
+#topbar h1{font-size:18px;letter-spacing:-.2px;line-height:1.2}
+#topbar .when{font-size:12px;color:var(--dim)}
+main{padding:12px 16px calc(32px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto}
+.cert{display:inline-block;font-size:11.5px;font-weight:600;line-height:1;padding:3px 7px;border-radius:9px;white-space:nowrap;vertical-align:1px}
+.cert.c1{background:#eaf7ee;color:var(--ok)} .cert.c2{background:var(--accSoft);color:var(--acc)} .cert.c3{background:#fdf3e3;color:var(--warn)}
+.head{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.head .nm{font-weight:700;font-size:21px;line-height:1.25;letter-spacing:-.3px}
+.head .who{font-size:14px;color:var(--dim);margin-top:3px}
+.head .facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--dim);margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.head .facts b{color:var(--txt);font-weight:600;font-variant-numeric:tabular-nums}
+.nums{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.nums div{background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:9px 10px;min-height:64px}
+.nums b{display:block;font-size:20px;line-height:1.05;letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+.nums span{font-size:12px;color:var(--dim);line-height:1.25;display:block;margin-top:3px}
+.nums i{font-style:normal;font-size:12px;color:var(--dim);display:block;margin-top:2px;font-variant-numeric:tabular-nums}
+.sec{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:22px 2px 8px}
+.sec h2{font-size:17px;letter-spacing:-.2px}
+.sec .dim{font-size:12.5px;color:var(--dim)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:0 0 8px}
+.card .h{font-size:13px;color:var(--dim)}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+.row:first-of-type{border-top:0}
+.row .v{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.row .m{color:var(--dim);font-size:12.5px;grid-column:1/-1}
+.row .n{color:var(--dim);font-variant-numeric:tabular-nums}
+details.more{margin-top:6px}
+details.more summary{cursor:pointer;color:var(--acc);font-size:13.5px;font-weight:600;list-style:none;min-height:32px;display:flex;align-items:center}
+details.more summary::-webkit-details-marker{display:none}
+.miss{background:var(--card);border:1px dashed var(--line2);border-radius:var(--rs);padding:12px 14px;font-size:14px;line-height:1.55}
+.miss ul{margin:4px 0 0;padding-inline-start:18px}
+.empty{background:var(--card);border:1px dashed var(--line2);border-radius:var(--rs);padding:14px;color:var(--dim);font-size:14px;text-align:center}
+.note{color:var(--dim);font-size:12.5px;line-height:1.5;margin:6px 2px 0}
+.foot{margin-top:24px;font-size:12.5px;color:var(--dim);line-height:1.6}
+.src a{color:var(--acc);font-weight:600}
+.wait{color:var(--dim);font-size:13px;padding:8px 2px}
+@media(max-width:400px){.nums{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.001ms!important;animation-duration:.001ms!important}}
+</style>
+</head>
+<body>
+
+<div id="login"><div class="card"><h1>פרויקט</h1>
+<p class="note" style="margin:0">קוד הכניסה של מרכז הפיקוד</p>
+<input id="code" type="password" placeholder="קוד" autocomplete="current-password">
+<button id="lb" type="button">כניסה</button>
+<p class="note" id="le"></p></div></div>
+
+<div id="app" hidden>
+<header id="topbar">
+ <a class="back" href="projects.html" aria-label="חזרה לפרויקטים" title="הפרויקטים"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+ <div><h1 id="ttl">פרויקט</h1><div class="when" id="when">טוען…</div></div>
+</header>
+<main id="m" aria-live="polite"><p class="empty">קורא את הפרויקט מפריוריטי…</p></main>
+</div>
+
+<script>
+var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
+var PJ_BUILD='2026-10-05.3';
+var B=function(q){return document.querySelector(q);};
+var CODE_FROM='';
+function code(){
+  try{var s=sessionStorage.getItem('fc');if(s){CODE_FROM='fc';return s;}
+      var l=localStorage.getItem('lia_code');if(l){CODE_FROM='lia_code';return l;}}catch(e){}
+  CODE_FROM='';return '';
+}
+function showLogin(msg){B('#app').hidden=true;B('#login').style.display='block';if(msg)B('#le').textContent=msg;}
+function api(b){
+  b=Object.assign({surface:'command-center',client_build:PJ_BUILD},b||{});
+  return fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':code()},body:JSON.stringify(b)}).then(function(r){
+    if(r.status===401){try{sessionStorage.removeItem('fc');if(CODE_FROM==='lia_code')localStorage.removeItem('lia_code');}catch(e){}showLogin('הקוד לא התקבל');throw new Error('401');}
+    if(!r.ok)return r.text().then(function(t){throw new Error(t.slice(0,200));});
+    return r.json();});
+}
+function cap(name,args){return api({action:'cap',name:name,args:args||{}});}
+function esc(s){return (s==null?'':String(s)).replace(/[<>&"]/g,function(c){return c==='<'?'&lt;':c==='>'?'&gt;':c==='&'?'&amp;':'&quot;';});}
+
+/* ── PJ_RENDER_BEGIN — pure: the five reads in, HTML out (qa-project.mjs drives it) ── */
+function shekel(n){if(n==null||!isFinite(n))return '—';return '₪'+Math.round(n).toLocaleString('he-IL');}
+function heDay(iso){var p=String(iso||'').slice(0,10).split('-');return p.length===3?(Number(p[2])+'.'+Number(p[1])+'.'+p[0].slice(2)):'';}
+function cert(c){var k=c==='ודאי'?'c1':c==='צפוי'?'c2':'c3';return '<span class="cert '+k+'">'+esc(c)+'</span>';}
+function plural(n,one,many){return n===1?one:(n+' '+many);}
+function num(v){var n=Number(v);return isFinite(n)?n:0;}
+function sum(rows,f){return rows.reduce(function(s,r){return s+num(r[f]);},0);}
+/* a read that failed is said as such — never an empty list that reads as "nothing" */
+function failed(x){return !x||x.error||(x.rows==null);}
+function why(x){return x&&x.error?String(x.error).slice(0,120):(x&&x.source?String(x.source).slice(0,120):'לא נקרא');}
+function truncNote(x){return x&&x.truncated?'<p class="note">מוצגים '+x.rows.length+' מתוך '+x.row_count_total+' — הרשימה המלאה בפריוריטי</p>':'';}
+
+function materials(orders){
+  var M={};
+  orders.forEach(function(o){(o.ORDERITEMS_SUBFORM||[]).forEach(function(l){
+    var k=String(l.PDES||l.PARTNAME||'').trim();if(!k)return;
+    var m=M[k]||(M[k]={name:k,qty:0,bal:0,value:0});
+    m.qty+=num(l.TQUANT);m.bal+=num(l.TBALANCE);m.value+=num(l.QPRICE);});});
+  return Object.keys(M).map(function(k){return M[k];}).filter(function(m){return m.qty>0||m.value>0;})
+    .sort(function(a,b){return b.value-a.value;});
+}
+function docRow(a,b,c,d){return '<div class="row"><div>'+a+(b?' <span class="n">'+esc(b)+'</span>':'')+'</div><div class="v">'+c+'</div>'+(d?'<div class="m">'+d+'</div>':'')+'</div>';}
+function priorityBlock(R){
+  var h='';
+  var Q=R.quotes,O=R.orders,N=R.notes,I=R.invoices;
+  var fails=[['הצעות מחיר',Q],['הזמנות',O],['תעודות משלוח',N],['חשבוניות',I]].filter(function(x){return failed(x[1]);});
+  var q=failed(Q)?[]:Q.rows,o=failed(O)?[]:O.rows,n=failed(N)?[]:N.rows,i=failed(I)?[]:I.rows;
+  var credits=i.filter(function(r){return String(r.DEBIT||'').toUpperCase()==='C';});
+  var invNet=sum(i.filter(function(r){return String(r.DEBIT||'').toUpperCase()!=='C';}),'QPRICE')-sum(credits,'QPRICE');
+  h+='<div class="nums">'
+    +'<div><b>'+(failed(Q)?'?':q.length)+'</b><span>הצעות מחיר</span>'+(q.length?'<i>'+shekel(sum(q,'QPRICE'))+'</i>':'')+'</div>'
+    +'<div><b>'+(failed(O)?'?':o.length)+'</b><span>הזמנות</span>'+(o.length?'<i>'+shekel(sum(o,'QPRICE'))+'</i>':'')+'</div>'
+    +'<div><b>'+(failed(N)?'?':n.length)+'</b><span>תעודות משלוח</span>'+(n.length?'<i>'+shekel(sum(n,'QPRICE'))+'</i>':'')+'</div>'
+    +'<div><b>'+(failed(I)?'?':i.length)+'</b><span>חשבוניות</span>'+(i.length?'<i>'+shekel(invNet)+(credits.length?' נטו':'')+'</i>':'')+'</div>'
+    +'</div>';
+  if(fails.length)h+='<p class="note" style="color:var(--warn)">לא נקרא הפעם: '+fails.map(function(x){return esc(x[0])+' ('+esc(why(x[1]))+')';}).join(' · ')+'</p>';
+  var dates=[].concat(q.map(function(r){return r.PDATE;}),o.map(function(r){return r.CURDATE;}),n.map(function(r){return r.CURDATE;}),i.map(function(r){return r.IVDATE;})).map(function(d){return String(d||'').slice(0,10);}).filter(Boolean).sort();
+  if(dates.length)h+='<p class="note">מהמסמך הראשון '+heDay(dates[0])+' עד האחרון '+heDay(dates[dates.length-1])+' '+cert('ודאי')+' לפי המפתח שרשום על כל מסמך</p>';
+  /* the materials — what Fresco actually supplied, off the order lines */
+  var mats=materials(o);
+  if(mats.length){
+    h+='<div class="card"><div class="h">החומרים שהוזמנו לפרויקט, מתוך שורות ההזמנות '+cert('ודאי')+'</div>'
+      +mats.slice(0,15).map(function(m){return docRow(esc(m.name),'',m.value>0?shekel(m.value):'בלי סכום','כמות '+Math.round(m.qty).toLocaleString('he-IL')+(m.bal>0?' · נשאר לספק '+Math.round(m.bal).toLocaleString('he-IL'):''));}).join('')
+      +(mats.length>15?'<p class="note">ועוד '+(mats.length-15)+' פריטים</p>':'')+'</div>';
+  }else if(o.length)h+='<p class="note">שורות ההזמנות לא כללו כמויות</p>';
+  var lists=[
+    ['הצעות המחיר',q,function(r){return docRow(heDay(r.PDATE),r.CPROFNUM,shekel(r.QPRICE),esc([r.CDES,r.STATDES,r.EXPIRYDATE?'בתוקף עד '+heDay(r.EXPIRYDATE):''].filter(Boolean).join(' · ')));},Q],
+    ['ההזמנות',o,function(r){return docRow(heDay(r.CURDATE),r.ORDNAME,shekel(r.QPRICE),esc([r.CDES,r.ORDSTATUSDES,String(r.BOOLCLOSED||'').toUpperCase()==='Y'?'סגורה':'פתוחה'].filter(Boolean).join(' · ')));},O],
+    ['תעודות המשלוח',n,function(r){return docRow(heDay(r.CURDATE),r.DOCNO,shekel(r.QPRICE),esc([r.CDES,r.STATDES,String(r.IVALL||'').toUpperCase()==='Y'?'חויבה':(String(r.FLAG||'').toUpperCase()==='Y'?'סופית, טרם חויבה':''),r.ORDNAME?'מהזמנה '+r.ORDNAME:''].filter(Boolean).join(' · ')));},N],
+    ['החשבוניות',i,function(r){return docRow(heDay(r.IVDATE),r.IVNUM,(String(r.DEBIT||'').toUpperCase()==='C'?'−':'')+shekel(r.QPRICE),esc([r.CDES,r.STATDES,String(r.DEBIT||'').toUpperCase()==='C'?'זיכוי':''].filter(Boolean).join(' · ')));},I],
+  ];
+  lists.forEach(function(L){
+    if(!L[1].length)return;
+    h+='<details class="more"><summary>'+esc(L[0])+' ('+L[1].length+')</summary><div class="card">'+L[1].map(L[2]).join('')+truncNote(L[3])+'</div></details>';
+  });
+  return h;
+}
+function linksOf(P,kind){var k=P&&P.links&&P.links[kind];return k?k.sample||[]:[];}
+function officeBlock(P){
+  var rows=[].concat(linksOf(P,'workbook_active').map(function(l){return {tab:'הפרויקטים הפעילים',l:l};}),
+    linksOf(P,'workbook_finished').map(function(l){return {tab:'הפרויקטים שהסתיימו',l:l};}),
+    linksOf(P,'workbook_photo').map(function(l){return {tab:'רשימת הצילום',l:l};}));
+  var arch=linksOf(P,'archive_project');
+  if(!rows.length&&!arch.length)return '<p class="empty">הפרויקט לא נמצא בדוח הפרויקטים של המשרד — לא בפעילים, לא בשהסתיימו ולא ברשימת הצילום</p>';
+  var h='';
+  if(arch.length)h+='<div class="card"><div class="h">מבנה שנחקר — רשומת המבנה ההיסטורי שלו (כתובת, הכרזה, תקופה, אדריכל) קשורה לפרויקט הזה '+cert('לא מאומת')+'</div>'
+    +arch.map(function(l){return docRow(esc(l.label||''),'','',esc(l.basis||''));}).join('')+'</div>';
+  if(rows.length)h+='<div class="card"><div class="h">בדוח הפרויקטים של המשרד '+cert('לא מאומת')+'</div>'+rows.map(function(x){
+    var m=x.l.meta||{};var bits=[];
+    if(m.est_end!=null)bits.push('אומדן לסיום '+shekel(m.est_end));if(m.price_final!=null)bits.push('מחיר סיום '+shekel(m.price_final));
+    if(m.customer_no)bits.push('לקוח '+m.customer_no);if(m.extra)bits.push(m.extra);if(m.notes)bits.push(m.notes);
+    return docRow(esc(x.l.label||''),'',esc(x.tab),esc(bits.join(' · '))+(x.l.basis?(bits.length?' · ':'')+'הותאם לפי '+esc(x.l.basis):'')+(x.l.confirmed?' · אושר':''));
+  }).join('')+'</div>';
+  return h;
+}
+function mailBlock(P,MS,name){
+  var bound=linksOf(P,'mail_thread');var h='';
+  if(bound.length)h+='<div class="card"><div class="h">שרשורים שנושאים מספר מסמך של הפרויקט '+cert('ודאי')+'</div>'
+    +bound.slice(0,20).map(function(l){var m=l.meta||{};return docRow(esc(l.label||''),'',heDay(m.sent_at),esc([m.mailbox,m.from].filter(Boolean).join(' · ')));}).join('')
+    +(bound.length>20?'<p class="note">ועוד '+(bound.length-20)+'</p>':'')+'</div>';
+  if(failed(MS))h+='<p class="note" style="color:var(--warn)">חיפוש המיילים לפי שם לא נקרא הפעם ('+esc(why(MS))+')</p>';
+  else{
+    var seen={};bound.forEach(function(l){seen[String(l.label||'').replace(/^(re|fw|fwd):\s*/ig,'').trim()]=1;});
+    var hits=(MS.rows||[]).filter(function(r){return !seen[String(r.subject||'').replace(/^(re|fw|fwd):\s*/ig,'').trim()];});
+    if(hits.length)h+='<div class="card"><div class="h">מיילים שהנושא או השולח שלהם מזכירים "'+esc(name)+'" '+cert('לא מאומת')+'</div>'
+      +hits.slice(0,12).map(function(r){return docRow(esc(r.subject||''),'',heDay(r.sent_at),esc(r.from||''));}).join('')+'</div>';
+    else if(!bound.length)h+='<p class="empty">לא נמצא מייל שמזכיר את הפרויקט — לא לפי מספר מסמך ולא לפי השם</p>';
+  }
+  return h;
+}
+function spBlock(SP,name){
+  if(failed(SP))return '<p class="note" style="color:var(--warn)">קטלוג השרפוינט לא נקרא הפעם ('+esc(why(SP))+')</p>';
+  var rows=SP.rows||[];
+  if(!rows.length)return '<p class="empty">לא נמצא בשרפוינט מסמך או תמונה ששמם או תוכנם מזכיר "'+esc(name)+'"</p>';
+  return '<div class="card"><div class="h">בשרפוינט, לפי השם '+cert('לא מאומת')+'</div>'+rows.slice(0,12).map(function(r){
+    var nm=r.name||r.title||'';var url=r.web_url||r.url||'';var p=r.path||r.folder||'';
+    return docRow(url?'<span class="src"><a href="'+esc(url)+'" target="_blank" rel="noopener">'+esc(nm)+'</a></span>':esc(nm),'',heDay(r.modified||r.modified_src||''),esc(p));
+  }).join('')+'</div>';
+}
+function missingBlock(P,R,MS,SP){
+  var o=failed(R.orders)?null:R.orders.rows,q=failed(R.quotes)?null:R.quotes.rows,n=failed(R.notes)?null:R.notes.rows;
+  var items=[];
+  if(q&&!q.length)items.push('אין הצעת מחיר בפריוריטי — הפרויקט נפתח ישר בהזמנה');
+  if(o&&!o.length)items.push('אין הזמנה בפריוריטי — רק מסמכים אחרים נושאים את המפתח');
+  if(n&&!n.length)items.push('לא יצאה תעודת משלוח');
+  if(!linksOf(P,'workbook_active').length&&!linksOf(P,'workbook_finished').length)items.push('המשרד לא רשם אותו בדוח הפרויקטים');
+  if(!linksOf(P,'workbook_photo').length)items.push('אין לו שורה ברשימת הצילום');
+  if(!linksOf(P,'mail_thread').length&&!failed(MS)&&!(MS.rows||[]).length)items.push('לא נמצא מייל שמזכיר אותו');
+  if(!failed(SP)&&!(SP.rows||[]).length)items.push('לא נמצאו לו מסמכים או תמונות בשרפוינט לפי השם');
+  if(!linksOf(P,'archive_project').length)items.push('אין לו רשומת מבנה (היסטוריה, אדריכל, מעמד שימור) — המידע מהעולם החיצוני עוד לא מחובר');
+  else items.push('המידע מהעולם החיצוני (היסטוריה, כתבות, תיקי תכנון) עוד לא מחובר לדף הזה');
+  return '<div class="miss"><ul style="margin:0">'+items.map(function(s){return '<li>'+esc(s)+'</li>';}).join('')+'</ul></div>';
+}
+function renderProject(D){
+  var P=D.identity,pr=P&&P.project,R=D.priority;
+  var name=pr?(pr.priority_name||pr.name||''):(D.key||'');
+  var h='<div class="head"><div class="nm">'+esc(name)+'</div>';
+  var who=[];
+  if(pr){if(pr.priority_customers&&pr.priority_customers.length)who.push(pr.priority_customers.slice(0,3).join(' · '));if(pr.city)who.push(pr.city);}
+  h+=(who.length?'<div class="who">'+esc(who.join(' · '))+'</div>':'');
+  var facts=['מפתח בפריוריטי <b>'+esc(D.key)+'</b> '+cert('ודאי')];
+  if(pr&&pr.first_seen)facts.push('במסמכים מ-'+heDay(pr.first_seen)+(pr.last_seen?' עד '+heDay(pr.last_seen):''));
+  if(pr&&pr.identity_source==='archive')facts.push('מבנה שנחקר — נקשר למפתח לפי רחוב ומספר בית');
+  if(!pr)facts.push('הפרויקט עוד לא בטבלת הזהות — מוצג ישר מפריוריטי');
+  h+='<div class="facts">'+facts.map(function(f){return '<span>'+f+'</span>';}).join('')+'</div></div>';
+
+  h+='<div class="sec"><h2>מה פריוריטי יודע</h2><span class="dim">לפי המפתח, לא לפי שם</span></div>'+priorityBlock(R);
+  h+='<div class="sec"><h2>מה המשרד רשם</h2><span class="dim">דוח הפרויקטים</span></div>'+officeBlock(P);
+  h+='<div class="sec"><h2>מיילים</h2></div>'+mailBlock(P,D.mail,name);
+  h+='<div class="sec"><h2>מסמכים ותמונות</h2><span class="dim">שרפוינט</span></div>'+spBlock(D.sharepoint,name);
+  h+='<div class="sec"><h2>מה חסר</h2></div>'+missingBlock(P,R,D.mail,D.sharepoint);
+  h+='<div class="foot">'+cert('ודאי')+' מפריוריטי לפי מפתח הפרויקט שרשום על המסמך · '+cert('לא מאומת')+' הותאם לפי שם או כתובת, עד שאדם מאשר.'
+    +' מקורות: פריוריטי (הזמנות, הצעות, תעודות, חשבוניות), דוח הפרויקטים מהשרפוינט, קטלוג המיילים, קטלוג השרפוינט.'
+    +(D.failures&&D.failures.length?'<p style="margin-top:6px;color:var(--warn)">לא נקרא הפעם: '+D.failures.map(esc).join(' · ')+'</p>':'')
+    +'<p style="margin-top:6px">build '+PJ_BUILD+'</p></div>';
+  return h;
+}
+/* ── PJ_RENDER_END ── */
+
+var KEY=(new URLSearchParams(location.search).get('key')||'').trim().toUpperCase();
+function pq(entity,keyField,select,extra){
+  return cap('priority_query',Object.assign({entity:entity,select:select,filter:keyField+" eq '"+KEY.replace(/'/g,"''")+"'",top:200},extra||{}))
+    .then(function(x){var s=String(x.source||'');if(/שגיאה|חסום|נדחתה|סגור/.test(s)&&!(x.rows&&x.rows.length))return {rows:null,error:s};return x;})
+    .catch(function(e){return {rows:null,error:String(e.message||e)};});
+}
+function load(){
+  B('#login').style.display='none';B('#app').hidden=false;
+  if(!/^PR\d{6,10}$/.test(KEY)){B('#m').innerHTML='<p class="empty">חסר מפתח פרויקט בכתובת — פותחים את הדף מתוך רשימת הפרויקטים</p>';B('#when').textContent='';return;}
+  B('#ttl').textContent=KEY;
+  var ident=cap('project_identity',{key:KEY}).then(function(x){return (x.rows&&x.rows[0])||null;}).catch(function(e){if(String(e.message)==='401')throw e;return {error:String(e.message||e)};});
+  ident.then(function(P){
+    var name=(P&&P.project&&(P.project.priority_name||P.project.name))||'';
+    if(name)B('#ttl').textContent=name;
+    var reads={
+      quotes:pq('CPROF','DOCNO','CPROFNUM,PDATE,CDES,STATDES,QPRICE,TOTPRICE,EXPIRYDATE',{orderby:'PDATE desc'}),
+      orders:pq('ORDERS','DOCNO','ORDNAME,CURDATE,CDES,ORDSTATUSDES,QPRICE,TOTPRICE,BOOLCLOSED',{orderby:'CURDATE desc',expand:'ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,TBALANCE,PRICE,QPRICE)'}),
+      notes:pq('DOCUMENTS_D','PROJDOCNO','DOCNO,CURDATE,CDES,STATDES,FLAG,IVALL,QPRICE,TOTPRICE,ORDNAME',{orderby:'CURDATE desc'}),
+      invoices:pq('CINVOICES','PROJDOCNO','IVNUM,IVDATE,CDES,STATDES,QPRICE,TOTPRICE,DEBIT,FINAL',{orderby:'IVDATE desc'}),
+      mail:name?cap('mail_search',{query:name}).catch(function(e){return {rows:null,error:String(e.message||e)};}):Promise.resolve({rows:[],source:'אין שם לחפש לפיו'}),
+      sharepoint:name?cap('sharepoint_catalog',{mode:'search',query:name,limit:12}).catch(function(e){return {rows:null,error:String(e.message||e)};}):Promise.resolve({rows:[],source:'אין שם לחפש לפיו'}),
+    };
+    var keys=Object.keys(reads);
+    return Promise.all(keys.map(function(k){return reads[k];})).then(function(vals){
+      var D={key:KEY,identity:(P&&!P.error)?P:null,priority:{},mail:null,sharepoint:null,failures:[]};
+      keys.forEach(function(k,i){if(k==='mail')D.mail=vals[i];else if(k==='sharepoint')D.sharepoint=vals[i];else D.priority[k]=vals[i];});
+      if(P&&P.error)D.failures.push('טבלת הזהות: '+P.error);
+      B('#m').innerHTML=renderProject(D);
+      B('#when').textContent='נכון ל-'+new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+    });
+  }).catch(function(e){
+    if(String(e.message)==='401')return;
+    B('#m').innerHTML='<p class="empty">לא הצלחתי להגיע לשרת: '+esc(e.message)+'</p>';B('#when').textContent='';
+  });
+}
+B('#lb').onclick=function(){var c=B('#code').value.trim();if(!c)return;try{sessionStorage.setItem('fc',c);}catch(e){}load();};
+B('#code').addEventListener('keydown',function(e){if(e.key==='Enter')B('#lb').click();});
+if(code())load();else showLogin('');
+</script>
+</body>
+</html>

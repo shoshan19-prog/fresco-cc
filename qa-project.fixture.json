@@ -1,0 +1,60 @@
+{
+  "key": "PR24000104",
+  "identity": {
+    "rows": [{
+      "project": {
+        "id": "00000000-0000-0000-0000-000000000104", "priority_key": "PR24000104", "priority_name": "הדקל 7", "name": "הדקל 7",
+        "city": "תל אביב", "address": null, "priority_customer": "103251", "priority_customers": ["אלון הנדסה וניהול פרויקטים בע\"מ"],
+        "first_seen": "2025-03-02", "last_seen": "2026-09-30", "identity_source": "priority", "publish_state": "draft"
+      },
+      "links": {
+        "priority_order": { "count": 2, "certainty": { "ודאי": 2 }, "sample": [] },
+        "priority_note": { "count": 15, "certainty": { "ודאי": 15 }, "sample": [] },
+        "workbook_active": { "count": 1, "certainty": { "לא מאומת": 1 }, "sample": [
+          { "key": "אלון הנדסה|הדקל 7 תל אביב", "label": "אלון הנדסה · הדקל 7 תל אביב", "certainty": "לא מאומת", "basis": "שם הלקוח והכתובת", "confirmed": false,
+            "meta": { "est_end": 122000, "notes": "ממתינים לאישור הגוון" } } ] },
+        "workbook_photo": { "count": 1, "certainty": { "לא מאומת": 1 }, "sample": [
+          { "key": "הדקל 7 תל אביב", "label": "הדקל 7 תל אביב", "certainty": "לא מאומת", "basis": "הכתובת בלבד (רחוב ומספר)", "confirmed": false, "meta": {} } ] },
+        "mail_thread": { "count": 2, "certainty": { "ודאי": 2 }, "sample": [
+          { "key": "AAQk1", "label": "RE: הדפסת הצעת מחיר - PQ26000161", "certainty": "ודאי", "basis": "מספר המסמך PQ26000161 בנושא ההודעה", "confirmed": false,
+            "meta": { "sent_at": "2026-09-21T10:00:00Z", "mailbox": "orna@frescocolors.com", "from": "orna@frescocolors.com", "numbers": ["PQ26000161"] } },
+          { "key": "AAQk2", "label": "תעודה SH26001800 — חתומה", "certainty": "ודאי", "basis": "מספר המסמך SH26001800 בנושא ההודעה", "confirmed": false,
+            "meta": { "sent_at": "2026-09-30T12:00:00Z", "mailbox": "liz@frescocolors.com", "from": "site@contractor.example", "numbers": ["SH26001800"] } } ] }
+      },
+      "link_count": 21
+    }],
+    "source": "project PR24000104 · 21 קישורים"
+  },
+  "priority": {
+    "quotes": { "rows": [
+      { "CPROFNUM": "PQ26000161", "PDATE": "2026-09-20T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "STATDES": "אושרה", "QPRICE": 61000, "TOTPRICE": 71980, "EXPIRYDATE": "2026-10-20T00:00:00Z" }
+    ], "row_count_total": 1, "truncated": false, "source": "Priority CPROF · קריאה חיה · 1 שורות" },
+    "orders": { "rows": [
+      { "ORDNAME": "SO26001172", "CURDATE": "2026-07-09T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "ORDSTATUSDES": "בבצוע", "QPRICE": 122000, "TOTPRICE": 143960, "BOOLCLOSED": null,
+        "ORDERITEMS_SUBFORM": [
+          { "PARTNAME": "1650", "PDES": "פרסקו רזנטה 25 ק\"ג", "TQUANT": 120, "TBALANCE": 40, "PRICE": 380, "QPRICE": 45600 },
+          { "PARTNAME": "2611286", "PDES": "טיח הידראולי 25 ק\"ג", "TQUANT": 300, "TBALANCE": 0, "PRICE": 95, "QPRICE": 28500 },
+          { "PARTNAME": "9990", "PDES": "גוון", "TQUANT": 2, "TBALANCE": 0, "PRICE": 0, "QPRICE": 0 } ] },
+      { "ORDNAME": "SO25000900", "CURDATE": "2025-03-02T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "ORDSTATUSDES": "סגורה", "QPRICE": 18000, "TOTPRICE": 21240, "BOOLCLOSED": "Y",
+        "ORDERITEMS_SUBFORM": [ { "PARTNAME": "754-930-401301", "PDES": "פרסקו סלוקסן 5 ליטר", "TQUANT": 60, "TBALANCE": 0, "PRICE": 300, "QPRICE": 18000 } ] }
+    ], "row_count_total": 2, "truncated": false, "source": "Priority ORDERS · קריאה חיה · 2 שורות" },
+    "notes": { "rows": [
+      { "DOCNO": "SH26001800", "CURDATE": "2026-09-30T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "STATDES": "סופית", "FLAG": "Y", "IVALL": "N", "QPRICE": 9500, "TOTPRICE": 11210, "ORDNAME": "SO26001172" },
+      { "DOCNO": "SH26001650", "CURDATE": "2026-09-02T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "STATDES": "סופית", "FLAG": "Y", "IVALL": "Y", "QPRICE": 28500, "TOTPRICE": 33630, "ORDNAME": "SO26001172" },
+      { "DOCNO": "SH25000400", "CURDATE": "2025-03-10T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "STATDES": "סופית", "FLAG": "Y", "IVALL": "Y", "QPRICE": 18000, "TOTPRICE": 21240, "ORDNAME": "SO25000900" }
+    ], "row_count_total": 3, "truncated": false, "source": "Priority DOCUMENTS_D · קריאה חיה · 3 שורות" },
+    "invoices": { "rows": [
+      { "IVNUM": "SI266001500", "IVDATE": "2026-09-23T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "STATDES": "סופית", "QPRICE": 28500, "TOTPRICE": 33630, "DEBIT": "D", "FINAL": "Y" },
+      { "IVNUM": "CR267000010", "IVDATE": "2026-09-25T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "STATDES": "סופית", "QPRICE": 1500, "TOTPRICE": 1770, "DEBIT": "C", "FINAL": "Y" },
+      { "IVNUM": "SI256000300", "IVDATE": "2025-03-20T00:00:00Z", "CDES": "אלון הנדסה וניהול פרויקטים בע\"מ", "STATDES": "סופית", "QPRICE": 18000, "TOTPRICE": 21240, "DEBIT": "D", "FINAL": "Y" }
+    ], "row_count_total": 3, "truncated": false, "source": "Priority CINVOICES · קריאה חיה · 3 שורות" }
+  },
+  "mail": { "rows": [
+    { "subject": "RE: הדפסת הצעת מחיר - PQ26000161", "from": "orna@frescocolors.com", "to": ["arik@frescocolors.com"], "sent_at": "2026-09-21T10:00:00Z" },
+    { "subject": "הדקל 7 — לוח זמנים לאספקה", "from": "site@contractor.example", "to": ["liz@frescocolors.com"], "sent_at": "2026-08-14T08:30:00Z" }
+  ], "source": "mail_index · מטא-דאטה בלבד · מונחים: הדקל, 7 · 2 התאמות" },
+  "sharepoint": { "rows": [
+    { "name": "הדקל 7 - לפני.jpg", "path": "Team Site / Documents / תמונות פרויקטים / תמונות פרויקטים / הדקל 7 / הדקל 7 - לפני.jpg", "web_url": "https://example.sharepoint.com/x/1", "modified": "2026-08-01T09:00:00Z" },
+    { "name": "מפרט הדקל 7.pdf", "path": "Team Site / Documents / מפרטים טכניים / מפרט הדקל 7.pdf", "web_url": "https://example.sharepoint.com/x/2", "modified": "2026-07-11T09:00:00Z" }
+  ], "source": "sharepoint_catalog · search · 2" }
+}
