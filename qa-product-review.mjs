@@ -34,6 +34,32 @@ ok('his three decisions, in words: this is what I asked · return for correction
 ok('no link left by the worker → the card says so and points at reading the product before approving', /לא השאיר קישור לתוצר/.test(R.noRefs), R.noRefs.slice(0, 120));
 ok('the list note names the state in words', R.disp === 'התוצר מוכן לאישורך', R.disp);
 ok('the other parks keep their card', /ההכרעה שלך/.test(R.other), R.other);
+/* 5.10 evening — THE ENGINEERING END: a PR the lane stopped before merging. The card names the change, offers the page
+   from the branch as a preview and the diff, and its approve button says what it does: go live. */
+const ship = { repo: 'fresco-cc', pr: 100, branch: 'lia/exec/ee122cab', paths: ['lia.html'], child_work_id: 'ee122cabbb9590d2c3dca8251ba1597d',
+  pr_url: 'https://github.com/shoshan19-prog/fresco-cc/pull/100', files_url: 'https://github.com/shoshan19-prog/fresco-cc/pull/100/files',
+  preview_url: 'https://raw.githubusercontent.com/shoshan19-prog/fresco-cc/lia/exec/ee122cab/lia.html' };
+const shipRow = { ...row, product_review: { ...row.product_review, outcome: 'ניהול מכירות — PR #100 ב-fresco-cc, מוכן להעלאה', what_remains: 'ההעלאה לאוויר — אחרי אישורך', ship,
+  refs: [ship.preview_url, ship.files_url, ship.pr_url] } };
+await page.route('https://raw.githubusercontent.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><head><title>t</title></head><body><div id="kpiCard">ניהול מכירות · PREVIEW-OK</div></body></html>' }));
+const S = await page.evaluate(async (r) => {
+  document.querySelectorAll('#dec').forEach((e) => e.remove());   // the earlier card: wireDecision binds the first #dec on the page
+  const d = document.createElement('div'); d.innerHTML = decisionCard(r); document.body.appendChild(d);
+  wireDecision(r);
+  const txt = d.innerText;
+  const files = (d.querySelector('a[href$="/files"]') || {}).href || null;
+  const pb = d.querySelector('button[data-preview]');
+  let frame = null, base = null;
+  if (pb) { pb.click(); for (let i = 0; i < 40 && !document.querySelector('#shipFrame'); i++) await new Promise((r) => setTimeout(r, 50));
+    const f = document.querySelector('#shipFrame'); if (f) { frame = f.getAttribute('srcdoc'); base = /<base href="([^"]+)">/.exec(frame || '')?.[1] || null; } }
+  const code = decisionCard({ ...r, product_review: { ...r.product_review, ship: { ...r.product_review.ship, repo: 'fresco-marketing-os', paths: ['supabase/functions/_shared/x.ts'], preview_url: null } } });
+  return { txt, files, hasPreviewBtn: !!pb, frame: !!frame, base, previewText: frame ? /PREVIEW-OK/.test(frame) : false, code };
+}, shipRow);
+ok('a page change: the card names it, says it is not live yet, and offers the page from the branch and the diff',
+  /שינוי בעמוד/.test(S.txt) && /עוד לא עלה לאוויר/.test(S.txt) && S.hasPreviewBtn && S.files === ship.files_url, S.txt.slice(0, 200) + ' · ' + S.files);
+ok('the preview renders the branch page inside the card, anchored to the live site for its styles and scripts', S.frame && S.base === 'https://shoshan19-prog.github.io/fresco-cc/' && S.previewText, JSON.stringify({ frame: S.frame, base: S.base, txt: S.previewText }));
+ok('his approve button says what it does — go live — and the close button says it does not', /זה מה שביקשתי — העלי לאוויר/.test(S.txt) && /סגרי בלי להעלות/.test(S.txt), S.txt.slice(-200));
+ok('a code change has no page to preview: the diff is the product', /שינוי בקוד/.test(S.code) && !/data-preview/.test(S.code) && /\/pull\/100\/files/.test(S.code), S.code.slice(0, 160));
 ok('no page errors', errors.length === 0, errors.join(' | '));
 await browser.close();
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} checks passed`);
