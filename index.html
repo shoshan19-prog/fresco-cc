@@ -177,6 +177,8 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .btns button{flex:1;border-radius:10px;padding:10px 6px;font-size:14px;font-weight:600;min-height:42px}
 .b-ok{background:var(--acc);color:#fff}.b-ed{background:var(--card2);color:var(--txt);border:1px solid var(--line)}.b-no{background:var(--card2);color:var(--dim);border:1px solid var(--line)}
 .btns button:disabled{opacity:.5}
+/* 5.10 — corrections before launch / before go-live: one box on the card, his words go to the executor */
+.fix{margin-top:10px}.fix label{display:block;font-size:13px}.fix textarea{width:100%;box-sizing:border-box;margin-top:6px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;color:var(--txt);resize:vertical;min-height:64px}.fix textarea:focus{outline:0;border-color:var(--acc);box-shadow:var(--glow)}
 
 /* a domain's own strip: what the tower holds for its departments — compact */
 .dept{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:8px}
@@ -298,7 +300,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-05.3';
+var CC_BUILD='2026-10-05.4';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -1032,8 +1034,11 @@ function reviewCard(r){
     +(refs.length?'<div class="li" style="margin-top:6px">'+refs.map(function(u){return '<a class="ref" href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(u.replace(/^https?:\/\//,''))+'</a>';}).join('<br>')+'</div>'
       :(sh?'':'<p class="dim" style="margin-top:6px">המבצע לא השאיר קישור לתוצר — קרא אותו בכפתור למטה לפני שאתה מאשר.</p>'))
     +(p.result&&!p.outcome?'<div class="li" style="white-space:pre-wrap;max-height:40vh;overflow:auto">'+esc(p.result.slice(0,1500))+'</div>':'')
+    /* 5.10 (David): "אם יש לי תיקונים לתוצר … אני יכול לעשות אותם לפני שאני משגר" — the box is on the card, not in a popup */
+    +'<div class="fix"><label class="dim" for="fixNote">יש לך תיקונים לתוצר לפני '+(sh?'ההעלאה':'הסגירה')+'? כתוב אותם כאן — המבצע יתקן ויגיש לך שוב:</label>'
+    +'<textarea id="fixNote" rows="3" placeholder="מה לשנות בתוצר"></textarea></div>'
     +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">'+(sh?'זה מה שביקשתי — העלי לאוויר':'זה מה שביקשתי — סגרי')+'</button>'
-    +'<button class="b-ed" data-dec="RETURN">תחזירי לתיקון</button>'
+    +'<button class="b-ed" data-dec="RETURN">תקני לפי ההערות ותגישי שוב</button>'
     +'<button class="b-no" data-dec="REJECT">'+(sh?'סגרי בלי להעלות':'סגרי בלי לאשר')+'</button></div>'
     +'<div class="btns"><button class="b-ed" data-read="1">קרא את התוצר המלא</button></div>'
     +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
@@ -1051,7 +1056,10 @@ function decisionCard(r){
       +(dw.length?'<p class="dim">נדע שזה גמור כש: '+dw.map(esc).join(' · ')+'</p>':'')
       +'<div class="btns"><button class="b-ok" data-dec="LAUNCH">שגרי — לזה התכוונתי</button>'
       +'<button class="b-no" data-dec="REJECT">סגרי</button></div>'
-      +'<p class="dim" style="margin-top:6px">משהו לא מדויק? כתוב לליה בשיחה מה לתקן — היא תעדכן ותשאל שוב.</p>'
+      /* 5.10 (David): corrections to the definition before it launches — here, not in the chat */
+      +'<div class="fix"><label class="dim" for="reviseNote">משהו לא מדויק? כתוב כאן מה לתקן בהגדרה לפני השיגור — ליה תעדכן ותשאל שוב:</label>'
+      +'<textarea id="reviseNote" rows="3" placeholder="למשל: לא את כל הלקוחות — רק את עשרת הגדולים"></textarea>'
+      +'<div class="btns"><button class="b-ed" data-revise="1">תקני את ההגדרה ושאלי שוב</button></div></div>'
       +'<div id="decRes" class="note" style="margin-top:8px"></div></div>';
   }
   return '<div class="card" id="dec"><h3>ההכרעה שלך</h3>'
@@ -1067,11 +1075,27 @@ function wireDecision(r){
   Array.prototype.forEach.call(c.querySelectorAll('button[data-dec]'),function(b){b.onclick=function(){decideWork(r,b.getAttribute('data-dec'),b);};});
   var rb=c.querySelector('button[data-read]');if(rb)rb.onclick=function(){readProduct(r,rb);};
   var pb=c.querySelector('button[data-preview]');if(pb)pb.onclick=function(){previewShip((r.product_review||{}).ship||{},pb);};
+  var vb=c.querySelector('button[data-revise]');if(vb)vb.onclick=function(){reviseHeld(r,vb);};
+}
+/* 5.10 — his correction of a held order, from the card: the same door the conversation uses (work_intake revise_work_id).
+   The understanding he sees next is the one he confirmed plus his correction — the original is never replaced by the note. */
+function reviseHeld(r,btn){
+  var ta=B('#reviseNote');var note=ta?String(ta.value||'').trim():'';
+  var out=B('#decRes');
+  if(!note){if(out)out.textContent='כתוב קודם מה לתקן';if(ta)ta.focus();return;}
+  var L=r.launch||{};var understood=(L.understood?L.understood+'\nתיקון: '+note:note).slice(0,400);
+  btn.disabled=true;var was=btn.textContent;btn.textContent='…';
+  cap('work_intake',{text:note,revise_work_id:r.work_id,requested_by:'david',source:'david',via:'command_center',understood:understood,deliverable:L.deliverable||'',done_when:L.done_when||[]}).then(function(x){
+    var row=rowsOf(x)[0]||{};
+    if(row.refused||!row.revised){if(out)out.textContent='התיקון לא נרשם: '+(row.reason||x.source||'');btn.disabled=false;btn.textContent=was;return;}
+    if(out)out.textContent='ההגדרה תוקנה — זה מה שליה הבינה עכשיו. שגר, או תקן שוב.';
+    return fetchAll().then(render);
+  }).catch(function(e){if(out)out.textContent='התיקון לא נרשם: '+String(e.message||e).slice(0,160);btn.disabled=false;btn.textContent=was;});
 }
 function decideWork(r,dec,btn){
   var note='';
   if(dec==='REJECT'){note=prompt('למה לסגור? (לא חובה)','');if(note===null)return;}
-  if(dec==='RETURN'){note=prompt('מה לתקן? ההערה שלך הולכת למבצע יחד עם ההחזרה','');if(note===null)return;if(!String(note).trim()){alert('כדי להחזיר לתיקון צריך לכתוב מה לתקן');return;}dec='RETRY';}
+  if(dec==='RETURN'){var fx=B('#fixNote');note=fx?String(fx.value||'').trim():'';if(!note){note=prompt('מה לתקן? ההערה שלך הולכת למבצע יחד עם ההחזרה','');if(note===null)return;}if(!String(note).trim()){var o0=B('#decRes');if(o0)o0.textContent='כדי להחזיר לתיקון צריך לכתוב מה לתקן';if(fx)fx.focus();return;}dec='RETRY';}
   var shp=(r.product_review||{}).ship;
   if(dec==='ACCEPT'&&!confirm(shp?'לאשר את השינוי ולהעלות אותו לאוויר עכשיו?':'לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
   if(dec==='LAUNCH'&&!confirm('לשגר את העבודה כפי שליה הבינה אותה?'))return;
