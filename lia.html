@@ -760,7 +760,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-05.2';
+const LIA_BUILD='2026-10-05.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -2083,6 +2083,8 @@ function monthFactsFromSnapshot(d,asOf,cached){
   ly_month:agg(d.ly_full_month),ly_month_label:(w.last_year_full_month||{}).label||'אותו חודש אשתקד',
   ly_year:agg(d.ly_full_year),ytd:agg(d.ytd),ly_ytd:agg(d.ly_ytd),elapsed_year_days:n(w.elapsed_year_days),
   projected_month:n(rate.projected_month),confidence:rate.confidence||null,basis:rate.basis||'',daily:n(rate.daily),
+  rate_day_kind:rate.day_kind||null,rate_days_total:n(rate.days_total),
+  working_days:(w.working_days&&n(w.working_days.total))?{done:n(w.working_days.done),total:n(w.working_days.total),left:n(w.working_days.left)}:null,
   unbilled:ub?{count:n(ub.count),net:n(ub.net),gross:n(ub.gross),oldest_days:ub.age?n(ub.age.max_days):null,current_month_count:ub.current_month?n(ub.current_month.count):null}:null,
   backlog:oo?{count:n(oo.count),remaining:oo.all_verified?n(oo.open_value):null,original:n(oo.original_value),unverified_lines:n(oo.unverified_lines)||0}:null,
   as_of:asOf||null,cached:!!cached};
@@ -2113,10 +2115,14 @@ function kpiModel(k,fmt){
     and it is named Baseline everywhere, never "יעד הנהלה". */
  const base=m.ly_month&&m.ly_month.net>0?m.ly_month.net:null,baseLabel=m.ly_month_label;
  const mtd=m.mtd?m.mtd.net:null,mtdN=m.mtd?m.mtd.count:null;
- const wd=workingDays(m.today);
- const expected=pct(m.elapsed_days,m.days_in_month);
+ /* OFFICIAL PACE = WORKING DAYS (David, 5.10 evening — decision 164): the engine's own count
+    (Sunday–Thursday, holidays not subtracted) when the row carries it, the same count computed
+    here when it does not. Calendar days stay on the detail as reference only. */
+ const wd=(m.working_days&&m.working_days.total)?m.working_days:workingDays(m.today);
+ const calPct=pct(m.elapsed_days,m.days_in_month);
+ const expected=wd?pct(wd.done,wd.total):null;
  const actual=pct(mtd,base);
- const paceRatio=(mtd!==null&&base&&m.elapsed_days&&m.days_in_month)?(mtd/base)/(m.elapsed_days/m.days_in_month):null;
+ const paceRatio=(mtd!==null&&base&&wd&&wd.done&&wd.total)?(mtd/base)/(wd.done/wd.total):null;
  const pts=(actual!==null&&expected!==null)?actual-expected:null;
  const fc=m.projected_month,fcPct=pct(fc,base);
  const gap=(mtd!==null&&base)?Math.max(0,base-mtd):null,gapPct=(actual!==null)?Math.max(0,100-actual):null;
@@ -2125,7 +2131,7 @@ function kpiModel(k,fmt){
  const avg2025=m.ly_year&&m.ly_year.net?m.ly_year.net/12:null;
  const avg2026=(m.ytd&&m.ytd.net&&m.elapsed_year_days)?m.ytd.net/(m.elapsed_year_days/(365/12)):null;
  const confHe={HIGH:'גבוה',MEDIUM:'בינוני',LOW:'נמוך'}[m.confidence]||NA;
- const paceLine='לפי ימים קלנדריים '+(m.elapsed_days!=null?m.elapsed_days+'/'+m.days_in_month+' ('+expected+'%)':NA)+(wd?' · לפי ימי עבודה א׳–ה׳ '+wd.done+'/'+wd.total+' ('+pct(wd.done,wd.total)+'%)':'');
+ const paceLine='הקצב הרשמי — ימי עבודה א׳–ה׳ '+(wd?wd.done+'/'+wd.total+' ('+expected+'%)':NA)+' (הכרעת דוד 5.10) · לפי ימים קלנדריים '+(m.elapsed_days!=null?m.elapsed_days+'/'+m.days_in_month+' ('+calPct+'%)':NA)+' — לייחוס בלבד';
  const cards=[
   /* David, 5.10 evening: the Baseline is a comparison, not a target — the card says how far
      along the Baseline we are and, on one line, where the pace says we should have been. */
@@ -2149,7 +2155,7 @@ function kpiModel(k,fmt){
     {b:'+ תעודות שיצאו ולא חויבו',t:ubNet!==null?fmt(ubNet)+' נטו ('+m.unbilled.count+' תעודות)':NA},
     {b:'+ הזמנות פתוחות שיסופקו החודש',t:NA+' — אין מועדי אספקה בתמונת המצב (יתרת הצבר כולה '+fmt(bkRem)+')'},
     {b:'+ הזמנות חדשות צפויות',t:NA+' — אין מודל הזמנות חדשות במנוע'},
-    {b:'Forecast',t:fmt(fc)+' — נוסחה: קצב יומי '+fmt(m.daily)+' × '+(m.days_in_month!=null?m.days_in_month:'?')+' ימים ('+(m.basis||NA)+'); לא גשר רכיבים'},
+    {b:'Forecast',t:fmt(fc)+' — נוסחה: '+(m.rate_day_kind==='working'?'קצב ליום עבודה '+fmt(m.daily)+' × '+(m.rate_days_total!=null?m.rate_days_total:'?')+' ימי עבודה':'קצב יומי '+fmt(m.daily)+' × '+(m.days_in_month!=null?m.days_in_month:'?')+' ימים')+' ('+(m.basis||NA)+'); לא גשר רכיבים'},
     {b:'מנוע Forecast אמיתי',t:'טרם נבנה — בפועל + אספקות צפויות + המרת צבר + עסקים חדשים צפויים, בלי ספירה כפולה (דוד, 5.10)'},
     {b:'מול '+baseLabel,t:sgn(delta(fc,base))},
     {b:'טווח',t:NA+' — המנוע נותן נקודה אחת ורמת ביטחון ('+confHe+'), לא טווח'}]}),
@@ -2199,7 +2205,7 @@ function kpiModel(k,fmt){
  return {ok:true,
   header:m.name+' · Baseline '+fmt(base),
   header2:wd?'יום עבודה '+wd.done+' מתוך '+wd.total:'',
-  ref:m.elapsed_days!=null?'קלנדרי '+m.elapsed_days+'/'+m.days_in_month:'',
+  ref:(wd?'ימי עבודה '+wd.done+'/'+wd.total:'')+(m.elapsed_days!=null?(wd?' · ':'')+'קלנדרי '+m.elapsed_days+'/'+m.days_in_month:''),
   rows:ROWS,cards:cards,more:more};
 }
 const KPI_CARD_KEYS=['sales','forecast','gap','cover','unbilled_due','backlog','vs_ly','vs_avg','more'];
