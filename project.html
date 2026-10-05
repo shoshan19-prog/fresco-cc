@@ -95,7 +95,7 @@ details.more summary::-webkit-details-marker{display:none}
 
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
-var PJ_BUILD='2026-10-05.3';
+var PJ_BUILD='2026-10-05.4';
 var B=function(q){return document.querySelector(q);};
 var CODE_FROM='';
 function code(){
@@ -124,7 +124,12 @@ function sum(rows,f){return rows.reduce(function(s,r){return s+num(r[f]);},0);}
 /* a read that failed is said as such — never an empty list that reads as "nothing" */
 function failed(x){return !x||x.error||(x.rows==null);}
 function why(x){return x&&x.error?String(x.error).slice(0,120):(x&&x.source?String(x.source).slice(0,120):'לא נקרא');}
-function truncNote(x){return x&&x.truncated?'<p class="note">מוצגים '+x.rows.length+' מתוך '+x.row_count_total+' — הרשימה המלאה בפריוריטי</p>':'';}
+function truncNote(x){return cut(x)?'<p class="note">מוצגים '+x.rows.length+' מתוך '+x.row_count_total+' — הרשימה המלאה בפריוריטי</p>':'';}
+/* Priority hands back at most 100 rows and says the real count beside them — the count card shows the real count,
+   and a sum over a cut list says how many rows it was summed over, never pretends to be the total */
+function cut(x){return !!(x&&x.truncated&&x.rows&&num(x.row_count_total)>x.rows.length);}
+function countOf(x,rows){return failed(x)?'?':(cut(x)?num(x.row_count_total):rows.length);}
+function sumNote(x,rows,v){return cut(x)?'מ-'+rows.length+' הראשונות: '+v:v;}
 
 function materials(orders){
   var M={};
@@ -144,18 +149,20 @@ function priorityBlock(R){
   var credits=i.filter(function(r){return String(r.DEBIT||'').toUpperCase()==='C';});
   var invNet=sum(i.filter(function(r){return String(r.DEBIT||'').toUpperCase()!=='C';}),'QPRICE')-sum(credits,'QPRICE');
   h+='<div class="nums">'
-    +'<div><b>'+(failed(Q)?'?':q.length)+'</b><span>הצעות מחיר</span>'+(q.length?'<i>'+shekel(sum(q,'QPRICE'))+'</i>':'')+'</div>'
-    +'<div><b>'+(failed(O)?'?':o.length)+'</b><span>הזמנות</span>'+(o.length?'<i>'+shekel(sum(o,'QPRICE'))+'</i>':'')+'</div>'
-    +'<div><b>'+(failed(N)?'?':n.length)+'</b><span>תעודות משלוח</span>'+(n.length?'<i>'+shekel(sum(n,'QPRICE'))+'</i>':'')+'</div>'
-    +'<div><b>'+(failed(I)?'?':i.length)+'</b><span>חשבוניות</span>'+(i.length?'<i>'+shekel(invNet)+(credits.length?' נטו':'')+'</i>':'')+'</div>'
+    +'<div><b>'+countOf(Q,q)+'</b><span>הצעות מחיר</span>'+(q.length?'<i>'+sumNote(Q,q,shekel(sum(q,'QPRICE')))+'</i>':'')+'</div>'
+    +'<div><b>'+countOf(O,o)+'</b><span>הזמנות</span>'+(o.length?'<i>'+sumNote(O,o,shekel(sum(o,'QPRICE')))+'</i>':'')+'</div>'
+    +'<div><b>'+countOf(N,n)+'</b><span>תעודות משלוח</span>'+(n.length?'<i>'+sumNote(N,n,shekel(sum(n,'QPRICE')))+'</i>':'')+'</div>'
+    +'<div><b>'+countOf(I,i)+'</b><span>חשבוניות</span>'+(i.length?'<i>'+sumNote(I,i,shekel(invNet)+(credits.length?' נטו':''))+'</i>':'')+'</div>'
     +'</div>';
   if(fails.length)h+='<p class="note" style="color:var(--warn)">לא נקרא הפעם: '+fails.map(function(x){return esc(x[0])+' ('+esc(why(x[1]))+')';}).join(' · ')+'</p>';
   var dates=[].concat(q.map(function(r){return r.PDATE;}),o.map(function(r){return r.CURDATE;}),n.map(function(r){return r.CURDATE;}),i.map(function(r){return r.IVDATE;})).map(function(d){return String(d||'').slice(0,10);}).filter(Boolean).sort();
-  if(dates.length)h+='<p class="note">מהמסמך הראשון '+heDay(dates[0])+' עד האחרון '+heDay(dates[dates.length-1])+' '+cert('ודאי')+' לפי המפתח שרשום על כל מסמך</p>';
+  var anyCut=[Q,O,N,I].some(cut);
+  if(dates.length)h+='<p class="note">'+(anyCut?'במסמכים שנקראו: ':'')+'מהמסמך הראשון '+heDay(dates[0])+' עד האחרון '+heDay(dates[dates.length-1])+' '+cert('ודאי')+' לפי המפתח שרשום על כל מסמך</p>';
   /* the materials — what Fresco actually supplied, off the order lines */
   var mats=materials(o);
   if(mats.length){
     h+='<div class="card"><div class="h">החומרים שהוזמנו לפרויקט, מתוך שורות ההזמנות '+cert('ודאי')+'</div>'
+      +(cut(O)?'<p class="note">לפי '+o.length+' ההזמנות שנקראו מתוך '+num(O.row_count_total)+' — החומרים מההזמנות האחרות אינם כאן</p>':'')
       +mats.slice(0,15).map(function(m){return docRow(esc(m.name),'',m.value>0?shekel(m.value):'בלי סכום','כמות '+Math.round(m.qty).toLocaleString('he-IL')+(m.bal>0?' · נשאר לספק '+Math.round(m.bal).toLocaleString('he-IL'):''));}).join('')
       +(mats.length>15?'<p class="note">ועוד '+(mats.length-15)+' פריטים</p>':'')+'</div>';
   }else if(o.length)h+='<p class="note">שורות ההזמנות לא כללו כמויות</p>';
