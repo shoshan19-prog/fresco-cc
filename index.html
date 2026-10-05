@@ -233,13 +233,16 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .xi.wait .xv{color:var(--dim);font-weight:600}
 .xi[data-x="needs"] .xs{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-height:740px){#exec{gap:5px}.xi{padding:7px 11px}.xi .xv{font-size:15px}.xi .xs{font-size:12.5px;line-height:1.35}
- main{padding-top:8px}#drillBtn{min-height:36px}}
+ main{padding-top:8px}#drillBtn,#projBtn{min-height:36px}}
 @media(max-height:700px){#topbar{padding-top:calc(4px + env(safe-area-inset-top));padding-bottom:4px}
  #bottom a{min-height:46px;padding:4px 4px 3px}.xi[data-x="needs"] .xs{display:none}.xi[data-x="needs"] .xs:last-child{display:block}}
 button.xi{cursor:pointer}
 #drillBtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:42px;border-radius:12px;background:var(--card2);
  border:1px solid var(--line);color:var(--dim);font-size:14px;font-weight:600;margin-top:2px}
 #drillBtn.on{color:var(--acc)}
+.xrow{display:flex;gap:7px;margin-top:2px}.xrow>*{flex:1 1 0;min-width:0}.xrow #drillBtn{margin-top:0}
+#projBtn{display:flex;align-items:center;justify-content:center;min-height:42px;border-radius:12px;background:var(--accSoft);border:1px solid #d6e2ff;
+ color:var(--acc);font-size:14px;font-weight:600;text-align:center;line-height:1.25;padding:4px 8px}
 #drill[hidden]{display:none}
 #domains.off{display:none}
 
@@ -295,7 +298,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-04.3';
+var CC_BUILD='2026-10-05.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -660,7 +663,9 @@ function renderExec(){
       +'</'+tag+'>';
   }).join('')
   +(X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
-  +'<button id="drillBtn" type="button" class="'+(DRILL?'on':'')+'" aria-expanded="'+DRILL+'" aria-controls="drill">'+(DRILL?'הסתר את השאר':'כל השאר · פירוט')+'</button>';
+  /* the projects screen (David, 4.10 — WORK 27d03f59) is its own page: the five answers stay five */
+  +'<div class="xrow"><a id="projBtn" href="projects.html">הפרויקטים</a>'
+  +'<button id="drillBtn" type="button" class="'+(DRILL?'on':'')+'" aria-expanded="'+DRILL+'" aria-controls="drill">'+(DRILL?'הסתר את השאר':'כל השאר · פירוט')+'</button></div>';
   B('#drillBtn').onclick=function(){setDrill(!DRILL,true);};
   var xn=B('#xNeeds');if(xn)xn.onclick=function(){setDrill(true,false);var t=document.getElementById('needs');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};
 }
