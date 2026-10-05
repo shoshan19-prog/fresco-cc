@@ -28,6 +28,7 @@ async function stub(page, opt = {}) {
     if (body.name === 'priority_query') {
       const e = a.entity;
       if (opt.failNotes && e === 'DOCUMENTS_D') return j({ rows: [], source: 'Priority DOCUMENTS_D · שגיאה: HTTP 500: timeout' }, 100);
+      if (opt.cutOrders && e === 'ORDERS') return j(Object.assign({}, FIX.priority.orders, { row_count_total: 257, truncated: true, source: 'Priority ORDERS · קריאה חיה · 2 מתוך 257' }), 120);
       const k = e === 'CPROF' ? 'quotes' : e === 'ORDERS' ? 'orders' : e === 'DOCUMENTS_D' ? 'notes' : 'invoices';
       return j(FIX.priority[k], 120);
     }
@@ -97,6 +98,24 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   await page.waitForSelector('.head', { timeout: 8000 });
   const L = await look(page);
   ok('a failed read is said in words and its count is "?", not 0', L.nums[2] === '?' && /לא נקרא הפעם: תעודות משלוח/.test(L.txt) && !/לא יצאה תעודת משלוח/.test(L.txt), JSON.stringify(L.nums));
+  await ctx.close();
+}
+// Priority hands back at most 100 rows: the count card says the real count, the sum says how many rows it covers,
+// the materials say which orders they came from, and the list says it is cut — never "100" as if that were the total
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'he-IL' });
+  const page = await ctx.newPage();
+  await stub(page, { cutOrders: true });
+  await page.addInitScript(() => { localStorage.setItem('lia_code', 'qa'); });
+  await page.goto(PAGE + '?key=' + FIX.key);
+  await page.waitForSelector('.head', { timeout: 8000 });
+  const L = await look(page);
+  ok('a cut list: the count card carries the real count, not the rows that arrived', L.nums[1] === '257', JSON.stringify(L.nums));
+  ok('a cut list: the sum says how many rows it was summed over', /מ-2 הראשונות: ₪140,000/.test(L.txt), (L.txt.match(/.{12}₪140,000.{4}/) || [''])[0]);
+  ok('a cut list: the materials say which orders they came from, and the date range says it is over what was read',
+    /לפי 2 ההזמנות שנקראו מתוך 257/.test(L.txt) && /במסמכים שנקראו: מהמסמך הראשון/.test(L.txt), '');
+  const notes = await page.evaluate(() => [...document.querySelectorAll('details.more .note')].map((n) => n.textContent));
+  ok('a cut list: the list itself says it is cut, and uncut lists do not', notes.length === 1 && /^מוצגים 2 מתוך 257/.test(notes[0]), JSON.stringify(notes));
   await ctx.close();
 }
 // no key in the address → one sentence, nothing fetched
