@@ -52,6 +52,11 @@ const ALIVE = [
     status: 'QUEUED', state: 'QUEUED', updated_at: iso(90) }),
   base(8, { kind: 'maintenance', objective: 'לולאת התחזוקה של LIA', status: 'RUNNING', state: 'RUNNING', state_label: 'רץ',
     lease: { worker: 'maintenance', principal: 'lia', acquired_at: iso(50), expires_at: new Date(NOW + 10 * 60_000).toISOString() }, lease_alive: true, worker_quiet: true, heartbeat_at: iso(50), updated_at: iso(50) }),
+  /* 5.10 — a worker's DONE on a goal of David's became a submission: the product waits for his approval */
+  base(9, { kind: 'build', objective: 'בני מחדש את Dashboard המכירות של Fresco כך שהוא יהיה כלי ניהולי', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', state_label: 'ממתין — פנימי',
+    disposition: 'PRODUCT_REVIEW', parked_for_david: true, current_step: 'התוצר מוכן לאישורך', updated_at: iso(5),
+    product_review: { submitted_at: iso(5), by: 'engineering-lane/ee122cab', outcome: 'שורת המדדים הראשית מוצגת עם שישה מדדים', result: 'שונה lia.html', what_works: 'הכרטיסים נטענים מהמדדים המאומתים',
+      what_remains: 'גשר התחזית עוד לא מוצג', refs: ['https://github.com/shoshan19-prog/fresco-cc/pull/100'] } }),
 ];
 const CLOSED = [
   base(11, { kind: 'research', objective: 'דוח מצב יומי: מכירות, שיווק ותפעול', status: 'DONE', state: 'DONE', state_label: 'הושלם', completed_at: iso(30), object_state: 'EXPIRED',
@@ -116,6 +121,8 @@ const layout = (page) => page.evaluate(() => {
 
 const browser = await chromium.launch();
 const errors = [];
+/* a crash mid-run still tells which page error preceded it */
+process.on('uncaughtException', (e) => { console.log('CRASH ' + String(e && e.message).split('\n')[0]); if (errors.length) console.log('PAGE ERRORS ' + errors.join(' | ')); process.exit(1); });
 for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280, height: 900 }, 'desktop']]) {
   const ctx = await browser.newContext({ viewport: vp, locale: 'he-IL', deviceScaleFactor: 2, isMobile: tag === 'mobile', hasTouch: tag === 'mobile' });
   const page = await ctx.newPage();
@@ -218,6 +225,16 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   ok(`${tag}: the detail carries goal · where it stands · blockers · evidence · history · details`, ['המטרה', 'איפה זה עומד', 'חסמים', 'ראיות', 'היסטוריה', 'פרטים'].every((x) => det.h.includes(x)), JSON.stringify(det.h));
   ok(`${tag}: the detail shows the 5 milestones and the decision the row is waiting for`, det.ms === 5 && det.txt.includes('הכרעת דוד') && det.txt.includes('60%'), String(det.ms));
   ok(`${tag}: the detail does not overflow`, det.w <= det.W, `${det.w} > ${det.W}`);
+  await page.click('#back');
+  /* 5.10 — the submitted product: his line, what works/remains, the link, three decisions, in words */
+  await page.evaluate(() => [...document.querySelectorAll('.row .ttl')].find((t) => t.textContent.startsWith('בני מחדש את Dashboard')).closest('.row').click());
+  await page.waitForSelector('#dec', { timeout: 5000 });
+  const rv = await page.evaluate(() => ({ txt: document.querySelector('#dec').innerText, link: (document.querySelector('#dec a.ref') || {}).getAttribute ? document.querySelector('#dec a.ref').getAttribute('href') : null,
+    decs: [...document.querySelectorAll('#dec button[data-dec]')].map((b) => b.getAttribute('data-dec')) }));
+  ok('a submitted product: the card says the product is ready for his approval, shows his line, what works and what remains, and the link',
+    /התוצר מוכן לאישורך/.test(rv.txt) && /שורת המדדים הראשית/.test(rv.txt) && /מה עובד עכשיו: הכרטיסים/.test(rv.txt) && /מה עוד פתוח: גשר התחזית/.test(rv.txt) && rv.link === 'https://github.com/shoshan19-prog/fresco-cc/pull/100', rv.txt.slice(0, 200));
+  ok('a submitted product: his three decisions, in words — this is what I asked · return for correction · close without approving', JSON.stringify(rv.decs) === JSON.stringify(['ACCEPT', 'RETURN', 'REJECT']) && /זה מה שביקשתי/.test(rv.txt) && /תחזירי לתיקון/.test(rv.txt) && /סגרי בלי לאשר/.test(rv.txt), JSON.stringify(rv.decs));
+  await page.screenshot({ path: `${OUT}cc-product-review.png`, fullPage: true });
   await page.click('#back');
   await page.waitForTimeout(100);
   ok(`${tag}: back closes the detail`, !(await page.evaluate(() => document.getElementById('detail').classList.contains('on'))));
