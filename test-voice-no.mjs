@@ -1,6 +1,9 @@
 // Runtime proof of the NO path: rejection cancels, sends nothing, clears state,
 // and does not become a new request.
 import { chromium } from 'playwright';
+import { fileURLToPath } from 'node:url';
+// the real lia.html from this checkout — the same file:// road the other page tests drive (no server on :8899 is assumed)
+const PAGE = 'file://' + fileURLToPath(new URL('./lia.html', import.meta.url));
 const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await b.newPage({ viewport:{width:390,height:844} });
 const sent = [];
@@ -12,7 +15,7 @@ await page.route('**/functions/v1/**', r => {
 await page.route('**/fonts.googleapis.com/**', r => r.abort());
 const errs = [];
 page.on('pageerror', e => errs.push(String(e)));
-await page.goto('http://127.0.0.1:8899/lia.html', { waitUntil:'domcontentloaded' });
+await page.goto(PAGE, { waitUntil:'domcontentloaded' });
 await page.waitForTimeout(500);
 
 const out = await page.evaluate(() => {

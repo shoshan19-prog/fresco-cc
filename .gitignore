@@ -1,1 +1,4 @@
 qa/
+
+# harness-only agent worktrees (never project content)
+.claude/worktrees/

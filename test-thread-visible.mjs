@@ -25,6 +25,7 @@ const PAGE = 'file://' + fileURLToPath(new URL('./lia.html', import.meta.url));
 const SRC = readFileSync(new URL('./lia.html', import.meta.url), 'utf8');
 let bad = 0, total = 0;
 const ok = (label, cond, extra) => { total++; if (!cond) { console.log(`FAIL  ${label}${extra ? '\n      ' + extra : ''}`); bad++; } };
+const buildAtLeast = (b, min) => { const n = (s) => String(s || '').split(/[-.]/).map(Number); const a = n(b), m = n(min); for (let i = 0; i < m.length; i++) { if ((a[i] || 0) > m[i]) return true; if ((a[i] || 0) < m[i]) return false; } return true; };
 const replyIdFor = (turnId) => 'lia-' + createHash('sha256').update('reply:' + turnId).digest('hex').slice(0, 32);
 
 const STUBS = () => {
@@ -107,13 +108,22 @@ const box = (page, sel) => page.evaluate((s) => { const el = document.querySelec
 const view = (page) => page.evaluate(() => SESSION.turns.map((t) => ({ role: t.role, text: t.text, pending: !!t.pending })));
 
 // ── A. layout: eight rows and the chat still has the page ───────────────────
+/* 30.9 (David): the phone is a clean conversation — the organizer is not drawn there at
+   all. Its home below the desktop rail is the tablet band (601–1099px), so the card's
+   own laws (bounded, scrolls inside, collapses, remembered) are proven there; the phone
+   is proven to show the conversation alone. */
 {
-  const d = await device('A');
+  const ph = await device('A-phone');
+  ok('A-phone. the phone does not draw ORGANIZATION at all (David, 30.9) — the conversation owns the screen',
+    (await ph.page.$eval('#orgMobile', (x) => getComputedStyle(x).display === 'none')) && (await box(ph.page, '#thread')).height >= Math.floor(915 * 0.5), JSON.stringify(await box(ph.page, '#thread')));
+  await ph.ctx.close();
+  const VH = 1024;
+  const d = await device('A', null, { width: 768, height: VH });
   const rows = await d.page.evaluate(() => document.querySelectorAll('#orgListMobile .orgItem').length);
-  ok('A0. the phone renders ORGANIZATION directly — eight rows', rows === 8, `rows=${rows}`);
+  ok('A0. the tablet renders ORGANIZATION directly — eight rows', rows === 8, `rows=${rows}`);
   const org = await box(d.page, '#orgListMobile'), thread = await box(d.page, '#thread');
-  ok('A1. the ORGANIZATION list is bounded (≤ 30vh + a little) and scrolls inside', org && org.height <= 915 * 0.31 && (await d.page.evaluate(() => { const el = document.getElementById('orgListMobile'); return el.scrollHeight > el.clientHeight; })), JSON.stringify(org));
-  ok('A2. the thread keeps at least 42% of the viewport', thread && thread.height >= Math.floor(915 * 0.42), JSON.stringify(thread));
+  ok('A1. the ORGANIZATION list is bounded (≤ 30vh + a little) and scrolls inside', org && org.height <= VH * 0.31 && (await d.page.evaluate(() => { const el = document.getElementById('orgListMobile'); return el.scrollHeight > el.clientHeight; })), JSON.stringify(org));
+  ok('A2. the thread keeps at least 42% of the viewport', thread && thread.height >= Math.floor(VH * 0.42), JSON.stringify(thread));
   // the canonical thread (2 messages) was adopted on boot — the newest bubble is on screen
   const last = await d.page.evaluate(() => { const els = document.querySelectorAll('#thread .msg'); const el = els[els.length - 1]; if (!el) return null; const r = el.getBoundingClientRect(); const t = document.getElementById('thread').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, tTop: t.top, tBottom: t.bottom, n: els.length }; });
   ok('A3. the newest message is visible inside the thread box', last && last.n === 2 && last.bottom <= last.tBottom + 2 && last.top >= last.tTop - 2, JSON.stringify(last));
@@ -198,7 +208,7 @@ ok('SRC: ✎ confirms unless forced', /if\(force!==true&&!confirm\(/.test(SRC) &
 ok('SRC: the tick syncs first and judges the deadline after', /if\(CHAT\.syncing\)\{ph\.__await=setTimeout\(tick,500\);return;\}\s*try\{await chatSync\(\);\}catch\(e\)\{\}\s*if\(!ph\.pending\)return;[^\n]*\n\s*if\(Date\.now\(\)-ph\.awaiting_since>TURN_AWAIT_MAX_MS\)/.test(SRC));
 ok('SRC: the ORGANIZATION list is bounded and the thread keeps 42vh on the phone', /\.orgMobile \.orgList\{max-height:min\(30vh,360px\);min-height:0;overflow-y:auto/.test(SRC) && /#center>#thread\{min-height:42vh\}/.test(SRC));
 ok('SRC: chat_list and chat_open go through ccApi (command-center)', /ccApi\(\{action:'chat_list'/.test(SRC) && /ccApi\(\{action:'chat_open'/.test(SRC));
-ok('SRC: build 2026-09-12.1', /const LIA_BUILD='2026-09-12\.1';/.test(SRC));
+ok('SRC: build 2026-09-12.1 or later', buildAtLeast((SRC.match(/const LIA_BUILD='([^']+)';/) || [])[1], '2026-09-12.1'), (SRC.match(/const LIA_BUILD='([^']+)';/) || [])[1]);
 ok('no page errors', errors.length === 0, errors.join('\n'));
 
 await browser.close();

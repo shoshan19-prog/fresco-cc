@@ -181,7 +181,7 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('long Hebrew titles clamp instead of clipping', /\.row \.ttl\{[^}]*-webkit-line-clamp:2/.test(css) && /overflow-wrap:anywhere/.test(css));
   ok('the bottom nav is Chat · Command Center · History · Settings, nothing else', /\['chat',CHAT,'צ׳אט',''\],\['grid','index\.html','מרכז הפיקוד','on'\],\['history',CHAT\+'#history','היסטוריה',''\],\['settings',CHAT\+'#settings','הגדרות',''\]/.test(src));
   ok('no tagline', !html.includes('כל העבודה במקום אחד'));
-  ok('the page writes no WORK itself — the tower\'s three actions, plus David\'s decision through the server', !/work_intake|work_open|work_checkpoint|work_complete|work_claim|work_wake|work_verify/.test(src) && /name:'alert_ack'|cap\('alert_ack'/.test(src) && /target:'recommendation'/.test(src) && (src.match(/action:'work_decide'/g) || []).length === 1);
+  ok('the page writes no WORK itself — the tower\'s three actions, David\'s decision through the server, and (5.10) his correction of a HELD order through the one intake door, revise only', !/work_open|work_checkpoint|work_complete|work_claim|work_wake|work_verify/.test(src) && (src.match(/cap\('work_intake'/g) || []).length === 1 && /cap\('work_intake',\{text:note,revise_work_id:r\.work_id,requested_by:'david'/.test(src) && /name:'alert_ack'|cap\('alert_ack'/.test(src) && /target:'recommendation'/.test(src) && (src.match(/action:'work_decide'/g) || []).length === 1);
   ok('the closed list is read through closed_since, seven days', /cap\('work_status',\{closed_since:isoDaysAgo\(7\)\}\)/.test(src));
   ok('the same code as the chat is accepted (one login for both surfaces)', /localStorage\.getItem\('lia_code'\)/.test(src) && /'x-fresco-code'/.test(src));
   ok('no credential in the page', !/eyJ[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|service_role/.test(html));
@@ -235,7 +235,7 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   const loading = E.execModel({ snap: null, alive: null, appr: null, alerts: null }, 0);
   ok('before the reads land every item says it is loading — no number before its record', loading.every((x) => !x.ready && x.head === 'טוען…'));
   // the screen's own wiring
-  ok('the daily screen is the first thing in main; the rest is the drill-down, hidden until asked', /<main id="m"[^>]*><section id="exec"[^>]*><\/section><div id="drill" hidden><\/div><\/main>/.test(html));
+  ok('the daily screen is the first thing in main; the rest is the drill-down, hidden until asked (a dim footnote may close main — PR #105, David\'s representative, 5.10)', /<main id="m"[^>]*><section id="exec"[^>]*><\/section><div id="drill" hidden><\/div>(<p class="dim"[^>]*>[^<]*<\/p>)?<\/main>/.test(html));
   ok('the daily screen\'s reads are four fast calls — none of them the tower', (() => { const f = slice('function loadExec(){', '\nfunction renderExec('); return /fresco_snapshot',\{stale_ok:true\}/.test(f) && /cap\('work_status'\)/.test(f) && /action:'state'/.test(f) && /cap\('alerts'\)/.test(f) && !/tower/.test(f); })());
   ok('the app opens on the daily screen at once — the tower feeds the drill-down behind it', /B\('#app'\)\.classList\.add\('on'\);\s*renderNav\(\);setDrill\(VIEW!=='overview',false\);tickClock\(\);loadExec\(\);\s*return fetchAll\(\)/.test(src));
   ok('the old view renders into the drill-down, unchanged', /B\('#drill'\)\.innerHTML=h;/.test(src) && !/B\('#m'\)\.innerHTML=h;/.test(src));

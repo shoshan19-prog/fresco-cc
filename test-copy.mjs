@@ -22,6 +22,10 @@ const { copyTextOf, copyBtn } = new Function(
 let bad = 0, total = 0;
 function eq(label, got, want) { total++; if (got !== want) { console.log(`FAIL  ${label}\n      got:  ${JSON.stringify(got)}\n      want: ${JSON.stringify(want)}`); bad++; } }
 function ok(label, cond) { total++; if (!cond) { console.log(`FAIL  ${label}`); bad++; } }
+// The build stamp moves with every shipped change; a test pins the FLOOR it was
+// written against, never the exact value (an exact pin fails on the next ship).
+const buildAtLeast = (b, min) => { const n = (s) => String(s || '').split(/[-.]/).map(Number); const a = n(b), m = n(min); for (let i = 0; i < m.length; i++) { if ((a[i] || 0) > m[i]) return true; if ((a[i] || 0) < m[i]) return false; } return true; };
+
 
 // David's side: the full original, line breaks kept — even when the bubble shows the execution summary
 eq('David: verbatim with line breaks', copyTextOf({ role: 'me', text: 'שורה ראשונה\nשורה שנייה\n\nשלישית' }), 'שורה ראשונה\nשורה שנייה\n\nשלישית');
@@ -44,7 +48,7 @@ ok('clipboard API first, textarea fallback second — both under the user tap', 
 ok('role marks: David blue, LIA her orb; David\'s bubble has the accent edge', html.includes('.msg.me .who .tag::before{background:var(--acc)}') && html.includes('.msg.lia .who .tag::before{background:radial-gradient') && html.includes('.msg.me .bubble{border-inline-start:3px solid var(--acc)}'));
 ok('the phone gets a real tap target for the copy control', html.includes(' .msg .cp{width:32px;height:32px;font-size:14px}'));
 ok('nothing else moved: the evidence and explain controls are still the two under the answer', src.includes(`<button class="det" onclick="toggleDeep('+i+')" title="ראיות ופרטים"`) && src.includes(`<button class="det" onclick="explainTurn('+i+')" title="תסבירי פשוט"`));
-ok('the build stamp moved', /const LIA_BUILD='2026-09-29\.3';/.test(src));
+ok('the build stamp moved (2026-09-29.3 or later)', buildAtLeast((src.match(/const LIA_BUILD='([^']+)';/) || [])[1], '2026-09-29.3'));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);

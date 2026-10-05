@@ -1,0 +1,29 @@
+{
+ "_source": "system_config kpi_cache:fresco_snapshot · the engine's real row, read 2026-10-05 14:28Z (money fields unchanged; verified[] and evidence trimmed)",
+ "at": "2026-10-05T14:28:09.797Z",
+ "row": {
+  "today": "2026-10-05",
+  "windows": {"today":{"from":"2026-10-05","to":"2026-10-06","label":"היום"},"mtd":{"from":"2026-10-01","to":"2026-10-06","label":"מתחילת אוקטובר"},
+   "last_year_same_elapsed":{"from":"2025-10-01","to":"2025-10-06","label":"אוקטובר 2025 (אותם 5 ימים)"},
+   "last_year_full_month":{"from":"2025-10-01","to":"2025-11-01","label":"אוקטובר 2025 מלא"},
+   "ytd":{"from":"2026-01-01","to":"2026-10-06","label":"מתחילת 2026"},"prev_ytd_elapsed":{"from":"2025-01-01","to":"2025-10-06","label":"אותה תקופה 2025"},
+   "elapsed_days":5,"days_in_month":31,"month_name":"אוקטובר","year":2026,"today_iso":"2026-10-05",
+   "unbilled":{"from":"2026-09-01","to":"2026-10-06","label":"מתחילת ספטמבר"},"month_start":"2026-10-01",
+   "ly_full_year":{"from":"2025-01-01","to":"2026-01-01","label":"2025 מלאה"},"elapsed_year_days":278,"days_in_year":365},
+  "invoices": {"today":{"count":10,"net":43611,"gross":51460},"mtd":{"count":25,"net":136174,"gross":160685},"ly":{"count":4,"net":28348,"gross":33451}},
+  "orders": {"today":{"count":15,"net":85850,"gross":101303},"mtd":{"count":38,"net":206427.16,"gross":243584.15},"ly":{"count":8,"net":103813.2,"gross":122499.58}},
+  "unbilled": {"count":12,"net":55695,"gross":65720.1,"prev_month":{"count":2,"gross":3038.5},"current_month":{"count":10,"gross":62681.6},
+   "age":{"max_days":11,"avg_days":2,"over_30":0,"over_60":0},"excluded":{"invoiced":186,"partial":0,"not_final":0,"not_flagged":0},
+   "window":{"from":"2026-09-01","to":"2026-10-06"},"rule":"סופית · FLAG=Y (לחיוב) · ללא קישור לחשבונית (DOCIV_D_SUBFORM) נכון לרגע הדוח · סכומי הכותרת: QPRICE לפני מע\"מ · VAT · TOTPRICE כולל"},
+  "open_orders": {"count":31,"open_value":813824.92,"original_value":1102728.92,"drawn_value":288904,"lines":173,"open_lines":116,"unverified_lines":0,"unverified_orders":0,"all_verified":true,
+   "framework":{"count":1,"original":88160,"drawn":54229,"remaining":33931,"unverified":0,"orders":[{"order":"SO25001472","customer":"רשות העתיקות","original":88160,"drawn":54229,"remaining":33931,"verified":true}]}},
+  "ytd": {"count":1582,"net":8470013.96,"gross":9994686},
+  "ly_ytd": {"count":1856,"net":9379908.86,"gross":11068054},
+  "ly_full_month": {"count":163,"net":769651.68,"gross":908190},
+  "ly_full_year": {"count":2455,"net":12348183.87,"gross":14570626},
+  "receivables": null, "gross_profit": null,
+  "rate": {"daily":27235,"projected_month":844279,"confidence":"MEDIUM","basis":"ימים קלנדריים (5/31)"}
+ },
+ "verdict": {"score":90,"status":{"emoji":"🟢","word":"טוב"},"action":"לחייב את 12 התעודות הפתוחות (₪55.7K נטו) לפני סוף השבוע","sales_pct":380,"orders_pct":99,"month_vs_ly":10,"backlog_cover_pct":96,"backlog_strong":true,"year":{"projected_year":11120000,"vs_ly":-10}},
+ "quotes_to_orders_60d": "16 מתוך 50 הצעות (32%)"
+}

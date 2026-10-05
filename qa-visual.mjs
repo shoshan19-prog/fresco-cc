@@ -420,7 +420,10 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
   const still = async (page) => {
     await page.addStyleTag({ content: '#clock{visibility:hidden!important}*{animation:none!important;transition:none!important}' });
     await page.waitForTimeout(250);
-    return page.screenshot({ animations: 'disabled' });
+    /* 5.10: the Fresco KPIs card's CONTENT is David's to change (its header and its eight
+       cards were redesigned on his order); its rectangle is still compared above, so the
+       panel may not move or grow — only what it says inside is masked out of the pixels. */
+    return page.screenshot({ animations: 'disabled', mask: [page.locator('#kpiCard')] });
   };
 
   // ── (1) DESKTOP AND TABLET: identical to the page before the regression ──

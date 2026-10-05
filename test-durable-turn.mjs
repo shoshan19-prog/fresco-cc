@@ -34,6 +34,9 @@ const ok = (label, cond, extra) => {
   total++;
   if (!cond) { console.log(`FAIL  ${label}${extra ? '\n      ' + extra : ''}`); bad++; }
 };
+// The build stamp moves with every shipped change; a test pins the FLOOR it was
+// written against, never the exact value (an exact pin fails on the next ship).
+const buildAtLeast = (b, min) => { const n = (s) => String(s || '').split(/[-.]/).map(Number); const a = n(b), m = n(min); for (let i = 0; i < m.length; i++) { if ((a[i] || 0) > m[i]) return true; if ((a[i] || 0) < m[i]) return false; } return true; };
 const replyIdFor = (turnId) => 'lia-' + createHash('sha256').update('reply:' + turnId).digest('hex').slice(0, 32);
 
 // ── the speech stubs test-turn.mjs uses — no voices in headless ─────────────
@@ -228,7 +231,7 @@ ok('SRC: the derived reply id is computed the same way (sha256 "reply:"+turn_id,
 ok('SRC: a reload keeps a durable bubble waiting and re-arms its wait', /if\(t\.turn_id\)\{delete t\.__wd;delete t\.__await;continue;\}/.test(SRC) && /if\(t&&t\.pending&&t\.turn_id\)turnAwait\(/.test(SRC));
 ok('SRC: the wait is bounded (10 minutes) and polls chat_sync', /TURN_AWAIT_MAX_MS=10\*60\*1000/.test(SRC) && /TURN_AWAIT_POLL_MS=5000/.test(SRC));
 ok('SRC: the execution road is the ask road — the panel never opens a package by name', /async function doExecute\(text,turnId\)\{\n return doAsk\(text,turnId\);\}/.test(SRC) && !/name:'work_intake'/.test(SRC));
-ok('SRC: build 2026-09-12.1', /const LIA_BUILD='2026-09-12\.1';/.test(SRC));
+ok('SRC: build 2026-09-12.1 or later', buildAtLeast((SRC.match(/const LIA_BUILD='([^']+)';/) || [])[1], '2026-09-12.1'), (SRC.match(/const LIA_BUILD='([^']+)';/) || [])[1]);
 ok('no page errors', errors.length === 0, errors.join('\n'));
 
 await browser.close();

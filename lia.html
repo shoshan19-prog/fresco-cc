@@ -113,30 +113,40 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
    view, not a second copy of the chat. Same card language as TODAY/PRIORITIES
    above: no new visual system, just more of the one already here. */
 .kpiGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.kpiTile{background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:10px 11px 10px 13px;
- border-inline-start:3px solid transparent;cursor:pointer;transition:filter .15s ease}
+/* FRESCO KPIs (David, 5.10 08:42 — approved 08:55: "ככה זה צריך להראות, מינימליסטי וברור"):
+   the same right panel, the same 2-per-row grid, NO second dashboard. A card at rest is
+   label → number → percent → one explanation line. Colour expresses STATE, never the
+   kind of number: green = on pace / above the Baseline · amber = up to 10% under pace ·
+   red = more than 10% under · grey = not verified. Only the edge, the percent line and
+   the dot carry colour, so the grid reads as one surface. */
+.kpiTile{position:relative;background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:10px 9px 10px 11px;
+ border-inline-start:3px solid var(--line);cursor:pointer;transition:filter .15s ease;min-width:0}
 .kpiTile:hover{filter:brightness(.97)}
+.kpiTile .lbl{font-size:11px;color:var(--dim);margin-bottom:2px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline-end:12px}
 .kpiTile .v{font-size:19px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
-.kpiTile .k{font-size:11.5px;color:var(--dim);margin-top:3px}
+.kpiTile .p{font-size:11.5px;font-weight:700;margin-top:2px;letter-spacing:-.3px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--dim)}
+.kpiTile .k{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.35}
+.kpiTile .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-inline-end:5px;vertical-align:0}
 .kpiTile.nv .v{font-size:13px;font-weight:600;color:var(--dim)}
-/* Card-owned detail (David, 31.8): each tile stays headline+value+note by
-   default — the breakdown lives INSIDE the tile, collapsed, same persisted-
-   state convention as the other rail cards (rail:kpi_<key>), just applied
-   per-tile because renderKpis() rebuilds the grid on every refresh. */
+.kpiTile.s-ok{border-inline-start-color:#12a150}.kpiTile.s-ok .p{color:#12a150}.kpiTile.s-ok .dot{background:#12a150}
+.kpiTile.s-warn{border-inline-start-color:#c77700}.kpiTile.s-warn .p{color:#c77700}.kpiTile.s-warn .dot{background:#c77700}
+.kpiTile.s-bad{border-inline-start-color:#e35252}.kpiTile.s-bad .p{color:#e35252}.kpiTile.s-bad .dot{background:#e35252}
+.kpiTile.wide{grid-column:1/-1}
+.kpiTile.wide .v{font-size:12.5px;font-weight:700}
+.kpiRow{grid-column:1/-1;font-size:10.5px;letter-spacing:1.2px;color:var(--dim);margin:4px 2px -4px}
+.kpiRef{grid-column:1/-1;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;margin:0 2px}
+/* The head is TWO lines by David's spec ("אוקטובר · יעד ₪XXXK / יום עבודה X מתוך Y") — and two 19.2px lines
+   is exactly the height the collapsed card always had (qa-visual's desktop lock measures it). */
+#kpiCard .railHeadMeta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:11px;line-height:19.2px;letter-spacing:0}
+#kpiCard .railHead>span:first-child{letter-spacing:1.2px;flex:0 0 auto}
+/* Card-owned detail (David, 31.8 · 5.10): the breakdown lives INSIDE the card, opens
+   DOWN inside the same panel, one card at a time — the others fold; never another
+   screen. Persisted via rail:kpi_<key> (one key holds '0'). */
 .kpiTile .kpiDetail{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line2);font-size:11.5px;line-height:1.5;color:var(--dim)}
 .kpiTile[data-open="true"] .kpiDetail{display:block}
 .kpiTile .kpiDetail b{color:var(--txt);font-weight:600}
-.kpiTile .kpiChev{float:inline-end;font-size:9px;color:var(--dim);transition:transform .15s ease}
+.kpiTile .kpiChev{position:absolute;inset-inline-end:9px;top:11px;font-size:9px;color:var(--dim);transition:transform .15s ease}
 .kpiTile[data-open="true"] .kpiChev{transform:rotate(180deg)}
-/* Six KPIs, six identities (David, 31.8) — a soft tint + accent edge per tile
-   so the grid reads at a glance instead of six identical grey cards. Verified
-   and unverified tiles keep the same hue family; .nv still dims the value. */
-.kpiTile.c-salesToday{background:#eaf1ff;border-inline-start-color:#2f6bff}
-.kpiTile.c-salesMonth{background:#e6f7f5;border-inline-start-color:#0f9488}
-.kpiTile.c-openOrders{background:#fdf3e3;border-inline-start-color:#c77700}
-.kpiTile.c-unbilled{background:#f4eefc;border-inline-start-color:#8b5cf6}
-.kpiTile.c-receivables{background:#fdecec;border-inline-start-color:#e35252}
-.kpiTile.c-grossProfit{background:#eaf8ef;border-inline-start-color:#12a150}
 .miniList{display:flex;flex-direction:column;gap:0}
 .miniItem{padding:8px 0;border-top:1px solid var(--line);font-size:13px;line-height:1.5}
 .miniItem:first-child{border-top:0}
@@ -750,7 +760,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-04.3';
+const LIA_BUILD='2026-10-05.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1862,6 +1872,9 @@ function kpisFromSnapshot(s){
   receivables:rc?{headline_count:rc.count,sums:{TOTPRICE:rc.total,QPRICE:rc.net},aging:rc.aging||{},
    top_customers:(rc.top||[]).map(c=>({CDES:c.customer,sum:c.sum,oldest_days:c.oldest_days,count:null})),
    window:rc.window||'',as_of:rc.as_of||asOf,cached:true,definition:'חשבוניות סופיות פתוחות בפריוריטי (הכרעת דוד 4.9) — KPI מאומת ≤24 שעות, אותו מקור לפולס ולתמונת המצב',canonical_source:ENGINE}:null,
+  /* THE MONTH FACTS (5.10): the raw engine fields the eight cards derive from — copied,
+     never recomputed here; the derivation is kpiModel() (pure, tested). */
+  month:monthFactsFromSnapshot(d,asOf,!!cachedAt),
   gross_profit:d.gross_profit||null,
   verdict:s.verdict||null,
   status:s.verdict?{verdict:s.verdict,snapshot_today:d.today,rate:d.rate,as_of:asOf,cached:!!cachedAt,canonical_source:ENGINE}:null,
@@ -1890,14 +1903,23 @@ function toggleKpiDetail(key,el){
  const tile=el&&el.closest?el.closest('.kpiTile'):document.querySelector('.kpiTile[data-kpi="'+key+'"]');
  if(!tile)return;
  const open=tile.getAttribute('data-open')==='true';
- tile.setAttribute('data-open',open?'false':'true');
+ /* accordion (David, 5.10): a card opens DOWN inside the panel and the others fold */
+ if(!open)document.querySelectorAll('#kpis .kpiTile[data-open="true"]').forEach(t=>{
+  t.setAttribute('data-open','false');t.setAttribute('aria-expanded','false');
+  try{localStorage.setItem(kpiOpenKey(t.getAttribute('data-kpi')),'1');}catch(e){}});
+ tile.setAttribute('data-open',open?'false':'true');tile.setAttribute('aria-expanded',open?'false':'true');
  try{localStorage.setItem(kpiOpenKey(key),open?'1':'0');}catch(e){}
 }
+/* The chat's card routes (CARD_ROUTES) still speak the contract names; the eight cards
+   of 5.10 are keyed by what they answer. One map, no second routing table. */
+const KPI_ROUTE_ALIAS={sales_today:'sales',sales_month:'sales',sales_period:'sales',unbilled:'unbilled_due',open_orders:'backlog',status:'forecast',receivables:'more',gross_profit:'more'};
 function openKpiDetail(key){
+ key=KPI_ROUTE_ALIAS[key]||key;
  const tile=document.querySelector('.kpiTile[data-kpi="'+key+'"]');
  if(tile&&railsOn()){
-  tile.setAttribute('data-open','true');
-  try{localStorage.setItem(kpiOpenKey(key),'0');}catch(e){}
+  const sec=document.getElementById('kpiCard');
+  if(sec&&sec.getAttribute('data-collapsed')==='true')toggleRailSection('kpiCard');
+  if(tile.getAttribute('data-open')!=='true')toggleKpiDetail(key,tile);
   tile.scrollIntoView({block:'center',behavior:'smooth'});
   return;
  }
@@ -1911,6 +1933,11 @@ function openKpiDetail(key){
    chat-triggered open) — the single place that turns a KPI row into text,
    so the two surfaces can never drift apart. */
 function kpiDetailLines(key){
+ if(KPI_CARD_KEYS.indexOf(key)>=0){
+  const m=RAILS.kpiModel||kpiModel(RAILS.kpis||{},kfmt);
+  const c=(m.cards||[]).concat(m.more?[m.more]:[]).find(x=>x.key===key);
+  return c?kpiDetailHtml(c):['<p class="dim">אין עדיין נתון מאומת.</p>'];
+ }
  const r=(RAILS.kpis||{})[key];
  if(!r)return ['<p class="dim">'+esc(KPI_GAP_DETAIL[key]||KPI_UNVERIFIED_NOTE[key]||'אין עדיין נתון מאומת.')+'</p>'];
  const lines=[];
@@ -1997,7 +2024,8 @@ function kpiDetailLines(key){
  return lines.length?lines:['<p class="dim">אין עדיין נתון מאומת.</p>'];
 }
 const KPI_LABEL={sales_today:'מכירות היום',sales_month:'מכירות החודש',open_orders:'הזמנות פתוחות',
- unbilled:'תעודות משלוח לחיוב',receivables:'חייבים / בפיגור',gross_profit:'רווח גולמי משוער',status:'מצב פרסקו'};
+ unbilled:'תעודות משלוח לחיוב',receivables:'חייבים / בפיגור',gross_profit:'רווח גולמי משוער',status:'מצב פרסקו',
+ sales:'מכירות',forecast:'Forecast',gap:'פער ל-Baseline',cover:'כיסוי הפער',unbilled_due:'תעודות לחיוב',backlog:'הזמנות פתוחות',vs_ly:'מול אשתקד',vs_avg:'מול ממוצע',more:'נתונים נוספים'};
 const KPI_UNVERIFIED_NOTE={open_orders:'מנוע תמונת המצב לא ענה',unbilled:'מנוע תמונת המצב לא ענה',
  receivables:'אין KPI חייבים מאומת ≤24 שעות',gross_profit:'לא מאומת — עד מקור עלות אמין (הכרעת דוד 1.9)',status:'מנוע תמונת המצב לא ענה'};
 /* THE GAP, NAMED (David, 1.9 — "תפטור את החסרים בתוך המסך"): an unwired tile
@@ -2012,14 +2040,183 @@ const KPI_GAP_DETAIL={
  receivables:'חייבים = KPI מאומת של חוזה receivables (הכרעת דוד 4.9), שמנוע תמונת המצב קורא רק כשהוא טרי ≤24 שעות. אין KPI טרי — אין מספר. רענון מתקבל דרך "חייבים" בצ\'אט (הסריקה 365 יום).',
  gross_profit:'הכרעת דוד (1.9, חזרה 12.9): נשאר לא-מאומת עד מקור עלות אמין. לא ממציאה מספר.',
  status:'הציון, התחזית והפעולה הבאה מגיעים ממנוע תמונת המצב — והקריאה הזו לא חזרה. רענן.'};
-function kpiTile(key,label,text,note,colorClass){
- const nv=(text===null||text===undefined);
- const open=isKpiOpen(key);
- return '<div class="kpiTile'+(colorClass?' '+colorClass:'')+(nv?' nv':'')+'" data-kpi="'+esc(key)+'" data-open="'+open+'"'
-   +' onclick="toggleKpiDetail(\''+key+'\',this)" role="button" tabindex="0" aria-expanded="'+open+'">'
-   +'<span class="kpiChev">▾</span><div class="v">'+(nv?'לא מאומת':esc(text))+'</div>'
-   +'<div class="k">'+esc(label)+(note?' · '+esc(note):'')+'</div>'
-   +'<div class="kpiDetail">'+kpiDetailLines(key).join('')+'</div>'
+/* KPI_MODEL_BEGIN — pure: no DOM, no globals, no clock (test-kpi-panel.mjs evaluates this
+   block as-is against the engine's real row). Every number below is COPIED from one
+   engine row (fresco_snapshot) or derived from it in the open; nothing is a second
+   definition of a number the chat already states, and a fact the engine does not carry
+   stays "לא מאומת" — never estimated (David, 5.10: "נתון שאינו מאומת יסומן לא מאומת"). */
+function kfmtRaw(n){
+ /* David's own notation on the spec: ₪90.5K · ₪758K · ₪1.03M */
+ if(n===null||n===undefined||isNaN(Number(n)))return 'לא מאומת';
+ const v=Number(n),a=Math.abs(v),s=v<0?'-':'';
+ if(a>=1e6)return s+'₪'+(a/1e6).toFixed(2).replace(/\.?0+$/,'')+'M';
+ if(a>=1e5)return s+'₪'+Math.round(a/1e3)+'K';
+ if(a>=1e3)return s+'₪'+(a/1e3).toFixed(1).replace(/\.0$/,'')+'K';
+ return s+'₪'+Math.round(a);
+}
+function workingDays(todayIso){
+ /* Fresco's week is Sunday–Thursday. Calendar working days of the month, holidays not
+    subtracted — the engine knows none, and a day it does not know is not invented. */
+ const t=new Date(String(todayIso||'')+'T00:00:00Z');if(isNaN(t.getTime()))return null;
+ const y=t.getUTCFullYear(),mo=t.getUTCMonth(),dim=new Date(Date.UTC(y,mo+1,0)).getUTCDate();
+ let done=0,total=0;
+ for(let d=1;d<=dim;d++){const wd=new Date(Date.UTC(y,mo,d)).getUTCDay();if(wd<=4){total++;if(d<=t.getUTCDate())done++;}}
+ return {done:done,total:total,left:total-done};
+}
+function kpiState(ratio){
+ /* colour = state (David, 5.10): on pace / above → green · up to 10% under → amber ·
+    more than 10% under → red · unknown → grey. */
+ if(ratio===null||ratio===undefined||!isFinite(ratio))return 'na';
+ if(ratio>=1)return 'ok';
+ if(ratio>=0.9)return 'warn';
+ return 'bad';
+}
+function monthFactsFromSnapshot(d,asOf,cached){
+ if(!d||!d.windows)return null;
+ const w=d.windows,inv=d.invoices||{},ub=d.unbilled,oo=d.open_orders,rate=d.rate||{};
+ const n=(x)=>(x===null||x===undefined||x===''||isNaN(Number(x)))?null:Number(x);
+ const agg=(a)=>a?{count:n(a.count),net:n(a.net)}:null;
+ return {
+  name:w.month_name||'',year:n(w.year),today:w.today_iso||d.today||null,
+  elapsed_days:n(w.elapsed_days),days_in_month:n(w.days_in_month),
+  today_sales:agg(inv.today),mtd:agg(inv.mtd),ly_same:agg(inv.ly),ly_same_label:(w.last_year_same_elapsed||{}).label||'אותם ימים אשתקד',
+  ly_month:agg(d.ly_full_month),ly_month_label:(w.last_year_full_month||{}).label||'אותו חודש אשתקד',
+  ly_year:agg(d.ly_full_year),ytd:agg(d.ytd),ly_ytd:agg(d.ly_ytd),elapsed_year_days:n(w.elapsed_year_days),
+  projected_month:n(rate.projected_month),confidence:rate.confidence||null,basis:rate.basis||'',daily:n(rate.daily),
+  unbilled:ub?{count:n(ub.count),net:n(ub.net),gross:n(ub.gross),oldest_days:ub.age?n(ub.age.max_days):null,current_month_count:ub.current_month?n(ub.current_month.count):null}:null,
+  backlog:oo?{count:n(oo.count),remaining:oo.all_verified?n(oo.open_value):null,original:n(oo.original_value),unverified_lines:n(oo.unverified_lines)||0}:null,
+  as_of:asOf||null,cached:!!cached};
+}
+function kpiModel(k,fmt){
+ fmt=fmt||kfmtRaw;k=k||{};
+ const m=k.month||null,NA='לא מאומת';
+ const pct=(a,b)=>(a===null||a===undefined||!b)?null:Math.round(a/b*100);
+ const delta=(a,b)=>(a===null||a===undefined||!b)?null:Math.round((a-b)/b*100);
+ const sgn=(p)=>p===null?NA:(p>0?'+':'')+p+'%';
+ const card=(o)=>Object.assign({value:null,pct:null,sub:'',dot:'',state:'na',detail:[],wide:false},o);
+ const ROWS=['מצב החודש','מה חסר ומה כבר מכסה אותו','מקורות הכסף','היסטוריה'];
+ const v=k.verdict||null,score=v&&v.score!=null?v.score+'/100'+(v.status&&v.status.word?' · '+v.status.word:''):NA;
+ const more=card({key:'more',label:'נתונים נוספים',wide:true,state:'none',value:'נתונים נוספים',
+  sub:'ציון כולל '+score+' · חייבים: '+(k.receivables?'יש KPI':NA)+' · רווח גולמי: '+NA,
+  detail:[
+   {b:'ציון כולל של המנוע',t:score+(v&&v.action?' · הפעולה החשובה ביותר: '+v.action:'')+' — הוסר מהמסך הראשי (דוד, 5.10): הוא מסתיר את השאלה העסקית'},
+   {b:'חייבים / בפיגור',t:k.receivables&&k.receivables.sums&&k.receivables.sums.TOTPRICE!=null?fmt(k.receivables.sums.TOTPRICE)+' כולל מע"מ · '+k.receivables.headline_count+' חשבוניות פתוחות':NA+' — אין KPI חייבים מאומת ≤24 שעות (הכרעת דוד 4.9)'},
+   {b:'רווח גולמי',t:NA+' — עד מקור עלות אמין (הכרעת דוד 1.9)'},
+   {b:'הצעות מחיר → הזמנות · 60 יום',t:k.kpi_quotes_to_orders_60d||NA}]});
+ if(!m){
+  const na=(key,label)=>card({key:key,label:label,sub:'מנוע תמונת המצב לא ענה — רענן',detail:[{t:'מנוע תמונת המצב (fresco_snapshot) לא ענה; כל מספר בכרטיסים מגיע רק ממנו.',dim:true}]});
+  return {ok:false,header:'אין תמונת מצב',header2:'מנוע תמונת המצב לא ענה',ref:null,rows:ROWS,more:more,
+   cards:[na('sales','מכירות'),na('forecast','Forecast'),na('gap','פער ל-Baseline'),na('cover','כיסוי הפער'),na('unbilled_due','תעודות לחיוב'),na('backlog','הזמנות פתוחות'),na('vs_ly','מול אשתקד'),na('vs_avg','מול ממוצע')]};
+ }
+ /* Baseline (David, 5.10): no official target exists; until one is set the historical
+    run rate is the Baseline — the same month last year, the engine's own verified field —
+    and it is named Baseline everywhere, never "יעד הנהלה". */
+ const base=m.ly_month&&m.ly_month.net>0?m.ly_month.net:null,baseLabel=m.ly_month_label;
+ const mtd=m.mtd?m.mtd.net:null,mtdN=m.mtd?m.mtd.count:null;
+ const wd=workingDays(m.today);
+ const expected=pct(m.elapsed_days,m.days_in_month);
+ const actual=pct(mtd,base);
+ const paceRatio=(mtd!==null&&base&&m.elapsed_days&&m.days_in_month)?(mtd/base)/(m.elapsed_days/m.days_in_month):null;
+ const pts=(actual!==null&&expected!==null)?actual-expected:null;
+ const fc=m.projected_month,fcPct=pct(fc,base);
+ const gap=(mtd!==null&&base)?Math.max(0,base-mtd):null,gapPct=(actual!==null)?Math.max(0,100-actual):null;
+ const ubNet=m.unbilled?m.unbilled.net:null,bkRem=m.backlog?m.backlog.remaining:null;
+ const pipe=(ubNet!==null&&bkRem!==null)?ubNet+bkRem:null,coverPct=pct(pipe,gap);
+ const avg2025=m.ly_year&&m.ly_year.net?m.ly_year.net/12:null;
+ const avg2026=(m.ytd&&m.ytd.net&&m.elapsed_year_days)?m.ytd.net/(m.elapsed_year_days/(365/12)):null;
+ const confHe={HIGH:'גבוה',MEDIUM:'בינוני',LOW:'נמוך'}[m.confidence]||NA;
+ const paceLine='לפי ימים קלנדריים '+(m.elapsed_days!=null?m.elapsed_days+'/'+m.days_in_month+' ('+expected+'%)':NA)+(wd?' · לפי ימי עבודה א׳–ה׳ '+wd.done+'/'+wd.total+' ('+pct(wd.done,wd.total)+'%)':'');
+ const cards=[
+  card({key:'sales',label:'מכירות',value:fmt(mtd),pct:actual!==null?actual+'% מ-Baseline':NA,
+   sub:expected!==null?'היינו צריכים להיות: '+expected+'%':'',
+   dot:pts!==null?Math.abs(pts)+' נק׳ '+(pts>=0?'מעל הקצב':'מתחת לקצב'):'',
+   state:kpiState(paceRatio),
+   detail:[
+    {b:'חויב מתחילת החודש',t:fmt(mtd)+' נטו · '+(mtdN!=null?mtdN+' חשבוניות':'')+' (לפני מע"מ)'},
+    {b:'היום',t:m.today_sales?fmt(m.today_sales.net)+' · '+m.today_sales.count+' חשבוניות':NA},
+    {b:'Baseline',t:fmt(base)+' — '+baseLabel+' · לא יעד הנהלה; יעד רשמי לא הוגדר'},
+    {b:'נקודות ייחוס נוספות',t:'ממוצע חודשי 2025 '+fmt(avg2025)+' · ממוצע חודשי 2026 עד היום '+fmt(avg2026)},
+    {b:'קצב',t:paceLine}]}),
+  card({key:'forecast',label:'Forecast',value:fmt(fc),pct:fcPct!==null?fcPct+'% מ-Baseline':NA,
+   sub:'ביטחון '+confHe+(m.basis?' · '+m.basis:''),state:kpiState(fc!==null&&base?fc/base:null),
+   detail:[
+    {b:'חויב בפועל',t:fmt(mtd)},
+    {b:'+ תעודות שיצאו ולא חויבו',t:ubNet!==null?fmt(ubNet)+' נטו ('+m.unbilled.count+' תעודות)':NA},
+    {b:'+ הזמנות פתוחות שיסופקו החודש',t:NA+' — אין מועדי אספקה בתמונת המצב (יתרת הצבר כולה '+fmt(bkRem)+')'},
+    {b:'+ הזמנות חדשות צפויות',t:NA+' — אין מודל הזמנות חדשות במנוע'},
+    {b:'Forecast',t:fmt(fc)+' — נוסחה: קצב יומי '+fmt(m.daily)+' × '+(m.days_in_month!=null?m.days_in_month:'?')+' ימים ('+(m.basis||NA)+'); לא גשר רכיבים'},
+    {b:'מול '+baseLabel,t:sgn(delta(fc,base))},
+    {b:'טווח',t:NA+' — המנוע נותן נקודה אחת ורמת ביטחון ('+confHe+'), לא טווח'}]}),
+  card({key:'gap',label:'פער ל-Baseline',value:fmt(gap),pct:gapPct!==null?gapPct+'% חסר':NA,state:'none',
+   sub:(gap!==null&&wd&&wd.left>0)?'נדרש '+fmt(gap/wd.left)+' ליום עבודה ('+wd.left+' נותרו)':(gap===0?'ה-Baseline הושג':''),
+   detail:[
+    {b:'Baseline',t:fmt(base)+' — '+baseLabel},
+    {b:'חויב',t:fmt(mtd)},
+    {b:'חסר',t:gap!==null?fmt(gap)+' ('+gapPct+'%)':NA},
+    {b:'ימי עבודה שנותרו',t:wd?wd.left+' מתוך '+wd.total+' (א׳–ה׳)'+(gap!==null&&wd.left>0?' → '+fmt(gap/wd.left)+' ליום':''):NA},
+    {b:'לפי הקצב הנוכחי',t:(fc!==null&&base)?'סוף חודש '+fmt(fc)+' → '+(fc>=base?'הפער נסגר':'יישארו '+fmt(base-fc)):NA}]}),
+  card({key:'cover',label:'כיסוי הפער',value:fmt(pipe),pct:coverPct!==null?coverPct+'% מכוסה':NA,
+   sub:'מהזמנות + תעודות שכבר בצינור',state:kpiState(pipe!==null&&gap?pipe/gap:null),
+   detail:[
+    {b:'תעודות שיצאו ולא חויבו',t:ubNet!==null?fmt(ubNet)+' נטו — ודאי לחיוב':NA},
+    {b:'יתרת הזמנות פתוחות',t:bkRem!==null?fmt(bkRem)+' — '+m.backlog.count+' הזמנות, מועד האספקה לא מאומת':NA+(m.backlog&&m.backlog.unverified_lines?' — '+m.backlog.unverified_lines+' שורות ללא יתרה מאומתת':'')},
+    {b:'פיצול הצבר לפי מועד',t:NA+' — החודש / חודש הבא / חסום / לא ידוע אינם בתמונת המצב'},
+    {b:'מה זה אומר',t:(pipe!==null&&gap!==null)?(pipe>=gap?'הצינור הקיים גדול מהפער; כמה ממנו יסופק החודש — לא מאומת':'גם אם כל הצינור יסופק החודש חסרים '+fmt(gap-pipe)):NA}]}),
+  card({key:'unbilled_due',label:'תעודות לחיוב',value:ubNet!==null?fmt(ubNet):null,pct:'נטו · '+((ubNet!==null&&gap)?pct(ubNet,gap)+'% מהפער':NA),state:'none',
+   sub:m.unbilled?m.unbilled.count+' תעודות'+(m.unbilled.oldest_days!=null?' · הוותיקה '+m.unbilled.oldest_days+' יום':''):'',
+   detail:[
+    {b:'כולל מע"מ',t:m.unbilled&&m.unbilled.gross!=null?fmt(m.unbilled.gross):NA},
+    {b:'מהחודש',t:m.unbilled&&m.unbilled.current_month_count!=null?m.unbilled.current_month_count+' תעודות':NA},
+    {b:'הגדרה',t:(k.unbilled&&k.unbilled.definition)||'תעודות משלוח סופיות לחיוב ללא חשבונית, מה-1 של החודש הקודם (הכרעת דוד 4.9)'}]}),
+  card({key:'backlog',label:'הזמנות פתוחות',value:bkRem!==null?fmt(bkRem):null,pct:'יתרה לספק',state:'none',
+   sub:'צפוי החודש: '+NA+(m.backlog?' · '+m.backlog.count+' הזמנות'+(m.backlog.original!=null?' · מקורית '+fmt(m.backlog.original):''):''),
+   detail:[
+    {b:'יתרה לספק (צבר אמיתי)',t:bkRem!==null?fmt(bkRem):NA+(m.backlog&&m.backlog.unverified_lines?' — '+m.backlog.unverified_lines+' שורות ללא יתרה מאומתת':'')},
+    {b:'צפוי לחיוב החודש',t:NA+' — אין מועדי אספקה בתמונת המצב'},
+    {b:'הזמנות מסגרת',t:k.open_orders&&k.open_orders.framework&&k.open_orders.framework.count?k.open_orders.framework.count+(k.open_orders.framework.unverified===0?' · נותר '+fmt(k.open_orders.framework.remaining):' · סכום לא מאומת'):'0'},
+    {b:'הצעות מחיר → הזמנות · 60 יום',t:k.kpi_quotes_to_orders_60d||NA},
+    {b:'הגדרה',t:(k.open_orders&&k.open_orders.open_definition)||'פתוחה = BOOLCLOSED ריק (הכרעת דוד 1.9) · יתרה לספק = TBALANCE × DISPRICE'}]}),
+  card({key:'vs_ly',label:'מול אשתקד',value:sgn(delta(mtd,m.ly_same?m.ly_same.net:null)),pct:'אותם ימים אשתקד',state:'none',
+   sub:(mtdN!=null&&m.ly_same&&m.ly_same.count!=null)?mtdN+' מול '+m.ly_same.count+' חשבוניות':'',
+   detail:[
+    {b:m.ly_same_label,t:m.ly_same?fmt(m.ly_same.net)+' נטו · '+m.ly_same.count+' חשבוניות':NA},
+    {b:'Forecast מול '+baseLabel,t:sgn(delta(fc,base))+' ('+fmt(fc)+' מול '+fmt(base)+')'},
+    {b:'מתחילת השנה מול אשתקד',t:(m.ytd&&m.ly_ytd)?sgn(delta(m.ytd.net,m.ly_ytd.net))+' ('+fmt(m.ytd.net)+' מול '+fmt(m.ly_ytd.net)+')':NA}]}),
+  card({key:'vs_avg',label:'מול ממוצע',value:sgn(delta(fc,avg2025)),pct:'ממוצע חודשי 2025',state:'none',
+   sub:avg2025!==null?'Forecast '+fmt(fc)+' מול '+fmt(avg2025)+' לחודש':'',
+   detail:[
+    {b:'ממוצע חודשי 2025',t:avg2025!==null?fmt(avg2025)+' ('+fmt(m.ly_year.net)+' / 12)':NA},
+    {b:'ממוצע חודשי 2026 עד היום',t:avg2026!==null?fmt(avg2026)+' · Forecast מולו '+sgn(delta(fc,avg2026)):NA},
+    {b:'ממוצע 12 חודשים אחרונים',t:NA+' — המנוע מחזיק שנה קודמת מלאה ומתחילת השנה, לא חלון נע'}]})];
+ return {ok:true,
+  header:m.name+' · Baseline '+fmt(base),
+  header2:wd?'יום עבודה '+wd.done+' מתוך '+wd.total:'',
+  ref:m.elapsed_days!=null?'קלנדרי '+m.elapsed_days+'/'+m.days_in_month:'',
+  rows:ROWS,cards:cards,more:more};
+}
+const KPI_CARD_KEYS=['sales','forecast','gap','cover','unbilled_due','backlog','vs_ly','vs_avg','more'];
+/* KPI_MODEL_END */
+function kfmt(n){return privacyOn()?'—':kfmtRaw(n);}
+function kpiAgeText(r){
+ if(!r||!r.as_of)return '';
+ const mins=Math.max(0,Math.round((Date.now()-Date.parse(r.as_of))/60000));
+ return (r.cached?'מהמטמון ':'נסרק ')+'לפני '+mins+' דק׳';
+}
+function kpiDetailHtml(c){
+ return (c.detail||[]).map(l=>'<p'+(l.dim?' class="dim"':'')+'>'+(l.b?'<b>'+esc(l.b)+'</b> ':'')+esc(l.t||'')+'</p>');
+}
+function kpiTile(c,open){
+ const nv=(c.value===null||c.value===undefined);
+ const st=c.state==='none'?'':' s-'+(c.state||'na');
+ return '<div class="kpiTile'+st+(nv?' nv':'')+(c.wide?' wide':'')+'" data-kpi="'+esc(c.key)+'" data-open="'+(open?'true':'false')+'"'
+   +' onclick="toggleKpiDetail(\''+esc(c.key)+'\',this)" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'">'
+   +'<span class="kpiChev">▾</span>'
+   +(c.wide?'':'<div class="lbl">'+esc(c.label)+'</div>')
+   +'<div class="v" dir="auto">'+(nv?'לא מאומת':esc(c.value))+'</div>'
+   +(c.pct?'<div class="p">'+esc(c.pct)+'</div>':'')
+   +(c.sub?'<div class="k">'+esc(c.sub)+'</div>':'')
+   +(c.dot?'<div class="k"><i class="dot"></i>'+esc(c.dot)+'</div>':'')
+   +'<div class="kpiDetail">'+kpiDetailHtml(c).join('')+'</div>'
    +'</div>';
 }
 function openOrdersKpiText(r){
@@ -2092,21 +2289,27 @@ function salesKpiText(r){
 function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
  const k=RAILS.kpis||{};
- /* All seven tiles are ONE engine's row (12.9): fresco_snapshot. The status
-    tile is the engine's verdict — the same score the chat's Pulse shows. */
- const rows=[
-  ['status','מצב פרסקו',statusKpiText(k.status),statusKpiNote(k.status),'c-status'],
-  ['sales_today','מכירות היום',salesKpiText(k.sales_today),null,'c-salesToday'],
-  ['sales_month','מכירות החודש',salesKpiText(k.sales_month),null,'c-salesMonth'],
-  ['kpi_quotes_to_orders_60d','הצעות מחיר → הזמנות · 60 הימים האחרונים',k.kpi_quotes_to_orders_60d||null,null,'c-salesMonth'],
-  ['open_orders','הזמנות פתוחות',openOrdersKpiText(k.open_orders),openOrdersKpiNote(k.open_orders),'c-openOrders'],
-  ['unbilled','תעודות משלוח לחיוב',unbilledKpiText(k.unbilled),unbilledKpiNote(k.unbilled),'c-unbilled'],
-  ['receivables','חייבים / בפיגור',receivablesKpiText(k.receivables),receivablesKpiNote(k.receivables),'c-receivables'],
-  ['gross_profit','רווח גולמי משוער',null,KPI_UNVERIFIED_NOTE.gross_profit,'c-grossProfit'],
- ];
- el.innerHTML=rows.map(r=>kpiTile(r[0],r[1],r[2],r[3],r[4])).join('');
- const verified=rows.filter(r=>r[2]!==null&&r[2]!==undefined).length;
- setRailSummary('kpiSummary',verified+' מאומתים · '+(rows.length-verified)+' ממתינים · מנוע אחד');
+ /* Eight cards, ONE engine row (fresco_snapshot) — kpiModel() is the only derivation,
+    pure and tested; a fact the engine does not carry stays "לא מאומת" (David, 5.10). */
+ const m=kpiModel(k,kfmt);RAILS.kpiModel=m;
+ const all=m.cards.concat(m.more?[m.more]:[]);
+ /* one card open at a time — the first remembered key wins, the rest fold */
+ const openKey=(all.find(c=>isKpiOpen(c.key))||{}).key||null;
+ let html='';
+ const ref=[m.ref,k.month&&k.month.as_of?kpiAgeText(k.month):''].filter(Boolean).join(' · ');
+ if(ref)html+='<div class="kpiRef">'+esc(ref)+'</div>';
+ m.cards.forEach((c,i)=>{
+  if(i%2===0&&m.rows[i/2])html+='<div class="kpiRow">'+esc(m.rows[i/2])+'</div>';
+  html+=kpiTile(c,c.key===openKey);
+ });
+ if(m.more)html+=kpiTile(m.more,m.more.key===openKey);
+ el.innerHTML=html;
+ setKpiHeader(m.header,m.header2);
+}
+/* two lines in the head: month · Baseline / working day X of Y (David's spec); each line stays one line */
+function setKpiHeader(l1,l2){
+ const el=document.getElementById('kpiSummary');if(!el)return;
+ el.innerHTML=esc(l1||'')+'<br>'+esc(l2||'');
 }
 /* CHAT → CARD ROUTING (David, 31.8). No backend change: every kernel answer
    already carries capabilities_used (finalize() in command-center adds it

@@ -158,20 +158,14 @@ await dl.ctx.close();
    A deep-link as the tab's very first entry has nothing before it; Back there
    leaves the page, which is the browser's own correct behavior. */
 const m = await device({ tag: 'phone', ctx: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } });
-/* 10.9: ORGANIZATION renders on the phone DIRECTLY — no deep-link needed. */
-await m.page.waitForSelector('#orgListMobile .orgItem[data-org]', { timeout: 5000 }).catch(() => {});
-const mobileRows = await m.page.$$eval('#orgListMobile .orgItem', (xs) => xs.map((x) => x.getAttribute('data-org'))).catch(() => []);
-ok('ORGANIZATION is visible on the phone without any deep-link, with the eight rows',
-  (await m.page.$eval('#orgMobile', (x) => getComputedStyle(x).display !== 'none')) && mobileRows.join(',') === KEYS.join(','), mobileRows.join(','));
-ok('the desktop rail is NOT rendered on the phone (one card, two homes, no duplicate screens)', (await m.page.$$eval('#orgList .orgItem', (xs) => xs.length)) === 0);
-await m.page.tap('#orgListMobile .orgItem[data-org="sales"]');
-await m.page.waitForSelector('#evDrawer.on', { timeout: 5000 }).catch(() => {});
-const mBody = await m.page.$eval('#evBody', (x) => x.textContent);
-ok('tapping a department opens the drawer titled with it', (await m.page.$eval('#evHead b', (x) => x.textContent)) === 'מכירות');
-ok('the drawer shows the management fields', /מצב:[\s\S]*מטרה:[\s\S]*אחראי:[\s\S]*KPI:[\s\S]*עבודה פעילה:[\s\S]*חסם:[\s\S]*הפעולה הבאה:[\s\S]*דורש דוד:/.test(mBody) && /ac70431b/.test(mBody), mBody.slice(0, 200));
-ok('the tap is a deep-link too', (await hash(m.page)) === '#org/sales');
-await m.page.goBack(); await m.page.waitForTimeout(150);
-ok('Back closes the drawer after a tap', !(await m.page.$eval('#evDrawer', (x) => x.classList.contains('on'))) && (await hash(m.page)) === '');
+/* 30.9 (David: "the phone is a clean conversation, the desktop is exactly what it was"):
+   on a phone-width viewport the organizer is not drawn at all — the conversation owns
+   the screen (qa-visual locks the same law). A route still works there: it opens the
+   shared drawer, never a rail and never a new screen. */
+await m.page.waitForTimeout(400);
+ok('ORGANIZATION is NOT drawn on the phone (David, 30.9 — the phone is a clean conversation)',
+  await m.page.$eval('#orgMobile', (x) => getComputedStyle(x).display === 'none'));
+ok('the desktop rail is NOT rendered on the phone either (nothing but the conversation)', (await m.page.$$eval('#orgList .orgItem', (xs) => xs.length)) === 0);
 // the deep-link still works on the phone
 await m.page.evaluate(() => { location.hash = '#org/rnd'; });
 await m.page.waitForSelector('#evDrawer.on', { timeout: 5000 }).catch(() => {});
@@ -181,6 +175,25 @@ ok('the drawer carries the same detail lines', /הפעולה הבאה: להרי�
 await m.page.goBack(); await m.page.waitForTimeout(150);
 ok('Back closes the drawer on the phone', !(await m.page.$eval('#evDrawer', (x) => x.classList.contains('on'))));
 await m.ctx.close();
+
+// ── 7 / tablet (601–1099px, touch): the card's second home — ORGANIZATION rendered directly ──
+/* 10.9: below the desktop rail the card renders DIRECTLY — no deep-link needed. Since
+   30.9 that home is the tablet band (601–1099px); the phone band is the conversation only. */
+const tb = await device({ tag: 'tablet', ctx: { viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true } });
+await tb.page.waitForSelector('#orgListMobile .orgItem[data-org]', { timeout: 5000 }).catch(() => {});
+const mobileRows = await tb.page.$$eval('#orgListMobile .orgItem', (xs) => xs.map((x) => x.getAttribute('data-org'))).catch(() => []);
+ok('ORGANIZATION is visible on the tablet without any deep-link, with the eight rows',
+  (await tb.page.$eval('#orgMobile', (x) => getComputedStyle(x).display !== 'none')) && mobileRows.join(',') === KEYS.join(','), mobileRows.join(','));
+ok('the desktop rail is NOT rendered on the tablet (one card, two homes, no duplicate screens)', (await tb.page.$$eval('#orgList .orgItem', (xs) => xs.length)) === 0);
+await tb.page.tap('#orgListMobile .orgItem[data-org="sales"]');
+await tb.page.waitForSelector('#evDrawer.on', { timeout: 5000 }).catch(() => {});
+const mBody = await tb.page.$eval('#evBody', (x) => x.textContent);
+ok('tapping a department opens the drawer titled with it', (await tb.page.$eval('#evHead b', (x) => x.textContent)) === 'מכירות');
+ok('the drawer shows the management fields', /מצב:[\s\S]*מטרה:[\s\S]*אחראי:[\s\S]*KPI:[\s\S]*עבודה פעילה:[\s\S]*חסם:[\s\S]*הפעולה הבאה:[\s\S]*דורש דוד:/.test(mBody) && /ac70431b/.test(mBody), mBody.slice(0, 200));
+ok('the tap is a deep-link too', (await hash(tb.page)) === '#org/sales');
+await tb.page.goBack(); await tb.page.waitForTimeout(150);
+ok('Back closes the drawer after a tap', !(await tb.page.$eval('#evDrawer', (x) => x.classList.contains('on'))) && (await hash(tb.page)) === '');
+await tb.ctx.close();
 
 // ── 8: touch target ─────────────────────────────────────────────────────────
 const t = await device({ tag: 'touch', ctx: { viewport: { width: 1280, height: 900 }, hasTouch: true } });
