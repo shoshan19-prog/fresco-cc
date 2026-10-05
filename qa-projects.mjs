@@ -90,6 +90,9 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 375,
   ok(`${tag}: a shipment with no amount is said so, never "₪0"`, /תעודה אחת ב-90 יום, בלי סכום/.test(L.txt) && !/₪0(?![\d,])/.test(L.txt), (L.txt.match(/.{30}₪0(?![\d,]).{10}/) || [''])[0]);
   ok(`${tag}: no machinery on screen`, !/undefined|null|NaN|DECISION|STUCK|PROJDES|\[object/.test(L.txt), (L.txt.match(/.{20}(undefined|null|NaN|DECISION|STUCK|PROJDES).{20}/) || [''])[0]);
   ok(`${tag}: RTL, no horizontal overflow`, L.dir === 'rtl' && L.over <= 0, `dir=${L.dir} over=${L.over}`);
+  const links = await page.evaluate(() => [...document.querySelectorAll('a.open')].map((a) => a.getAttribute('href')));
+  const keyed = FIX.snapshot.projects.filter((p) => p.priority_key).length;
+  ok(`${tag}: every project Priority keys opens its own page, and only those`, links.length === keyed && links.every((h) => /^project\.html\?key=PR\d+$/.test(h)), `${links.length}/${keyed} ${links.slice(0, 2)}`);
   await page.click('#showOk');
   const L2 = await look(page);
   ok(`${tag}: "הצג את כל" opens every healthy project`, L2.okRows === S.ok && !L2.showAll, `${L2.okRows}`);

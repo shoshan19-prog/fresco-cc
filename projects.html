@@ -72,6 +72,7 @@ main{padding:12px 16px calc(32px + env(safe-area-inset-bottom));max-width:760px;
 .pj{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:0 0 8px}
 .pj.d{border-inline-start:3px solid var(--warn)} .pj.s{border-inline-start:3px solid #98a2b3}
 .pj .nm{font-weight:700;font-size:16px;line-height:1.3}
+a.open{color:var(--acc)} a.open span{color:var(--dim);font-weight:400}
 .pj .who{font-size:13px;color:var(--dim);margin-top:1px}
 .pj .fl{display:flex;gap:8px;margin-top:8px;font-size:14.5px;line-height:1.5}
 .pj .fl .dot{width:8px;height:8px;border-radius:50%;background:var(--warn);margin-top:8px;flex:0 0 auto}
@@ -124,7 +125,7 @@ details.more summary::-webkit-details-marker{display:none}
 
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
-var PS_BUILD='2026-10-05.2';
+var PS_BUILD='2026-10-05.3';
 var B=function(q){return document.querySelector(q);};
 var CODE_FROM='';
 function code(){
@@ -194,7 +195,9 @@ function projCard(p,wb){
       +'<span class="rule">'+(f.level==='DECISION'?'דורש החלטה':'תקוע')+' · כלל: '+esc(f.rule_he)+'</span></div></div>';
   }).join('');
   var facts=factsOf(p);
-  return '<article class="pj '+cls+'"><div class="nm">'+esc(p.name)+'</div>'+(who?'<div class="who">'+esc(who)+'</div>':'')
+  /* a project Priority keys has its own page — the four layers (5.10); one grouped by name alone has none yet */
+  var nm=p.priority_key?'<a class="open" href="project.html?key='+esc(p.priority_key)+'">'+esc(p.name)+'<span aria-hidden="true"> ›</span></a>':esc(p.name);
+  return '<article class="pj '+cls+'"><div class="nm">'+nm+'</div>'+(who?'<div class="who">'+esc(who)+'</div>':'')
     +fl+(facts.length?'<div class="facts">'+facts.map(function(f){return '<span class="f">'+f+'</span>';}).join('<span aria-hidden="true">·</span>')+'</div>':'')
     +wbBlock(p,wb)+ordersBlock(p)+'</article>';
 }
@@ -205,7 +208,8 @@ function okRow(p){
   if(p.unbilled&&p.unbilled.count)m.push('לא חויב '+shekel(p.unbilled.gross));
   if(p.last_activity)m.push('אחרון '+heDay(p.last_activity));
   if(p.workbook&&p.workbook.length)m.push('בדוח הפרויקטים');
-  return '<div class="r"><div>'+esc(p.name)+'</div><div class="v">'+v+'</div><div class="m">'+esc(m.filter(Boolean).join(' · '))+'</div></div>';
+  var nm=p.priority_key?'<a class="open" href="project.html?key='+esc(p.priority_key)+'">'+esc(p.name)+'<span aria-hidden="true"> ›</span></a>':esc(p.name);
+  return '<div class="r"><div>'+nm+'</div><div class="v">'+v+'</div><div class="m">'+esc(m.filter(Boolean).join(' · '))+'</div></div>';
 }
 var OK_SHOWN=8;
 function renderProjects(S,opt){
