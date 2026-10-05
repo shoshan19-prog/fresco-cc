@@ -22,6 +22,9 @@ const ok = (label, cond, extra) => {
   total++;
   if (!cond) { console.log(`FAIL  ${label}${extra ? '\n      ' + extra : ''}`); bad++; }
 };
+// The build stamp moves with every shipped change; a test pins the FLOOR it was
+// written against, never the exact value (an exact pin fails on the next ship).
+const buildAtLeast = (b, min) => { const n = (s) => String(s || '').split(/[-.]/).map(Number); const a = n(b), m = n(min); for (let i = 0; i < m.length; i++) { if ((a[i] || 0) > m[i]) return true; if ((a[i] || 0) < m[i]) return false; } return true; };
 const begin = SRC.indexOf('/*ATT-PURE-BEGIN*/'), end = SRC.indexOf('/*ATT-PURE-END*/');
 ok('pure block markers exist', begin > 0 && end > begin);
 const api = new Function(SRC.slice(begin + '/*ATT-PURE-BEGIN*/'.length, end)
@@ -87,7 +90,7 @@ ok('srcDesc reads the conversation registry', /function srcDesc\(id\)\{return \(
 ok('the honesty gate fires on NAMED sources only', /const named=srcs\.filter\(s=>s&&s\.filename\);/.test(SRC) && /if\(named\.length&&!kernelSawSources\(res\)\)\{/.test(SRC));
 ok('the honest answer is built from the named ones', /eyesNotLiveAnswer\(pend\.length\?pend:named\)/.test(SRC));
 ok('eyesNotLiveAnswer can never say "קובץ: undefined"', /atts=\(atts\|\|\[\]\)\.filter\(a=>a&&a\.filename\);/.test(SRC));
-ok('build 2026-09-12.1', /const LIA_BUILD='2026-09-12\.1';/.test(SRC));
+ok('build 2026-09-12.1 or later', buildAtLeast((SRC.match(/const LIA_BUILD='([^']+)';/) || [])[1], '2026-09-12.1'), (SRC.match(/const LIA_BUILD='([^']+)';/) || [])[1]);
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\nPASS — all ${total} checks`);
 process.exit(bad ? 1 : 0);

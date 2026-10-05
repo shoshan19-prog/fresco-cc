@@ -123,10 +123,12 @@ check("LIA (12.9): ONE CANONICAL ENGINE — the tiles read fresco_snapshot (the 
   assert(/remaining:oo\.all_verified\?oo\.open_value:null/.test(adapt), 'open orders must carry the TRUE remaining backlog, null when a line did not verify (§9)');
   assert(/receivables:rc\?\{headline_count:rc\.count,sums:\{TOTPRICE:rc\.total/.test(adapt) && /gross_profit:d\.gross_profit\|\|null/.test(adapt), 'receivables / gross profit are the engine\'s fields, copied — never recomputed');
   assert(/status:s\.verdict\?\{verdict:s\.verdict/.test(adapt), 'the verdict (score, forecast, action) must reach a tile');
-  assert(/\['status','מצב פרסקו',statusKpiText\(k\.status\),statusKpiNote\(k\.status\)/.test(lia), 'no status tile');
+  /* 5.10 (David): the 90/100 score left the main cards — the verdict reaches the panel through kpiModel (נתונים נוספים + the Forecast card), never a tile of its own */
+  assert(/const v=k\.verdict\|\|null,score=v&&v\.score!=null\?v\.score\+'\/100'/.test(lia) && /const m=kpiModel\(k,kfmt\);RAILS\.kpiModel=m;/.test(lia), 'the verdict does not reach the panel through the one model');
   assert(/r\.engine==='fresco_snapshot'\|\|\(r\.capabilities_used\|\|\[\]\)\.some\(c=>c==='fresco_snapshot'\|\|c==='fresco_pulse'\)/.test(lia), 'a Pulse/Snapshot chat answer does not route to the status tile');
   assert(/function unbilledKpiText\(/.test(lia) && /function receivablesKpiText\(/.test(lia), 'no headline builders for the two tiles');
-  assert(/unbilledKpiText\(k\.unbilled\)/.test(lia) && /receivablesKpiText\(k\.receivables\)/.test(lia), 'the tiles do not read RAILS.kpis');
+  /* 5.10: the eight cards read RAILS.kpis through kpiModel — the month facts ride the same engine row (kpisFromSnapshot), copied not recomputed */
+  assert(/month:monthFactsFromSnapshot\(d,asOf,!!cachedAt\)/.test(adapt) && /const k=RAILS\.kpis\|\|\{\};\s*\/\*[\s\S]{0,400}?\*\/\s*const m=kpiModel\(k,kfmt\)/.test(lia), 'the cards do not read RAILS.kpis through the model');
   assert(/r\.excluded\.billed_via_order/.test(lia) && /r\.aging\[b\]/.test(lia) && /בפיגור \(פריוריטי\)/.test(lia), 'the details do not show what was excluded / the aging / Priority\'s own overdue');
   assert(/function kpiAgeLine\(/.test(lia) && /r\.cached\?'מהמטמון/.test(lia), 'a cached row must say so and how old it is');
 });
