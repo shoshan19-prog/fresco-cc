@@ -183,7 +183,7 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .orgItem[data-open="true"]{background:var(--card2)}
 .orgItem .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--dim)}
 .orgItem.s-LIVE .dot{background:var(--ok,#4caf82)}
-.orgItem.s-HIDDEN .dot,.orgItem.s-MISSING .dot{background:var(--warn,#e0a63c)}
+.orgItem.s-HIDDEN .dot,.orgItem.s-MISSING .dot,.orgItem.s-EMPTY .dot{background:var(--warn,#e0a63c)}
 .orgItem.s-BLOCKED .dot{background:#ff6b6b}
 .orgItem .nm{flex:1;min-width:0}
 .orgItem .met{font-size:11.5px;color:var(--dim);white-space:nowrap}
@@ -198,6 +198,24 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .orgDetail.on{display:block}
 .orgDetail p{margin:0 0 3px}
 .orgDetail b{color:var(--txt);font-weight:600}
+/* THE MANAGEMENT MAP (David, 5.10 night — "אורגנייזר מפת ניהול"): the card's goal · owner · KPI · next action ·
+   blocker are HIS rows, written once from the card itself; the same form in both homes (rail + phone drawer). */
+.orgDetail .src{font-size:10.5px;color:var(--dim);opacity:.85}
+.orgDetail .wq{margin:2px 0 0 0;padding:0;list-style:none}
+.orgDetail .wq li{margin:0 0 2px;color:var(--dim)}
+.orgDetail .wq li b{font-weight:500;color:var(--txt)}
+.orgEditBtn{font:inherit;font-size:11.5px;color:var(--acc);background:none;border:0;padding:4px 0;cursor:pointer}
+.orgEditBtn:hover{text-decoration:underline}
+.orgEdit{display:none;margin-top:4px;padding-top:6px;border-top:1px dashed var(--line)}
+.orgEdit.on{display:block}
+.orgEdit label{display:block;font-size:11px;color:var(--dim);margin:5px 0 2px}
+.orgEdit input,.orgEdit textarea{width:100%;box-sizing:border-box;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font:inherit;font-size:12px;line-height:1.4}
+.orgEdit textarea{min-height:44px;resize:vertical}
+.orgEdit .btns{display:flex;gap:6px;margin-top:8px}
+.orgEdit button{font:inherit;font-size:12px;padding:5px 11px;border-radius:6px;border:1px solid var(--line);background:var(--card2);color:var(--txt);cursor:pointer}
+.orgEdit button.b-ok{background:var(--acc);color:#fff;border-color:var(--acc)}
+.orgEdit button[disabled]{opacity:.6;cursor:default}
+.orgEdit .res{font-size:11px;color:var(--dim);margin:6px 0 0;min-height:1em}
 .orgDetail .stuck{color:#ff6b6b}
 /* ORGANIZATION on the phone (10.9): the rail is desktop-only — this section
    carries the same rows above the thread; the drawer shows the card. */
@@ -760,7 +778,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-05.3';
+const LIA_BUILD='2026-10-05.6';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -2467,7 +2485,7 @@ const ORGANIZATION_ROUTES={
 };
 const DEPT_LABEL={branding:'שיווק תוכן',marketing:'שיווק',advertising:'פרסום',sales:'מכירות',
  purchasing:'רכש',operations:'תפעול',rnd:'מו"פ',capital:'כספים'};
-const ORG_STATE_HE={LIVE:'חי',HIDDEN:'קיים ולא חשוף',BLOCKED:'חסום',MISSING:'חסר'};
+const ORG_STATE_HE={LIVE:'חי',EMPTY:'ריק',HIDDEN:'קיים ולא חשוף',BLOCKED:'חסום',MISSING:'חסר'};
 let ORG_OPEN='';
 function orgHashKey(){const m=/^#org\/([a-z_]+)$/.exec(location.hash||'');return m?m[1]:'';}
 function orgDept(key){return (RAILS.org||[]).find(d=>d&&d.key===key)||null;}
@@ -2510,18 +2528,79 @@ function orgDetailLines(key){
    html=parts.length?parts.map(p=>'<span class="kv">'+p+'</span>').join(' · '):nd;
   }
   else if(f==='active_work'){
+   /* THE DEPARTMENT'S OWN QUEUE (5.10 night): every live package the tower matched to it, not a teaser of three */
    const aw=m.active_work;
    if(!aw)html=nd;
    else if(!aw.count)html='אין חבילת WORK חיה משויכת (0)';
-   else html=esc(aw.count+' חבילות')+(aw.top||[]).map(w=>'<br><span class="dim">'+esc(w.id8)+' · '+esc(w.status)+' · '+esc(w.head)+'</span>').join('');
+   else{
+    const rest=aw.count-(aw.top||[]).length;
+    html=esc(aw.count+(aw.count===1?' חבילה':' חבילות'))+'<ul class="wq">'
+     +(aw.top||[]).map(w=>'<li><b>'+esc(w.head)+'</b> <span class="src">'+esc(WORK_STATUS_HE[w.status]||w.status)+' · '+esc(w.id8)+'</span></li>').join('')
+     +(rest>0?'<li class="src">ועוד '+rest+'</li>':'')+'</ul>';
+   }
+  }
+  else if(f==='goal'){
+   /* his word stands alone; a goal seeded from the department specs says so, until he saves (source = david) */
+   html=val(m.goal);
+   if(m.goal&&m.goal_source&&m.goal_source!=='david'&&m.goal_source!=='tower')html+=' <span class="src">(מוצע מהמפרט — טרם אושר)</span>';
   }
   else html=val(m[f]);
+  if(f==='kpi'&&d.registry&&d.registry.kpi_label)html='<span class="kv"><b>'+esc(d.registry.kpi_label)+'</b></span>'+(html===nd?'':' · '+html);
   lines.push('<p class="mf mf-'+f+'"><b>'+label+':</b> '+html+'</p>');
  }
  if(d.note)lines.push('<p class="dim">'+esc(d.note)+'</p>');
  if((d.cmds||[]).length)lines.push('<p class="cmds">'+esc(d.cmds.join(' · '))+'</p>');
+ lines.push(orgEditHtml(key,d));
  return lines;
 }
+const WORK_STATUS_HE={QUEUED:'בתור',RUNNING:'בביצוע',RETRYING:'ניסיון חוזר',BLOCKED:'חסומה',WAITING_APPROVAL:'ממתינה לאישורך',WAITING_EXTERNAL:'ממתינה לגורם חיצוני',WAITING_INTERNAL:'ממתינה'};
+/* THE ROW DAVID FILLS ONCE (5.10 night): goal · owner · the KPI in his words · next action · blocker. The form is
+   prefilled with what the registry holds (a seed included, so he edits rather than retypes) and posts department_set —
+   a door that answers only to his principal; the server reads the row back before it says "נשמר". */
+const ORG_EDIT_FIELDS=[['goal','מטרה','textarea'],['owner','אחראי','input'],['kpi_label','המדד, במילים שלך','input'],['next_action','הפעולה הבאה','input'],['blocker','חסם שאתה יודע עליו','input']];
+function orgEditHtml(key,d){
+ const r=(d&&d.registry)||{};
+ const fields=ORG_EDIT_FIELDS.map(([f,label,tag])=>'<label for="orgEdit_'+esc(key)+'_'+f+'">'+label+'</label>'
+  +(tag==='textarea'?'<textarea id="orgEdit_'+esc(key)+'_'+f+'" name="'+f+'" rows="2">'+esc(String(r[f]||''))+'</textarea>'
+   :'<input id="orgEdit_'+esc(key)+'_'+f+'" name="'+f+'" type="text" value="'+esc(String(r[f]||''))+'">')).join('');
+ return '<p><button type="button" class="orgEditBtn" data-orgedit="'+esc(key)+'" aria-expanded="false" aria-controls="orgEdit_'+esc(key)+'">'
+  +(r.source==='david'?'עדכון המחלקה':'מלא את המחלקה')+' ✎</button></p>'
+  +'<form class="orgEdit" id="orgEdit_'+esc(key)+'" data-key="'+esc(key)+'" autocomplete="off">'+fields
+  +'<div class="btns"><button type="submit" class="b-ok">שמור</button><button type="button" data-orgcancel="'+esc(key)+'">בטל</button></div>'
+  +'<p class="res" aria-live="polite"></p></form>';
+}
+function toggleOrgEdit(key,open){
+ const f=document.getElementById('orgEdit_'+key),b=document.querySelector('[data-orgedit="'+key+'"]');if(!f)return;
+ const on=open===undefined?!f.classList.contains('on'):!!open;
+ f.classList.toggle('on',on);if(b)b.setAttribute('aria-expanded',on?'true':'false');
+ if(on){const first=f.querySelector('textarea,input');if(first)first.focus();}
+}
+async function saveOrgEdit(form){
+ const key=form.getAttribute('data-key');const res=form.querySelector('.res');const btn=form.querySelector('button[type=submit]');
+ const body={action:'department_set',key};
+ for(const [f] of ORG_EDIT_FIELDS){const el=form.elements[f];if(el)body[f]=String(el.value||'').trim();}
+ if(btn)btn.disabled=true;if(res)res.textContent='שומר…';
+ try{
+  const x=await ccApi(body);
+  if(!x||!x.ok){if(res)res.textContent='לא נשמר: '+((x&&(x.reason||x.code))||'שגיאה');return;}
+  /* the map is re-read from the tower — the card shows what the server holds, never what the form said */
+  const tw=await ccApi({action:'tower'}).catch(()=>null);
+  if(tw&&tw.departments){RAILS.org=tw.departments;renderOrg();renderOrgMobile();
+   if(railsOn())showOrgInline(key,false);else openDrawer(orgDetailLines(key).join(''),DEPT_LABEL[key]||key);}
+  const r2=document.querySelector('#orgEdit_'+key+' .res');if(r2)r2.textContent='נשמר · המפה עודכנה';
+ }catch(e){if(res)res.textContent='לא נשמר: '+(e&&e.message||'שגיאה');}
+ finally{if(btn)btn.disabled=false;}
+}
+/* delegated: the form lives in both homes of the card (rail + drawer) */
+document.addEventListener('click',e=>{
+ const t=e.target&&e.target.closest?e.target:null;if(!t)return;
+ const b=t.closest('[data-orgedit]');if(b){e.preventDefault();toggleOrgEdit(b.getAttribute('data-orgedit'));return;}
+ const c=t.closest('[data-orgcancel]');if(c){e.preventDefault();toggleOrgEdit(c.getAttribute('data-orgcancel'),false);}
+});
+document.addEventListener('submit',e=>{
+ const f=e.target&&e.target.closest?e.target.closest('form.orgEdit'):null;if(!f)return;
+ e.preventDefault();saveOrgEdit(f);
+});
 /* One row builder for both homes of the card (rail + phone). data-org only —
    the row carries its route id, never its own navigation. */
 function orgRowHtml(d){
