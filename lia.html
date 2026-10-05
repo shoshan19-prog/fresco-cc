@@ -124,7 +124,7 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .kpiTile:hover{filter:brightness(.97)}
 .kpiTile .lbl{font-size:11px;color:var(--dim);margin-bottom:2px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline-end:12px}
 .kpiTile .v{font-size:19px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
-.kpiTile .p{font-size:11.5px;font-weight:700;margin-top:2px;letter-spacing:-.3px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--dim)}
+.kpiTile .p{font-size:11px;font-weight:700;margin-top:2px;letter-spacing:-.4px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--dim)}
 .kpiTile .k{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.35}
 .kpiTile .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-inline-end:5px;vertical-align:0}
 .kpiTile.nv .v{font-size:13px;font-weight:600;color:var(--dim)}
@@ -760,7 +760,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-05.1';
+const LIA_BUILD='2026-10-05.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -2127,24 +2127,30 @@ function kpiModel(k,fmt){
  const confHe={HIGH:'גבוה',MEDIUM:'בינוני',LOW:'נמוך'}[m.confidence]||NA;
  const paceLine='לפי ימים קלנדריים '+(m.elapsed_days!=null?m.elapsed_days+'/'+m.days_in_month+' ('+expected+'%)':NA)+(wd?' · לפי ימי עבודה א׳–ה׳ '+wd.done+'/'+wd.total+' ('+pct(wd.done,wd.total)+'%)':'');
  const cards=[
-  card({key:'sales',label:'מכירות',value:fmt(mtd),pct:actual!==null?actual+'% מ-Baseline':NA,
-   sub:expected!==null?'היינו צריכים להיות: '+expected+'%':'',
+  /* David, 5.10 evening: the Baseline is a comparison, not a target — the card says how far
+     along the Baseline we are and, on one line, where the pace says we should have been. */
+  card({key:'sales',label:'מכירות',value:fmt(mtd),pct:actual!==null?actual+'% מה-Baseline':NA,
+   sub:expected!==null?'היינו צריכים להיות ב־'+expected+'%':'',
    dot:pts!==null?Math.abs(pts)+' נק׳ '+(pts>=0?'מעל הקצב':'מתחת לקצב'):'',
    state:kpiState(paceRatio),
    detail:[
     {b:'חויב מתחילת החודש',t:fmt(mtd)+' נטו · '+(mtdN!=null?mtdN+' חשבוניות':'')+' (לפני מע"מ)'},
     {b:'היום',t:m.today_sales?fmt(m.today_sales.net)+' · '+m.today_sales.count+' חשבוניות':NA},
-    {b:'Baseline',t:fmt(base)+' — '+baseLabel+' · לא יעד הנהלה; יעד רשמי לא הוגדר'},
+    {b:'Baseline',t:fmt(base)+' — '+baseLabel+' · להשוואה בלבד, לא יעד הנהלה; כשיוגדר יעד הנהלה הוא יחליף את ה-Baseline במדד הראשי'},
     {b:'נקודות ייחוס נוספות',t:'ממוצע חודשי 2025 '+fmt(avg2025)+' · ממוצע חודשי 2026 עד היום '+fmt(avg2026)},
     {b:'קצב',t:paceLine}]}),
-  card({key:'forecast',label:'Forecast',value:fmt(fc),pct:fcPct!==null?fcPct+'% מ-Baseline':NA,
-   sub:'ביטחון '+confHe+(m.basis?' · '+m.basis:''),state:kpiState(fc!==null&&base?fc/base:null),
+  /* David, 5.10 evening: the engine's number stays, marked in the open as a pace forecast —
+     not the Forecast engine (actual + expected deliveries + backlog conversion + expected new
+     business, no double counting), which does not exist yet. */
+  card({key:'forecast',label:'Forecast',value:fmt(fc),pct:fcPct!==null?fcPct+'% מה-Baseline':NA,
+   sub:'תחזית קצב בלבד · ביטחון '+confHe,state:kpiState(fc!==null&&base?fc/base:null),
    detail:[
     {b:'חויב בפועל',t:fmt(mtd)},
     {b:'+ תעודות שיצאו ולא חויבו',t:ubNet!==null?fmt(ubNet)+' נטו ('+m.unbilled.count+' תעודות)':NA},
     {b:'+ הזמנות פתוחות שיסופקו החודש',t:NA+' — אין מועדי אספקה בתמונת המצב (יתרת הצבר כולה '+fmt(bkRem)+')'},
     {b:'+ הזמנות חדשות צפויות',t:NA+' — אין מודל הזמנות חדשות במנוע'},
     {b:'Forecast',t:fmt(fc)+' — נוסחה: קצב יומי '+fmt(m.daily)+' × '+(m.days_in_month!=null?m.days_in_month:'?')+' ימים ('+(m.basis||NA)+'); לא גשר רכיבים'},
+    {b:'מנוע Forecast אמיתי',t:'טרם נבנה — בפועל + אספקות צפויות + המרת צבר + עסקים חדשים צפויים, בלי ספירה כפולה (דוד, 5.10)'},
     {b:'מול '+baseLabel,t:sgn(delta(fc,base))},
     {b:'טווח',t:NA+' — המנוע נותן נקודה אחת ורמת ביטחון ('+confHe+'), לא טווח'}]}),
   card({key:'gap',label:'פער ל-Baseline',value:fmt(gap),pct:gapPct!==null?gapPct+'% חסר':NA,state:'none',
@@ -2155,8 +2161,10 @@ function kpiModel(k,fmt){
     {b:'חסר',t:gap!==null?fmt(gap)+' ('+gapPct+'%)':NA},
     {b:'ימי עבודה שנותרו',t:wd?wd.left+' מתוך '+wd.total+' (א׳–ה׳)'+(gap!==null&&wd.left>0?' → '+fmt(gap/wd.left)+' ליום':''):NA},
     {b:'לפי הקצב הנוכחי',t:(fc!==null&&base)?'סוף חודש '+fmt(fc)+' → '+(fc>=base?'הפער נסגר':'יישארו '+fmt(base-fc)):NA}]}),
-  card({key:'cover',label:'כיסוי הפער',value:fmt(pipe),pct:coverPct!==null?coverPct+'% מכוסה':NA,
-   sub:'מהזמנות + תעודות שכבר בצינור',state:kpiState(pipe!==null&&gap?pipe/gap:null),
+  /* David, 5.10 evening: the management meaning leads (137% coverage), the raw number follows
+     (₪870K available vs the ₪633K gap) — the raw sum is larger than the gap and confused him. */
+  card({key:'cover',label:'כיסוי הפער',value:gap===0?'אין פער':(coverPct!==null?coverPct+'% כיסוי':null),
+   pct:'',sub:(pipe!==null?fmt(pipe)+' זמינים':NA)+' מול פער '+fmt(gap),state:kpiState(pipe!==null&&gap?pipe/gap:null),
    detail:[
     {b:'תעודות שיצאו ולא חויבו',t:ubNet!==null?fmt(ubNet)+' נטו — ודאי לחיוב':NA},
     {b:'יתרת הזמנות פתוחות',t:bkRem!==null?fmt(bkRem)+' — '+m.backlog.count+' הזמנות, מועד האספקה לא מאומת':NA+(m.backlog&&m.backlog.unverified_lines?' — '+m.backlog.unverified_lines+' שורות ללא יתרה מאומתת':'')},

@@ -51,7 +51,9 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   ok(`${tag}: the header is the reference point`, /FRESCO KPIs אוקטובר · Baseline ₪770K/.test(head), head);
   let tiles = await tileText(page);
   ok(`${tag}: nine cards drawn (eight + נתונים נוספים), all folded`, tiles.length === 9 && tiles.every((t) => t.open === 'false'), JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
-  ok(`${tag}: screen test — the five numbers without opening a card`, /₪136K 18% מ-Baseline/.test(tiles[0].text) && /2 נק׳ מעל הקצב/.test(tiles[0].text) && /₪844K 110% מ-Baseline/.test(tiles[1].text) && /₪633K 82% חסר/.test(tiles[2].text) && /137% מכוסה/.test(tiles[3].text), tiles.slice(0, 4).map((t) => t.text).join(' || '));
+  ok(`${tag}: screen test (David 5.10 evening) — the five numbers without opening a card: 18% מה-Baseline + the pace line · Forecast marked pace-only · 137% כיסוי leads, the raw ₪870K follows`, /₪136K 18% מה-Baseline היינו צריכים להיות ב־16% 2 נק׳ מעל הקצב/.test(tiles[0].text) && /₪844K 110% מה-Baseline תחזית קצב בלבד · ביטחון בינוני/.test(tiles[1].text) && /₪633K 82% חסר/.test(tiles[2].text) && /137% כיסוי ₪870K זמינים מול פער ₪633K/.test(tiles[3].text), tiles.slice(0, 4).map((t) => t.text).join(' || '));
+  const over = await page.$$eval('#kpis .kpiTile .p, #kpis .kpiTile .v, #kpis .kpiTile .lbl', (xs) => xs.filter((x) => x.scrollWidth > x.clientWidth + 1).map((x) => x.textContent));
+  ok(`${tag}: no single-line text overflows its card (the new wording fits the tile)`, over.length === 0, over.join(' | '));
   ok(`${tag}: colour = state — sales/forecast/cover green, the rest neutral`, tiles[0].cls.includes('s-ok') && tiles[1].cls.includes('s-ok') && tiles[3].cls.includes('s-ok') && !/s-ok|s-warn|s-bad/.test(tiles[2].cls) && !/s-ok|s-warn|s-bad/.test(tiles[4].cls));
   ok(`${tag}: the 90/100 score is not on the main cards`, !tiles.slice(0, 8).some((t) => /\/100/.test(t.text)) && /90\/100/.test(tiles[8].text));
   // open Forecast → it opens DOWN inside the panel, the bridge shows, the others stay folded

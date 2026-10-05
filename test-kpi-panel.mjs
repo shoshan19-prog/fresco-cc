@@ -33,15 +33,17 @@ ok('the old summary wording is gone from the page', !/ממתינים · מנוע
 
 // ── row 1: the month ──
 const sales = card('sales'), fc = card('forecast');
-ok('מכירות: ₪136K · 18% of the Baseline · "we should have been at 16%" · 2 points above pace · green', sales.value === '₪136K' && sales.pct === '18% מ-Baseline' && sales.sub === 'היינו צריכים להיות: 16%' && sales.dot === '2 נק׳ מעל הקצב' && sales.state === 'ok', text(sales) + ' ' + sales.state);
+ok('מכירות (David 5.10 evening): ₪136K · "18% מה-Baseline" · under it "היינו צריכים להיות ב־16%" and "2 נק׳ מעל הקצב" · green', sales.value === '₪136K' && sales.pct === '18% מה-Baseline' && sales.sub === 'היינו צריכים להיות ב־16%' && sales.dot === '2 נק׳ מעל הקצב' && sales.state === 'ok', text(sales) + ' ' + sales.state);
+ok('מכירות detail: the Baseline is for comparison only; a management target, once set, replaces it as the main measure', sales.detail.some((l) => l.b === 'Baseline' && /להשוואה בלבד/.test(l.t) && /יחליף את ה-Baseline במדד הראשי/.test(l.t)));
 ok('מכירות detail names the Baseline as such and shows both pace definitions (calendar 5/31 · working days 3/21)', sales.detail.some((l) => /לא יעד הנהלה/.test(l.t)) && sales.detail.some((l) => /5\/31 \(16%\)/.test(l.t) && /3\/21 \(14%\)/.test(l.t)));
-ok('Forecast: the engine\'s ₪844K · 110% of the Baseline · confidence + the engine\'s basis · green', fc.value === '₪844K' && fc.pct === '110% מ-Baseline' && /ביטחון בינוני/.test(fc.sub) && /5\/31/.test(fc.sub) && fc.state === 'ok', text(fc));
+ok('Forecast (David 5.10 evening): the engine\'s ₪844K stays · 110% of the Baseline · marked in the open "תחזית קצב בלבד · ביטחון בינוני" · green', fc.value === '₪844K' && fc.pct === '110% מה-Baseline' && fc.sub === 'תחזית קצב בלבד · ביטחון בינוני' && fc.state === 'ok', text(fc));
+ok('Forecast detail says the real Forecast engine (actual + expected deliveries + backlog conversion + new business, no double counting) is not built yet', fc.detail.some((l) => l.b === 'מנוע Forecast אמיתי' && /טרם נבנה/.test(l.t) && /ספירה כפולה/.test(l.t)));
 ok('Forecast detail is the bridge, honestly: actual + unbilled known; backlog-this-month and new orders "לא מאומת"; the formula is stated', fc.detail.some((l) => l.b === 'חויב בפועל' && l.t === '₪136K') && fc.detail.some((l) => /תעודות/.test(l.b) && /₪55\.7K/.test(l.t)) && fc.detail.filter((l) => /לא מאומת/.test(l.t)).length >= 3 && fc.detail.some((l) => /נוסחה: קצב יומי ₪27\.2K × 31/.test(l.t)));
 
 // ── row 2: what is missing, what already covers it ──
 const gap = card('gap'), cover = card('cover');
 ok('פער: ₪633K · 82% missing · ₪35.2K needed per working day (18 left)', gap.value === '₪633K' && gap.pct === '82% חסר' && gap.sub === 'נדרש ₪35.2K ליום עבודה (18 נותרו)', text(gap));
-ok('כיסוי: unbilled + open backlog = ₪870K · 137% of the gap · green; the detail says delivery dates are not verified', cover.value === '₪870K' && cover.pct === '137% מכוסה' && cover.state === 'ok' && cover.detail.some((l) => /מועד האספקה לא מאומת/.test(l.t)) && cover.detail.some((l) => /פיצול הצבר/.test(l.b) && /לא מאומת/.test(l.t)), text(cover));
+ok('כיסוי (David 5.10 evening): the meaning leads — "137% כיסוי" — then the raw number "₪870K זמינים מול פער ₪633K" · green; the detail says delivery dates are not verified', cover.value === '137% כיסוי' && cover.pct === '' && cover.sub === '₪870K זמינים מול פער ₪633K' && cover.state === 'ok' && cover.detail.some((l) => /מועד האספקה לא מאומת/.test(l.t)) && cover.detail.some((l) => /פיצול הצבר/.test(l.b) && /לא מאומת/.test(l.t)), text(cover));
 
 // ── row 3: where the money is ──
 const ub = card('unbilled_due'), bk = card('backlog');
@@ -64,14 +66,14 @@ ok('the 90/100 score is on no card', !m.cards.some((c) => /\/100/.test(text(c)))
 ok('"נתונים נוספים" (wide, neutral) holds the score, receivables and gross profit — unverified said so', m.more && m.more.wide && m.more.state === 'none' && /ציון כולל 90\/100/.test(m.more.sub) && /חייבים: לא מאומת/.test(m.more.sub) && /רווח גולמי: לא מאומת/.test(m.more.sub) && m.more.detail.some((l) => /רווח גולמי/.test(l.b) && /לא מאומת/.test(l.t)));
 
 // ── the screen test (David): without opening a card ──
-ok('screen test: ₪136K | 18% | 2 above pace — Forecast ₪844K | 110% — missing ₪633K | 137% covered', sales.value === '₪136K' && sales.pct.startsWith('18%') && fc.value === '₪844K' && fc.pct.startsWith('110%') && gap.value === '₪633K' && cover.pct.startsWith('137%'));
+ok('screen test: ₪136K | 18% | 2 above pace — Forecast ₪844K | 110% — missing ₪633K | 137% covered', sales.value === '₪136K' && sales.pct.startsWith('18%') && fc.value === '₪844K' && fc.pct.startsWith('110%') && gap.value === '₪633K' && cover.value.startsWith('137%'));
 ok('eight cards, four rows, in the approved order', m.cards.map((c) => c.key).join(',') === 'sales,forecast,gap,cover,unbilled_due,backlog,vs_ly,vs_avg' && m.rows.length === 4);
 
 // ── when the engine does not answer ──
 const e = M.kpiModel({});
 ok('no engine row → the header says so and every card is grey "לא מאומת" — no number invented', e.header === 'אין תמונת מצב' && e.header2 === 'מנוע תמונת המצב לא ענה' && e.cards.length === 8 && e.cards.every((c) => c.value === null && c.state === 'na'));
 const partial = M.kpiModel({ month: Object.assign({}, k.month, { ly_month: null, unbilled: null, backlog: null }) });
-ok('no Baseline → percentages are "לא מאומת", the ₪ facts stay; no pipeline → coverage grey', partial.cards.find((c) => c.key === 'sales').pct === 'לא מאומת' && partial.cards.find((c) => c.key === 'sales').value === '₪136K' && partial.cards.find((c) => c.key === 'cover').state === 'na' && partial.header === 'אוקטובר · Baseline לא מאומת', partial.header);
+ok('no Baseline → percentages are "לא מאומת", the ₪ facts stay; no pipeline → coverage grey', partial.cards.find((c) => c.key === 'sales').pct === 'לא מאומת' && partial.cards.find((c) => c.key === 'sales').value === '₪136K' && partial.cards.find((c) => c.key === 'cover').state === 'na' && partial.cards.find((c) => c.key === 'cover').value === null && partial.header === 'אוקטובר · Baseline לא מאומת', partial.header);
 
 // ── source pins: the panel, not another dashboard ──
 ok('the section is the SAME panel (id, class, change mark) and the same grid element', /<section class="railCard collapsible" id="kpiCard" data-collapsed="true" data-lia-change="d6ed8626">/.test(html) && /<div class="kpiGrid railBody" id="kpis"><\/div>/.test(html) && /\.kpiGrid\{display:grid;grid-template-columns:1fr 1fr;gap:10px\}/.test(html));
