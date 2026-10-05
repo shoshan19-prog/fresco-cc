@@ -298,7 +298,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-05.2';
+var CC_BUILD='2026-10-05.3';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -993,22 +993,48 @@ function openDetail(id){
 /* DAVID DECIDES HERE (4.10: "יש בקשות לעבודה … רק ממתינות"). A card that waits on him offers the decision it waits on —
    accept the product, send it back to work, or close it — instead of only a link to the chat. The server runs each one
    through the existing doors (verify · close · wake), under David's credential only, and answers with what the row now says. */
-var DEC_DONE={ACCEPT:'אושרה ונסגרה',RETRY:'הוחזרה לביצוע',REJECT:'נסגרה',LAUNCH:'יצאה לדרך',RETURN:'הוחזרה לתיקון'};
+var DEC_DONE={ACCEPT:'אושרה ונסגרה',RETRY:'הוחזרה לביצוע',REJECT:'נסגרה',LAUNCH:'יצאה לדרך',RETURN:'הוחזרה לתיקון',ACCEPT_SHIP:'אושר ומוזג — המסלול מאמת את העמוד החי וסוגר'};
 /* 5.10 — THE PRODUCT IS APPROVED BY DAVID: a worker's DONE on a goal of his is a submission; the card shows the product
    itself — his line, what works, what remains, every link — and his three decisions. Only his acceptance closes. */
+/* 5.10 evening — THE ENGINEERING END: a page or code change is a PR the lane stopped before merging. The card shows the page
+   straight from the branch (a preview, styles and scripts from the live site) and the diff; "אשר" here means: go live. */
+var SHIP_PREVIEW_BASE='https://shoshan19-prog.github.io/fresco-cc/';
+function shipBlock(sh){
+  if(!sh||!sh.pr)return '';
+  var isPage=!!sh.preview_url;
+  return '<div class="li" style="margin-top:6px"><b>'+(isPage?'שינוי בעמוד':'שינוי בקוד')+'</b> · '+esc(String(sh.repo||''))+' · בקשה מספר '+esc(String(sh.pr))
+    +(sh.paths&&sh.paths.length?' · '+esc(sh.paths.join(', ')):'')
+    +'<p class="dim" style="margin-top:4px">עוד לא עלה לאוויר. האישור שלך הוא מה שמעלה אותו.</p>'
+    +'<div class="btns">'+(isPage?'<button class="b-ed" data-preview="1">הצג את העמוד כפי שישתנה</button>':'')
+    +'<a class="b-ed" style="text-decoration:none;display:inline-block" href="'+esc(sh.files_url||sh.pr_url||'#')+'" target="_blank" rel="noopener">מה בדיוק השתנה</a></div>'
+    +'<div id="shipPreview"></div></div>';
+}
+function previewShip(sh,btn){
+  var box=B('#shipPreview');if(!box)return;
+  btn.disabled=true;btn.textContent='טוען…';
+  fetch(sh.preview_url,{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('http '+r.status);return r.text();}).then(function(html){
+    var doc=html.replace(/<head([^>]*)>/i,'<head$1><base href="'+SHIP_PREVIEW_BASE+'">');
+    box.innerHTML='<p class="dim" style="margin:6px 0 4px">כך ייראה העמוד אחרי האישור (תצוגה מקדימה מהענף; נתונים חיים לא נטענים בתוכה):</p>'
+      +'<iframe id="shipFrame" title="תצוגה מקדימה" sandbox="allow-scripts allow-same-origin" style="width:100%;height:60vh;border:1px solid var(--line,#ccc);border-radius:8px;background:#fff"></iframe>';
+    B('#shipFrame').srcdoc=doc;
+    btn.textContent='הצג את העמוד כפי שישתנה';btn.disabled=false;
+  }).catch(function(e){box.innerHTML='<p class="dim">לא הצלחתי להביא את העמוד מהענף: '+esc(String(e.message||e).slice(0,120))+' — פתח את "מה בדיוק השתנה".</p>';btn.textContent='הצג את העמוד כפי שישתנה';btn.disabled=false;});
+}
 function reviewCard(r){
-  var p=r.product_review||{};var refs=(p.refs||[]).filter(Boolean);
+  var p=r.product_review||{};var sh=p.ship||null;
+  var refs=(p.refs||[]).filter(function(u){return u&&!(sh&&(u===sh.preview_url||u===sh.files_url||u===sh.pr_url));});
   return '<div class="card" id="dec"><h3>התוצר מוכן לאישורך</h3>'
-    +'<p class="dim">העבודה הסתיימה אצל המבצע, אבל היא לא "בוצעה" עד שתראה את התוצר ותאשר אותו.</p>'
+    +'<p class="dim">'+(sh?'המסלול סיים את השינוי ועצר לפני ההעלאה לאוויר. הוא לא "בוצע" עד שתראה אותו ותאשר.':'העבודה הסתיימה אצל המבצע, אבל היא לא "בוצעה" עד שתראה את התוצר ותאשר אותו.')+'</p>'
     +(p.outcome?'<div class="li"><b>'+esc(p.outcome)+'</b></div>':'')
+    +shipBlock(sh)
     +(p.what_works?'<p class="dim" style="margin-top:6px">מה עובד עכשיו: '+esc(p.what_works)+'</p>':'')
     +(p.what_remains?'<p class="dim">מה עוד פתוח: '+esc(p.what_remains)+'</p>':'')
     +(refs.length?'<div class="li" style="margin-top:6px">'+refs.map(function(u){return '<a class="ref" href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(u.replace(/^https?:\/\//,''))+'</a>';}).join('<br>')+'</div>'
-      :'<p class="dim" style="margin-top:6px">המבצע לא השאיר קישור לתוצר — קרא אותו בכפתור למטה לפני שאתה מאשר.</p>')
+      :(sh?'':'<p class="dim" style="margin-top:6px">המבצע לא השאיר קישור לתוצר — קרא אותו בכפתור למטה לפני שאתה מאשר.</p>'))
     +(p.result&&!p.outcome?'<div class="li" style="white-space:pre-wrap;max-height:40vh;overflow:auto">'+esc(p.result.slice(0,1500))+'</div>':'')
-    +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">זה מה שביקשתי — סגרי</button>'
+    +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">'+(sh?'זה מה שביקשתי — העלי לאוויר':'זה מה שביקשתי — סגרי')+'</button>'
     +'<button class="b-ed" data-dec="RETURN">תחזירי לתיקון</button>'
-    +'<button class="b-no" data-dec="REJECT">סגרי בלי לאשר</button></div>'
+    +'<button class="b-no" data-dec="REJECT">'+(sh?'סגרי בלי להעלות':'סגרי בלי לאשר')+'</button></div>'
     +'<div class="btns"><button class="b-ed" data-read="1">קרא את התוצר המלא</button></div>'
     +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
 }
@@ -1040,18 +1066,20 @@ function wireDecision(r){
   var c=B('#dec');if(!c)return;
   Array.prototype.forEach.call(c.querySelectorAll('button[data-dec]'),function(b){b.onclick=function(){decideWork(r,b.getAttribute('data-dec'),b);};});
   var rb=c.querySelector('button[data-read]');if(rb)rb.onclick=function(){readProduct(r,rb);};
+  var pb=c.querySelector('button[data-preview]');if(pb)pb.onclick=function(){previewShip((r.product_review||{}).ship||{},pb);};
 }
 function decideWork(r,dec,btn){
   var note='';
   if(dec==='REJECT'){note=prompt('למה לסגור? (לא חובה)','');if(note===null)return;}
   if(dec==='RETURN'){note=prompt('מה לתקן? ההערה שלך הולכת למבצע יחד עם ההחזרה','');if(note===null)return;if(!String(note).trim()){alert('כדי להחזיר לתיקון צריך לכתוב מה לתקן');return;}dec='RETRY';}
-  if(dec==='ACCEPT'&&!confirm('לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
+  var shp=(r.product_review||{}).ship;
+  if(dec==='ACCEPT'&&!confirm(shp?'לאשר את השינוי ולהעלות אותו לאוויר עכשיו?':'לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
   if(dec==='LAUNCH'&&!confirm('לשגר את העבודה כפי שליה הבינה אותה?'))return;
   var all=B('#dec').querySelectorAll('button[data-dec]');for(var i=0;i<all.length;i++)all[i].disabled=true;
   var was=btn.textContent;btn.textContent='…';
   var out=B('#decRes');
   api({action:'work_decide',work_id:r.work_id,decision:dec,note:note}).then(function(x){
-    out.textContent=(x&&x.ok)?(DEC_DONE[dec]||'בוצע'):('לא הושלם: '+((x&&x.summary)||''));
+    out.textContent=(x&&x.ok)?((dec==='ACCEPT'&&shp)?DEC_DONE.ACCEPT_SHIP:(DEC_DONE[dec]||'בוצע')):('לא הושלם: '+((x&&x.summary)||''));
     return fetchAll().then(render);
   }).catch(function(e){
     var m=String(e.message||e);try{var j=JSON.parse(m);m=j.reason||j.summary||m;}catch(_){}
