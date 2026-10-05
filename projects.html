@@ -124,7 +124,7 @@ details.more summary::-webkit-details-marker{display:none}
 
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
-var PS_BUILD='2026-10-05.1';
+var PS_BUILD='2026-10-05.2';
 var B=function(q){return document.querySelector(q);};
 var CODE_FROM='';
 function code(){
@@ -151,7 +151,9 @@ function plural(n,one,many){return n===1?one:(n+' '+many);}
 function factsOf(p){
   var f=[];
   if(p.open&&p.open.orders&&p.open.orders.length)f.push('יתרה פתוחה <b>'+shekel(p.open.balance)+'</b>'+(p.open.unverified?' (+'+p.open.unverified+' לא מאומתות)':''));
-  if(p.delivered&&p.delivered.count)f.push('יצא ב-90 יום <b>'+shekel(p.delivered.gross)+'</b> ('+plural(p.delivered.count,'תעודה אחת','תעודות')+')');
+  /* a note with no amount (a sample, a return) is said as such — "₪0" read as "nothing shipped" */
+  if(p.delivered&&p.delivered.count)f.push(p.delivered.gross>0?('יצא ב-90 יום <b>'+shekel(p.delivered.gross)+'</b> ('+plural(p.delivered.count,'תעודה אחת','תעודות')+')')
+    :(plural(p.delivered.count,'תעודה אחת','תעודות')+' ב-90 יום, בלי סכום'));
   if(p.unbilled&&p.unbilled.count)f.push('לא חויב <b>'+shekel(p.unbilled.gross)+'</b>');
   if(p.quotes&&p.quotes.count)f.push('הצעות שמחכות <b>'+shekel(p.quotes.value)+'</b> '+cert('צפוי'));
   if(p.last_activity)f.push('פעילות אחרונה '+heDay(p.last_activity));
@@ -199,7 +201,7 @@ function projCard(p,wb){
 function okRow(p){
   var v=p.open&&p.open.balance?shekel(p.open.balance):(p.delivered&&p.delivered.count?shekel(p.delivered.gross):'');
   var m=[(p.customers||[]).filter(function(c){return c!==p.name;}).join(' · ')];
-  if(p.delivered&&p.delivered.count)m.push('יצא '+plural(p.delivered.count,'פעם אחת','פעמים'));
+  if(p.delivered&&p.delivered.count)m.push('יצא '+plural(p.delivered.count,'פעם אחת','פעמים')+(p.delivered.gross>0?'':' בלי סכום'));
   if(p.unbilled&&p.unbilled.count)m.push('לא חויב '+shekel(p.unbilled.gross));
   if(p.last_activity)m.push('אחרון '+heDay(p.last_activity));
   if(p.workbook&&p.workbook.length)m.push('בדוח הפרויקטים');

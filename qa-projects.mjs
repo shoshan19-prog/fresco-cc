@@ -15,6 +15,8 @@ let bad = 0, total = 0;
 const ok = (l, c, x) => { total++; if (!c) { console.log(`FAIL  ${l}${x ? '\n      ' + x : ''}`); bad++; } else console.log(`ok    ${l}`); };
 
 const FIX = JSON.parse(readFileSync(new URL('./qa-projects.fixture.json', import.meta.url), 'utf8'));
+// one project whose only shipment carried no amount — it must not read "₪0"
+{ const p = FIX.snapshot.projects.find((x) => x.status === 'DECISION'); p.delivered = Object.assign({}, p.delivered, { count: 1, gross: 0 }); }
 // one stuck project, so the middle group is exercised too
 {
   const p = FIX.snapshot.projects.find((x) => x.status === 'OK' && x.unbilled.count);
@@ -85,6 +87,7 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 375,
   ok(`${tag}: the rules are written out`, /איך זה נקבע/.test(L.txt) && /שלא חויבה מעל 30 יום/.test(L.txt), '');
   ok(`${tag}: the old open orders are a decision, with their years`, /הזמנות משנים 2006 עד 2009 עדיין רשומות כפתוחות/.test(L.txt), '');
   ok(`${tag}: the moment of the picture is shown`, /^נכון ל-/.test(L.when), L.when);
+  ok(`${tag}: a shipment with no amount is said so, never "₪0"`, /תעודה אחת ב-90 יום, בלי סכום/.test(L.txt) && !/₪0(?![\d,])/.test(L.txt), (L.txt.match(/.{30}₪0(?![\d,]).{10}/) || [''])[0]);
   ok(`${tag}: no machinery on screen`, !/undefined|null|NaN|DECISION|STUCK|PROJDES|\[object/.test(L.txt), (L.txt.match(/.{20}(undefined|null|NaN|DECISION|STUCK|PROJDES).{20}/) || [''])[0]);
   ok(`${tag}: RTL, no horizontal overflow`, L.dir === 'rtl' && L.over <= 0, `dir=${L.dir} over=${L.over}`);
   await page.click('#showOk');
