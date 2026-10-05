@@ -71,9 +71,13 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 /* ── the shell: header on a grid, quiet domain nav, one column, bottom nav */
 #app{display:none;min-height:100dvh;flex-direction:column}
 #app.on{display:flex}
+/* 5.10 evening (David): "תעביר את פרסקו לצד שמאל והכדור הכחול לימין" — in this RTL grid column 1 is the
+   right edge, so the tools (LIA's orb first) take column 1 and the brand takes column 3, the left edge. */
 #topbar{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;
  padding:calc(10px + env(safe-area-inset-top)) 16px 8px;background:var(--bg2);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;direction:ltr;text-align:left}
+.brand{display:flex;align-items:center;gap:10px;direction:ltr;text-align:left;grid-column:3;grid-row:1;justify-self:start}
+#when{grid-column:2;grid-row:1}
+.tools{grid-column:1;grid-row:1}
 .brand .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(150deg,var(--acc),#9db6ff);flex:0 0 auto;position:relative}
 .brand .mark::after{content:'';position:absolute;inset:8px 7px;border-radius:3px;background:rgba(255,255,255,.85)}
 .brand b{display:block;font-size:19px;line-height:1.1;letter-spacing:-.3px}
@@ -281,9 +285,9 @@ button.xi{cursor:pointer}
  <a class="brand" href="index.html" aria-label="Fresco Command Center"><span class="mark"></span><div><b>Fresco</b><span>Command Center</span></div></a>
  <div id="when"><div class="d" id="whenD"></div><div class="t" id="whenT"></div></div>
  <div class="tools">
-  <button id="searchBtn" title="חיפוש" aria-label="חיפוש"></button>
-  <button id="bellBtn" title="דורש אותך" aria-label="דורש אותך"></button>
   <a href="lia.html" title="LIA — שיחה" aria-label="LIA — שיחה"><span class="orb md"></span></a>
+  <button id="bellBtn" title="דורש אותך" aria-label="דורש אותך"></button>
+  <button id="searchBtn" title="חיפוש" aria-label="חיפוש"></button>
  </div>
 </header>
 <div id="search"><input id="q" type="search" placeholder="חיפוש בעבודה הפעילה…" aria-label="חיפוש"></div>
@@ -300,7 +304,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-05.4';
+var CC_BUILD='2026-10-05.5';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
