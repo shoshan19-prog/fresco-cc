@@ -28,17 +28,25 @@ ok('state: on pace → green, up to 10% under → amber, more → red, unknown �
 
 // ── the header is the reference point, not a count of tiles ──
 ok('header: month · Baseline (same month last year), named Baseline — never a management target', m.header === 'אוקטובר · Baseline ₪770K', m.header);
-ok('the head\'s second line: working day X of Y (David\'s spec); the engine\'s own calendar count opens the body', m.header2 === 'יום עבודה 3 מתוך 21' && m.ref === 'קלנדרי 5/31', m.header2 + ' | ' + m.ref);
+ok('the head\'s second line: working day X of Y (David\'s spec); the engine\'s own calendar count opens the body', m.header2 === 'יום עבודה 3 מתוך 21' && m.ref === 'ימי עבודה 3/21 · קלנדרי 5/31', m.header2 + ' | ' + m.ref);
 ok('the old summary wording is gone from the page', !/ממתינים · מנוע אחד/.test(src));
 
 // ── row 1: the month ──
 const sales = card('sales'), fc = card('forecast');
-ok('מכירות (David 5.10 evening): ₪136K · "18% מה-Baseline" · under it "היינו צריכים להיות ב־16%" and "2 נק׳ מעל הקצב" · green', sales.value === '₪136K' && sales.pct === '18% מה-Baseline' && sales.sub === 'היינו צריכים להיות ב־16%' && sales.dot === '2 נק׳ מעל הקצב' && sales.state === 'ok', text(sales) + ' ' + sales.state);
+ok('מכירות (David 5.10 evening): ₪136K · "18% מה-Baseline" · under it "היינו צריכים להיות ב־14%" (OFFICIAL PACE = working days 3/21, decision 164) and "4 נק׳ מעל הקצב" · green', sales.value === '₪136K' && sales.pct === '18% מה-Baseline' && sales.sub === 'היינו צריכים להיות ב־14%' && sales.dot === '4 נק׳ מעל הקצב' && sales.state === 'ok', text(sales) + ' ' + sales.state);
+ok('OFFICIAL PACE (decision 164): the model reads the engine\'s working_days, never the calendar, for expected and pace — and says which is which', k.month.working_days.done === 3 && k.month.working_days.total === 21 && sales.detail.some((l) => l.b === 'קצב' && /^הקצב הרשמי — ימי עבודה א׳–ה׳ 3\/21 \(14%\)/.test(l.t) && /קלנדריים 5\/31 \(16%\) — לייחוס בלבד/.test(l.t)), sales.detail.find((l) => l.b === 'קצב')?.t);
+{ // an engine row from before the switch carries no working_days and a calendar-basis rate: the model computes the same Sunday–Thursday count itself and the formula text follows the row's basis
+  const old = JSON.parse(JSON.stringify(F.row)); delete old.windows.working_days; old.rate = { daily: 27235, projected_month: 844279, confidence: 'MEDIUM', basis: 'ימים קלנדריים (5/31)' };
+  const mo = M.kpiModel({ month: M.monthFactsFromSnapshot(old, F.at, true) });
+  const so = mo.cards.find((c) => c.key === 'sales'), fo = mo.cards.find((c) => c.key === 'forecast');
+  ok('a pre-switch engine row (no working_days) still gets the official pace from the same count computed here — 14%, not 16%', so.sub === 'היינו צריכים להיות ב־14%' && so.dot === '4 נק׳ מעל הקצב' && mo.ref === 'ימי עבודה 3/21 · קלנדרי 5/31', text(so) + ' | ' + mo.ref);
+  ok('…and its Forecast formula stays honest to THAT row: calendar daily × 31 with the row\'s own basis', fo.value === '₪844K' && fo.detail.some((l) => l.b === 'Forecast' && /קצב יומי ₪27\.2K × 31 ימים \(ימים קלנדריים \(5\/31\)\)/.test(l.t)), fo.detail.find((l) => l.b === 'Forecast')?.t);
+}
 ok('מכירות detail: the Baseline is for comparison only; a management target, once set, replaces it as the main measure', sales.detail.some((l) => l.b === 'Baseline' && /להשוואה בלבד/.test(l.t) && /יחליף את ה-Baseline במדד הראשי/.test(l.t)));
-ok('מכירות detail names the Baseline as such and shows both pace definitions (calendar 5/31 · working days 3/21)', sales.detail.some((l) => /לא יעד הנהלה/.test(l.t)) && sales.detail.some((l) => /5\/31 \(16%\)/.test(l.t) && /3\/21 \(14%\)/.test(l.t)));
-ok('Forecast (David 5.10 evening): the engine\'s ₪844K stays · 110% of the Baseline · marked in the open "תחזית קצב בלבד · ביטחון בינוני" · green', fc.value === '₪844K' && fc.pct === '110% מה-Baseline' && fc.sub === 'תחזית קצב בלבד · ביטחון בינוני' && fc.state === 'ok', text(fc));
+ok('מכירות detail names the Baseline as such and shows both pace counts — working days 3/21 as the official one, calendar 5/31 as reference', sales.detail.some((l) => /לא יעד הנהלה/.test(l.t)) && sales.detail.some((l) => /5\/31 \(16%\)/.test(l.t) && /3\/21 \(14%\)/.test(l.t)));
+ok('Forecast (David 5.10 evening + decision 164): the engine\'s working-day run rate ₪953K · 124% of the Baseline · marked in the open "תחזית קצב בלבד · ביטחון נמוך" (three working days of twenty-one) · green', fc.value === '₪953K' && fc.pct === '124% מה-Baseline' && fc.sub === 'תחזית קצב בלבד · ביטחון נמוך' && fc.state === 'ok', text(fc));
 ok('Forecast detail says the real Forecast engine (actual + expected deliveries + backlog conversion + new business, no double counting) is not built yet', fc.detail.some((l) => l.b === 'מנוע Forecast אמיתי' && /טרם נבנה/.test(l.t) && /ספירה כפולה/.test(l.t)));
-ok('Forecast detail is the bridge, honestly: actual + unbilled known; backlog-this-month and new orders "לא מאומת"; the formula is stated', fc.detail.some((l) => l.b === 'חויב בפועל' && l.t === '₪136K') && fc.detail.some((l) => /תעודות/.test(l.b) && /₪55\.7K/.test(l.t)) && fc.detail.filter((l) => /לא מאומת/.test(l.t)).length >= 3 && fc.detail.some((l) => /נוסחה: קצב יומי ₪27\.2K × 31/.test(l.t)));
+ok('Forecast detail is the bridge, honestly: actual + unbilled known; backlog-this-month and new orders "לא מאומת"; the formula is stated', fc.detail.some((l) => l.b === 'חויב בפועל' && l.t === '₪136K') && fc.detail.some((l) => /תעודות/.test(l.b) && /₪55\.7K/.test(l.t)) && fc.detail.filter((l) => /לא מאומת/.test(l.t)).length >= 3 && fc.detail.some((l) => /נוסחה: קצב ליום עבודה ₪45\.4K × 21 ימי עבודה \(ימי עבודה א׳–ה׳ \(3\/21\)\)/.test(l.t)), fc.detail.find((l) => l.b === 'Forecast')?.t);
 
 // ── row 2: what is missing, what already covers it ──
 const gap = card('gap'), cover = card('cover');
@@ -54,8 +62,8 @@ ok('quotes → orders left the main screen and lives in the folded detail', !m.c
 // ── row 4: history ──
 const ly = card('vs_ly'), avg = card('vs_avg');
 ok('מול אשתקד: the same days (+380%, 25 vs 4 invoices — the thin base is on the card)', ly.value === '+380%' && ly.pct === 'אותם ימים אשתקד' && ly.sub === '25 מול 4 חשבוניות', text(ly));
-ok('מול אשתקד detail: Forecast vs the full month last year (+10%) and YTD vs YTD (-10%)', ly.detail.some((l) => /Forecast מול/.test(l.b) && l.t.startsWith('+10%')) && ly.detail.some((l) => /מתחילת השנה/.test(l.b) && l.t.startsWith('-10%')));
-ok('מול ממוצע: Forecast vs the 2025 monthly average (-18%), named exactly — no "12 months" the engine does not hold', avg.value === '-18%' && avg.pct === 'ממוצע חודשי 2025' && /Forecast ₪844K מול ₪1\.03M/.test(avg.sub) && avg.detail.some((l) => /12 חודשים אחרונים/.test(l.b) && /לא מאומת/.test(l.t)), text(avg));
+ok('מול אשתקד detail: Forecast vs the full month last year (+24% on the working-day rate) and YTD vs YTD (-10%)', ly.detail.some((l) => /Forecast מול/.test(l.b) && l.t.startsWith('+24%')) && ly.detail.some((l) => /מתחילת השנה/.test(l.b) && l.t.startsWith('-10%')));
+ok('מול ממוצע: Forecast vs the 2025 monthly average (-7% on the working-day rate), named exactly — no "12 months" the engine does not hold', avg.value === '-7%' && avg.pct === 'ממוצע חודשי 2025' && /Forecast ₪953K מול ₪1\.03M/.test(avg.sub) && avg.detail.some((l) => /12 חודשים אחרונים/.test(l.b) && /לא מאומת/.test(l.t)), text(avg));
 
 // ── colour expresses state, not the kind of number ──
 ok('only pace/forecast/coverage carry a state colour; the rest are neutral', m.cards.filter((c) => c.state !== 'none').map((c) => c.key).join(',') === 'sales,forecast,cover', m.cards.map((c) => c.key + ':' + c.state).join(' '));
@@ -66,7 +74,7 @@ ok('the 90/100 score is on no card', !m.cards.some((c) => /\/100/.test(text(c)))
 ok('"נתונים נוספים" (wide, neutral) holds the score, receivables and gross profit — unverified said so', m.more && m.more.wide && m.more.state === 'none' && /ציון כולל 90\/100/.test(m.more.sub) && /חייבים: לא מאומת/.test(m.more.sub) && /רווח גולמי: לא מאומת/.test(m.more.sub) && m.more.detail.some((l) => /רווח גולמי/.test(l.b) && /לא מאומת/.test(l.t)));
 
 // ── the screen test (David): without opening a card ──
-ok('screen test: ₪136K | 18% | 2 above pace — Forecast ₪844K | 110% — missing ₪633K | 137% covered', sales.value === '₪136K' && sales.pct.startsWith('18%') && fc.value === '₪844K' && fc.pct.startsWith('110%') && gap.value === '₪633K' && cover.value.startsWith('137%'));
+ok('screen test: ₪136K | 18% | 4 above the working-day pace — Forecast ₪953K | 124% — missing ₪633K | 137% covered', sales.value === '₪136K' && sales.pct.startsWith('18%') && sales.dot.startsWith('4 ') && fc.value === '₪953K' && fc.pct.startsWith('124%') && gap.value === '₪633K' && cover.value.startsWith('137%'));
 ok('eight cards, four rows, in the approved order', m.cards.map((c) => c.key).join(',') === 'sales,forecast,gap,cover,unbilled_due,backlog,vs_ly,vs_avg' && m.rows.length === 4);
 
 // ── when the engine does not answer ──
@@ -87,7 +95,7 @@ ok('the month facts ride the one engine row (kpisFromSnapshot), copied not recom
 ok('a signed value keeps its sign in front — the big number is bidi-isolated (dir=auto)', /<div class="v" dir="auto">/.test(src));
 ok('privacy mode still hides money on the cards', /function kfmt\(n\)\{return privacyOn\(\)\?'—':kfmtRaw\(n\);\}/.test(src));
 ok('the build stamp moved to 5.10', /const LIA_BUILD='2026-10-05\.\d+';/.test(src));
-ok('the fixture is the engine\'s real row of 5.10 14:28Z', F.at === '2026-10-05T14:28:09.797Z' && F.row.invoices.mtd.net === 136174 && F.row.rate.projected_month === 844279);
+ok('the fixture is the engine\'s real row of 5.10 14:28Z', F.at === '2026-10-05T14:28:09.797Z' && F.row.invoices.mtd.net === 136174 && F.row.rate.projected_month === 953218 && F.row.rate.day_kind === 'working' && F.row.windows.working_days.total === 21 && /decision 164/.test(F.note_164));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} KPI panel asserts passed`);
 process.exit(bad ? 1 : 0);
