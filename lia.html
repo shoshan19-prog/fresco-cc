@@ -591,11 +591,19 @@ button#live.wait{opacity:.6}
       (command-center activity/business_query), a wider view of it — not a
       second source of truth. Leads the rail (David, 31.8 — moved above
       TODAY/PRIORITIES): the headline business numbers, not the day log. -->
- <section class="railCard collapsible" id="kpiCard" data-collapsed="true" data-lia-change="d6ed8626">
+ <section class="railCard collapsible" id="kpiCard" data-collapsed="true" data-lia-change="e804e572">
   <div class="railHead" onclick="toggleRailSection('kpiCard')">
-   <span>FRESCO KPIs</span><span class="railHeadMeta" id="kpiSummary"></span><span class="railChev">▾</span>
+   <span>ניהול מכירות</span><span class="railHeadMeta" id="kpiSummary"></span><span class="railChev">▾</span>
   </div>
-  <div class="kpiGrid railBody" id="kpis"></div>
+  <div class="railBody">
+   <div class="miniList" aria-label="תמונת יעד ותחזית חודשית">
+    <div class="miniItem"><span class="lbl">יעד מכירות חודשי: <b>null</b></span><span class="sub">בסיס: יעד חודשי עדיין לא הוגדר במקור הנתונים — לא מוצג אפס ולא נגזר יעד.</span></div>
+    <div class="miniItem"><span class="lbl">קצב מול יעד: <b>null</b></span><span class="sub">בסיס: ללא יעד חודשי אי אפשר לחשב הישג, קצב נדרש או פער בש״ח ובאחוזים.</span></div>
+    <div class="miniItem"><span class="lbl">Forecast סוף חודש</span><span class="sub">הזמנה: null · פתיחה: null · מכויל היסטורית: null (פתיחה N/A)</span><span class="sub">חשבונית: null · פתיחה: null · מכויל היסטורית: null (פתיחה N/A)</span><span class="sub">גבייה: null · פתיחה: null · מכויל היסטורית: null (פתיחה N/A)</span><span class="sub">בסיס: תחזית לפי שלבי כסף והיסטוריית המרה לא נמסרה; אין להציג הערכה מומצאת.</span></div>
+    <div class="miniItem"><span class="lbl">מקור הכסף החסר: <b>null</b></span><span class="sub">בסיס: הפער תלוי ביעד ובתחזית המאומתים; לאחר שיוגדרו יוצגו הזמנות, חשבוניות וגביות כמקורות סגירה.</span></div>
+   </div>
+   <div class="kpiGrid" id="kpis"></div>
+  </div>
  </section>
  <section class="railCard">
   <div class="railHead"><span>TODAY</span><span id="tDate"></span></div>
