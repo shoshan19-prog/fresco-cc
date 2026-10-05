@@ -298,7 +298,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-05.1';
+var CC_BUILD='2026-10-05.2';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -377,7 +377,7 @@ var DOMAINS=[
 /* CC_STATE_BEGIN */
 var STATE_HE={QUEUED:'בתור',RUNNING:'רץ',WAITING_INTERNAL:'ממתין — פנימי',WAITING_EXTERNAL:'ממתין לגורם חיצוני',
  WAITING_APPROVAL:'מחכה להכרעה שלך',DONE:'הושלם',FAILED:'נכשל',CANCELLED:'בוטל'};
-var DISP_HE={NEEDS_DAVID_DECISION:'חונה להכרעת דוד',PLANNER_NOT_CONVERGED:'חונה — התכנון לא התכנס',AWAITING_LAUNCH:'ממתינה לאישור שלך לשיגור'};
+var DISP_HE={NEEDS_DAVID_DECISION:'חונה להכרעת דוד',PLANNER_NOT_CONVERGED:'חונה — התכנון לא התכנס',AWAITING_LAUNCH:'ממתינה לאישור שלך לשיגור',PRODUCT_REVIEW:'התוצר מוכן לאישורך'};
 var LEGACY={RETRYING:'WAITING_INTERNAL',BLOCKED:'WAITING_INTERNAL',OPEN:'QUEUED',PENDING:'QUEUED',NEW:'QUEUED',PAUSED:'WAITING_INTERNAL',
  PARKED:'WAITING_INTERNAL',SUPERSEDED:'CANCELLED',DUPLICATE:'CANCELLED',STALE:'CANCELLED',FIXED:'DONE',COMPLETED:'DONE',CLOSED:'DONE'};
 function stateOf(r){
@@ -993,9 +993,28 @@ function openDetail(id){
 /* DAVID DECIDES HERE (4.10: "יש בקשות לעבודה … רק ממתינות"). A card that waits on him offers the decision it waits on —
    accept the product, send it back to work, or close it — instead of only a link to the chat. The server runs each one
    through the existing doors (verify · close · wake), under David's credential only, and answers with what the row now says. */
-var DEC_DONE={ACCEPT:'אושרה ונסגרה',RETRY:'הוחזרה לביצוע',REJECT:'נסגרה',LAUNCH:'יצאה לדרך'};
+var DEC_DONE={ACCEPT:'אושרה ונסגרה',RETRY:'הוחזרה לביצוע',REJECT:'נסגרה',LAUNCH:'יצאה לדרך',RETURN:'הוחזרה לתיקון'};
+/* 5.10 — THE PRODUCT IS APPROVED BY DAVID: a worker's DONE on a goal of his is a submission; the card shows the product
+   itself — his line, what works, what remains, every link — and his three decisions. Only his acceptance closes. */
+function reviewCard(r){
+  var p=r.product_review||{};var refs=(p.refs||[]).filter(Boolean);
+  return '<div class="card" id="dec"><h3>התוצר מוכן לאישורך</h3>'
+    +'<p class="dim">העבודה הסתיימה אצל המבצע, אבל היא לא "בוצעה" עד שתראה את התוצר ותאשר אותו.</p>'
+    +(p.outcome?'<div class="li"><b>'+esc(p.outcome)+'</b></div>':'')
+    +(p.what_works?'<p class="dim" style="margin-top:6px">מה עובד עכשיו: '+esc(p.what_works)+'</p>':'')
+    +(p.what_remains?'<p class="dim">מה עוד פתוח: '+esc(p.what_remains)+'</p>':'')
+    +(refs.length?'<div class="li" style="margin-top:6px">'+refs.map(function(u){return '<a class="ref" href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(u.replace(/^https?:\/\//,''))+'</a>';}).join('<br>')+'</div>'
+      :'<p class="dim" style="margin-top:6px">המבצע לא השאיר קישור לתוצר — קרא אותו בכפתור למטה לפני שאתה מאשר.</p>')
+    +(p.result&&!p.outcome?'<div class="li" style="white-space:pre-wrap;max-height:40vh;overflow:auto">'+esc(p.result.slice(0,1500))+'</div>':'')
+    +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">זה מה שביקשתי — סגרי</button>'
+    +'<button class="b-ed" data-dec="RETURN">תחזירי לתיקון</button>'
+    +'<button class="b-no" data-dec="REJECT">סגרי בלי לאשר</button></div>'
+    +'<div class="btns"><button class="b-ed" data-read="1">קרא את התוצר המלא</button></div>'
+    +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
+}
 function decisionCard(r){
   if(!(r&&r.parked_for_david===true))return '';
+  if(String(r.disposition||'').toUpperCase()==='PRODUCT_REVIEW')return reviewCard(r);
   /* 4.10 — CONFIRMED BEFORE IT LAUNCHES: a work order held for him shows what LIA understood, and launch / close */
   if(String(r.disposition||'').toUpperCase()==='AWAITING_LAUNCH'){
     var L=r.launch||{};var dw=(L.done_when||[]).filter(Boolean);
@@ -1025,6 +1044,7 @@ function wireDecision(r){
 function decideWork(r,dec,btn){
   var note='';
   if(dec==='REJECT'){note=prompt('למה לסגור? (לא חובה)','');if(note===null)return;}
+  if(dec==='RETURN'){note=prompt('מה לתקן? ההערה שלך הולכת למבצע יחד עם ההחזרה','');if(note===null)return;if(!String(note).trim()){alert('כדי להחזיר לתיקון צריך לכתוב מה לתקן');return;}dec='RETRY';}
   if(dec==='ACCEPT'&&!confirm('לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
   if(dec==='LAUNCH'&&!confirm('לשגר את העבודה כפי שליה הבינה אותה?'))return;
   var all=B('#dec').querySelectorAll('button[data-dec]');for(var i=0;i<all.length;i++)all[i].disabled=true;
