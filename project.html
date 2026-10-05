@@ -95,7 +95,7 @@ details.more summary::-webkit-details-marker{display:none}
 
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
-var PJ_BUILD='2026-10-05.4';
+var PJ_BUILD='2026-10-05.5';
 var B=function(q){return document.querySelector(q);};
 var CODE_FROM='';
 function code(){
@@ -124,11 +124,13 @@ function sum(rows,f){return rows.reduce(function(s,r){return s+num(r[f]);},0);}
 /* a read that failed is said as such — never an empty list that reads as "nothing" */
 function failed(x){return !x||x.error||(x.rows==null);}
 function why(x){return x&&x.error?String(x.error).slice(0,120):(x&&x.source?String(x.source).slice(0,120):'לא נקרא');}
-function truncNote(x){return cut(x)?'<p class="note">מוצגים '+x.rows.length+' מתוך '+x.row_count_total+' — הרשימה המלאה בפריוריטי</p>':'';}
+function truncNote(x){return cut(x)?'<p class="note">מוצגים '+x.rows.length+' מתוך '+totalOf(x)+' — הרשימה המלאה בפריוריטי</p>':'';}
 /* Priority hands back at most 100 rows and says the real count beside them — the count card shows the real count,
    and a sum over a cut list says how many rows it was summed over, never pretends to be the total */
-function cut(x){return !!(x&&x.truncated&&x.rows&&num(x.row_count_total)>x.rows.length);}
-function countOf(x,rows){return failed(x)?'?':(cut(x)?num(x.row_count_total):rows.length);}
+function cut(x){return !!(x&&x.rows&&num(totalOf(x))>x.rows.length);}
+/* the real count: the fields when the door passes them, else the capability's own words — "111 שורות (מוצגות 100 …)" */
+function totalOf(x){if(!x)return 0;if(x.row_count_total!=null)return num(x.row_count_total);var m=/(\d[\d,]*)\s+שורות\s*\(מוצגות\s+(\d+)/.exec(String(x.source||''));return m?num(String(m[1]).replace(/,/g,'')):(x.rows?x.rows.length:0);}
+function countOf(x,rows){return failed(x)?'?':(cut(x)?totalOf(x):rows.length);}
 function sumNote(x,rows,v){return cut(x)?'מ-'+rows.length+' הראשונות: '+v:v;}
 
 function materials(orders){
@@ -162,7 +164,7 @@ function priorityBlock(R){
   var mats=materials(o);
   if(mats.length){
     h+='<div class="card"><div class="h">החומרים שהוזמנו לפרויקט, מתוך שורות ההזמנות '+cert('ודאי')+'</div>'
-      +(cut(O)?'<p class="note">לפי '+o.length+' ההזמנות שנקראו מתוך '+num(O.row_count_total)+' — החומרים מההזמנות האחרות אינם כאן</p>':'')
+      +(cut(O)?'<p class="note">לפי '+o.length+' ההזמנות שנקראו מתוך '+totalOf(O)+' — החומרים מההזמנות האחרות אינם כאן</p>':'')
       +mats.slice(0,15).map(function(m){return docRow(esc(m.name),'',m.value>0?shekel(m.value):'בלי סכום','כמות '+Math.round(m.qty).toLocaleString('he-IL')+(m.bal>0?' · נשאר לספק '+Math.round(m.bal).toLocaleString('he-IL'):''));}).join('')
       +(mats.length>15?'<p class="note">ועוד '+(mats.length-15)+' פריטים</p>':'')+'</div>';
   }else if(o.length)h+='<p class="note">שורות ההזמנות לא כללו כמויות</p>';
