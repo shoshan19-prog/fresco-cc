@@ -30,7 +30,7 @@ ok('the card says the product is ready for his approval, and shows his line, wha
   /התוצר מוכן לאישורך/.test(R.txt) && /שורת המדדים הראשית מוצגת/.test(R.txt) && /מה עובד עכשיו: הכרטיסים נטענים/.test(R.txt) && /מה עוד פתוח: גשר התחזית/.test(R.txt), R.txt.slice(0, 240));
 ok('the product link is there, opening in a new tab', R.link === 'https://github.com/shoshan19-prog/fresco-cc/pull/100', String(R.link));
 ok('his three decisions, in words: this is what I asked · return for correction · close without approving',
-  JSON.stringify(R.decs) === JSON.stringify(['ACCEPT', 'RETURN', 'REJECT']) && /זה מה שביקשתי/.test(R.txt) && /תחזירי לתיקון/.test(R.txt) && /סגרי בלי לאשר/.test(R.txt), JSON.stringify(R.decs));
+  JSON.stringify(R.decs) === JSON.stringify(['ACCEPT', 'RETURN', 'REJECT']) && /זה מה שביקשתי/.test(R.txt) && /תקני לפי ההערות ותגישי שוב/.test(R.txt) && /סגרי בלי לאשר/.test(R.txt), JSON.stringify(R.decs));
 ok('no link left by the worker → the card says so and points at reading the product before approving', /לא השאיר קישור לתוצר/.test(R.noRefs), R.noRefs.slice(0, 120));
 ok('the list note names the state in words', R.disp === 'התוצר מוכן לאישורך', R.disp);
 ok('the other parks keep their card', /ההכרעה שלך/.test(R.other), R.other);
@@ -60,6 +60,51 @@ ok('a page change: the card names it, says it is not live yet, and offers the pa
 ok('the preview renders the branch page inside the card, anchored to the live site for its styles and scripts', S.frame && S.base === 'https://shoshan19-prog.github.io/fresco-cc/' && S.previewText, JSON.stringify({ frame: S.frame, base: S.base, txt: S.previewText }));
 ok('his approve button says what it does — go live — and the close button says it does not', /זה מה שביקשתי — העלי לאוויר/.test(S.txt) && /סגרי בלי להעלות/.test(S.txt), S.txt.slice(-200));
 ok('a code change has no page to preview: the diff is the product', /שינוי בקוד/.test(S.code) && !/data-preview/.test(S.code) && /\/pull\/100\/files/.test(S.code), S.code.slice(0, 160));
+/* 5.10 (David): "אם יש לי תיקונים לתוצר או למוצר הסופי אני יכול לעשות אותם לפני שאני משגר" — a correction box on BOTH cards,
+   wired to the doors that already exist: RETURN with his note on the product; work_intake revise_work_id on the held order. */
+const sent = [];
+await page.route('**/functions/v1/**', (route) => {
+  const body = route.request().postDataJSON?.() || {}; sent.push(body);
+  const isRevise = body.action === 'cap' && body.name === 'work_intake' && body.args && body.args.revise_work_id;
+  const isDecide = body.action === 'work_decide';
+  route.fulfill({ status: 200, contentType: 'application/json',
+    body: isRevise ? JSON.stringify({ rows: [{ work_id: body.args.revise_work_id, action: 'AWAITING_LAUNCH', awaiting_launch: true, revised: true }], source: 'ההגדרה תוקנה' })
+      : isDecide ? JSON.stringify({ ok: true, decision: body.decision, summary: 'הוחזרה לתיקון', status: 'QUEUED' }) : '{"rows":[]}' });
+});
+const C = await page.evaluate(async (r) => {
+  document.querySelectorAll('#dec').forEach((e) => e.remove());
+  const d = document.createElement('div'); d.innerHTML = decisionCard(r); document.body.appendChild(d); wireDecision(r);
+  const box = document.querySelector('#fixNote'); const hasBox = !!box; const txt = d.innerText;
+  if (box) box.value = 'הכותרת צריכה להיות בכחול, לא באפור';
+  const ret = [...d.querySelectorAll('button[data-dec]')].find((b) => b.getAttribute('data-dec') === 'RETURN');
+  const retLabel = ret ? ret.textContent : null;   // read before the click: the click turns the label into '…'
+  window.prompt = () => { throw new Error('prompt opened although the box was filled'); };
+  if (ret) ret.click();
+  await new Promise((r2) => setTimeout(r2, 400));
+  return { hasBox, txt, retLabel };
+}, shipRow);
+const dec = sent.find((b) => b.action === 'work_decide');
+ok('the product card carries a correction box; his words go out as the return note, no popup', C.hasBox && /יש לך תיקונים לתוצר לפני ההעלאה/.test(C.txt) && /תקני לפי ההערות ותגישי שוב/.test(C.retLabel || '')
+  && !!dec && dec.decision === 'RETRY' && dec.note === 'הכותרת צריכה להיות בכחול, לא באפור' && dec.work_id === shipRow.work_id, JSON.stringify({ hasBox: C.hasBox, dec }));
+const held = { work_id: 'a1b2c3d4e5f60718293a4b5c6d7e8f90', status: 'WAITING_INTERNAL', disposition: 'AWAITING_LAUNCH', parked_for_david: true,
+  objective: 'תכיני סיכום של עשרת הלקוחות הגדולים', launch: { state: 'ASKED', understood: 'סיכום של עשרת הלקוחות עם הכי הרבה הזמנות פתוחות', deliverable: 'טבלה', done_when: ['יש סכום לכל לקוח'] } };
+const H = await page.evaluate(async (r) => {
+  document.querySelectorAll('#dec').forEach((e) => e.remove());
+  const d = document.createElement('div'); d.innerHTML = decisionCard(r); document.body.appendChild(d); wireDecision(r);
+  const txt = d.innerText; const box = document.querySelector('#reviseNote');
+  const btn = d.querySelector('button[data-revise]');
+  if (btn) btn.click(); await new Promise((r2) => setTimeout(r2, 200));
+  const emptyMsg = (document.querySelector('#decRes') || {}).textContent || '';
+  if (box) box.value = 'לא עשרה — חמישה, ורק מהשנה';
+  if (btn) btn.click(); await new Promise((r2) => setTimeout(r2, 500));
+  return { txt, hasBox: !!box, emptyMsg, res: (document.querySelector('#decRes') || {}).textContent || '' };
+}, held);
+const rev = sent.find((b) => b.action === 'cap' && b.name === 'work_intake');
+ok('the launch card carries a correction box; an empty box is refused in words; his correction revises the held order through work_intake with the understanding he confirmed plus his note',
+  H.hasBox && /מה לתקן בהגדרה לפני השיגור/.test(H.txt) && /כתוב קודם מה לתקן/.test(H.emptyMsg)
+  && !!rev && rev.args.revise_work_id === held.work_id && rev.args.text === 'לא עשרה — חמישה, ורק מהשנה' && rev.args.source === 'david'
+  && /^סיכום של עשרת הלקוחות עם הכי הרבה הזמנות פתוחות\nתיקון: לא עשרה — חמישה, ורק מהשנה$/.test(rev.args.understood) && rev.args.deliverable === 'טבלה' && JSON.stringify(rev.args.done_when) === JSON.stringify(['יש סכום לכל לקוח'])
+  && /ההגדרה תוקנה/.test(H.res), JSON.stringify({ H, rev }));
 ok('no page errors', errors.length === 0, errors.join(' | '));
 await browser.close();
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} checks passed`);
