@@ -591,19 +591,11 @@ button#live.wait{opacity:.6}
       (command-center activity/business_query), a wider view of it — not a
       second source of truth. Leads the rail (David, 31.8 — moved above
       TODAY/PRIORITIES): the headline business numbers, not the day log. -->
- <section class="railCard collapsible" id="kpiCard" data-collapsed="true" data-lia-change="e804e572">
+ <section class="railCard collapsible" id="kpiCard" data-collapsed="true" data-lia-change="d6ed8626">
   <div class="railHead" onclick="toggleRailSection('kpiCard')">
-   <span>ניהול מכירות</span><span class="railHeadMeta" id="kpiSummary"></span><span class="railChev">▾</span>
+   <span>FRESCO KPIs</span><span class="railHeadMeta" id="kpiSummary"></span><span class="railChev">▾</span>
   </div>
-  <div class="railBody">
-   <div class="miniList" aria-label="תמונת יעד ותחזית חודשית">
-    <div class="miniItem"><span class="lbl">יעד מכירות חודשי: <b>null</b></span><span class="sub">בסיס: יעד חודשי עדיין לא הוגדר במקור הנתונים — לא מוצג אפס ולא נגזר יעד.</span></div>
-    <div class="miniItem"><span class="lbl">קצב מול יעד: <b>null</b></span><span class="sub">בסיס: ללא יעד חודשי אי אפשר לחשב הישג, קצב נדרש או פער בש״ח ובאחוזים.</span></div>
-    <div class="miniItem"><span class="lbl">Forecast סוף חודש</span><span class="sub">הזמנה: null · פתיחה: null · מכויל היסטורית: null (פתיחה N/A)</span><span class="sub">חשבונית: null · פתיחה: null · מכויל היסטורית: null (פתיחה N/A)</span><span class="sub">גבייה: null · פתיחה: null · מכויל היסטורית: null (פתיחה N/A)</span><span class="sub">בסיס: תחזית לפי שלבי כסף והיסטוריית המרה לא נמסרה; אין להציג הערכה מומצאת.</span></div>
-    <div class="miniItem"><span class="lbl">מקור הכסף החסר: <b>null</b></span><span class="sub">בסיס: הפער תלוי ביעד ובתחזית המאומתים; לאחר שיוגדרו יוצגו הזמנות, חשבוניות וגביות כמקורות סגירה.</span></div>
-   </div>
-   <div class="kpiGrid" id="kpis"></div>
-  </div>
+  <div class="kpiGrid railBody" id="kpis"></div>
  </section>
  <section class="railCard">
   <div class="railHead"><span>TODAY</span><span id="tDate"></span></div>
@@ -705,17 +697,6 @@ button#live.wait{opacity:.6}
 <p class="dim" id="chatSyncStat" style="margin-top:2px;font-size:11px"></p>
 
 <div class="card"><b>שיחות קודמות</b><div id="sessions" style="margin-top:8px"></div></div>
-
-<div class="card" id="ideas" data-lia-change="8dd3ecdd"><b>IDEAS / כיוונים</b>
- <div style="margin-top:8px">
-  <b>מרחב רעיונות חי ב-LIA</b><p class="dim" style="margin-top:2px">מה מנסים להשיג: לשמור ולפתח רעיונות והחלטות, כדי ששיחה עתידית תמשיך מאותה נקודה.</p>
-  <p style="margin-top:8px"><b>מצב:</b> בבדיקה</p>
-  <p style="margin-top:6px"><b>הוחלט:</b> הרעיון נשמר כפריט עם מטרה, החלטות, עובדות, מה פתוח והצעד הבא — לא כסיכום שיחה.</p>
-  <p style="margin-top:6px"><b>מה ידוע:</b> צריך מקום קבוע בתוך LIA שבו הכיוונים נשמרים ומתפתחים לאורך זמן.</p>
-  <p style="margin-top:6px"><b>מה פתוח:</b> חיבור הוספה ועדכון של רעיונות מתוך השיחה.</p>
-  <p style="margin-top:6px"><b>הצעד הבא:</b> הצעד הראשון</p>
- </div>
-</div>
 
 <!-- The one thing David has to do himself, on each device. It sat inside the
      collapsed "פרטים" block, which on the phone means it did not exist: two
