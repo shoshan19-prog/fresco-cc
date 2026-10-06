@@ -35,7 +35,7 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom, livePreambles};')();
+  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom, livePreambles, liveIsEarEcho};')();
 const POL = P.LIVE_POLICY;
 
 ok('the one tool is deep_answer — LIA\'s own deeper processing; the old name is still accepted during the rollout', P.LIVE_TOOL === 'deep_answer' && P.LIVE_TOOLS.join(',') === 'deep_answer,ask_lia');
@@ -52,6 +52,11 @@ ok('a user stop is never retried', !P.liveShouldReconnect({ attempt: 0, userStop
   ok('speech_started / speech_stopped are recognized', r({ type: 'input_audio_buffer.speech_started' })[0].kind === 'speech_started' && r({ type: 'input_audio_buffer.speech_stopped' })[0].kind === 'speech_stopped');
   ok('the user transcript is trimmed and keeps its utterance id', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_u1', transcript: '  ליה, מה מצב REAL·LOCATION?  ' })) === '[{"kind":"user_said","text":"ליה, מה מצב REAL·LOCATION?","item_id":"item_u1"}]');
   ok('an empty transcript settles its utterance as heard-nothing (nothing waits on it)', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_u2', transcript: '  ' })) === '[{"kind":"ear_failed","item_id":"item_u2"}]');
+  /* THE EAR ECHOES ITS OWN PROMPT (David, 6.10 evening): the prompt is never David */
+  const ECHO6 = 'שיחה בעברית בין דוד, מנכ"ל פרסקו צבעים, לבין ליה. مונחים ושמות: ליה, פרסקו, פרסקו צבעים, פריוריטי, מטריאה, רילוקיישן, דוד, רחל, הזמנות, חשבוניות, תעודות משלוח, הצעת מחיר, גוונים, טיח.';
+  ok('6.10: the ear\'s own prompt (Arabic meem and all) reduces to ear_echo, never user_said', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_e1', transcript: ECHO6 })) === JSON.stringify([{ kind: 'ear_echo', text: ECHO6, item_id: 'item_e1' }]));
+  ok('6.10: David\'s approval still reduces to user_said', r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_e2', transcript: 'אז אני מאשר.' })[0].kind === 'user_said');
+  ok('6.10: the pure rule — prompt yes, a sentence naming Priority and MATRIYA no', P.liveIsEarEcho(ECHO6) && !P.liveIsEarEcho('מה מצב ההזמנות בפריוריטי ומה קורה עם מטריאה?') && !P.liveIsEarEcho(''));
   ok('a failed transcription settles its utterance too', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.failed', item_id: 'item_u3' })) === '[{"kind":"ear_failed","item_id":"item_u3"}]');
   ok('a commit names its utterance', JSON.stringify(r({ type: 'input_audio_buffer.committed', item_id: 'item_u4' })) === '[{"kind":"speech_stopped","item_id":"item_u4","committed":true}]');
   const fc = r({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'c1', name: 'ask_lia', arguments: '{"question":"מה מצב REAL·LOCATION?"}' } });
