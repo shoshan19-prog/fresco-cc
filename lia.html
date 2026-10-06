@@ -778,7 +778,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-06.2';
+const LIA_BUILD='2026-10-06.3';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -4166,6 +4166,11 @@ function liveIsEarEcho(text){const n=liveEarNorm(text);if(!n)return false;if(n.i
 const LIVE_DATA_TOPIC_RE=/(?:מכירות|הזמנ|צבר|חשבוני|פדיון|מחזור|תעוד|גביי|חייב|פריוריטי|פרויקט|לקוח|מייל|דוח|מטרי|שרפוינט|תחזוק|עבודה|חבילה|משימ|דשבורד|כמה|מתי|איפה\s+אנחנו|מה\s+(?:ה)?מצב|מה\s+קורה|יש\s+חדש|סטטוס|פרסקו|תזכורת|פגישה|יומן|קובץ|מסמך|ספק|מחיר|הצעת|רילוקיישן|גוונ|טיח|צבע)/u;
 const LIVE_SMALLTALK_RE=/^\s*(?:(?:היי|הי|שלום|הלו|בוקר\s+טוב|צהריים\s+טובים|ערב\s+טוב|לילה\s+טוב|תודה(?:\s+רבה)?|יופי|מעולה|בסדר|אוקיי|אוקי|כן|לא|ביי|להתראות|מה\s+נשמע|מה\s+שלומך|את\s+שומעת\s+אותי|רגע|ליה)[\s,.!?]*)+$/u;
 function liveIsDataAsk(text){const t=String(text||'').replace(/\s+/g,' ').trim();if(!t||LIVE_SMALLTALK_RE.test(t))return false;return LIVE_DATA_TOPIC_RE.test(t);}
+/* A GO-AHEAD IS DELEGATED TOO (6.10 evening, third live run): "אז אני מאשר, תמשיכי." — the voice model answered "מעולה, יופי. אני ממשיכה
+   כמו שהסכמת" and never called the tool, so the kernel never saw the approval and nothing continued. An approval or a
+   bare execution verb in a short utterance is an ACTION on David's work: the response is asked for with the tool required. */
+const LIVE_GOAHEAD_RE=/(?:^|[\s,.!])(?:(?:אני\s+)?(?:מאשר|מאשרת|אישרתי)|מותר\s+לך|תמשיכי|תמשיך|המשיכי|המשך|בצעי|תעשי|תתחילי|קדימה|יאללה)(?=[\s,.!?]|$)/u;
+function liveIsGoAhead(text){const t=String(text||'').replace(/\s+/g,' ').trim();if(!t||t.length>80)return false;return LIVE_GOAHEAD_RE.test(t);}
 function liveResponseCreate(force){const m={type:'response.create'};if(force)m.response={tool_choice:{type:'function',name:LIVE_TOOL}};return m;}
 /* The tool gate: the model may ask for exactly one thing, and only with a
    question in it. Anything else is answered with an error and never run. */
@@ -4423,9 +4428,10 @@ function liveSpeak(reason){
   LIVE.speakWaitTimer=setTimeout(()=>{LIVE.speakWaitTimer=null;if(LIVE.on&&!LIVE.userSpeaking)liveSpeak(reason+' · אחרי המתנה לתמלול');},Math.min(1200,LIVE_POLICY.transcript_wait_ms));
   liveRecord('WAIT',reason+' · ממתינה לתמלול (עד 1.2 ש׳) כדי לדעת אם זו שאלת נתונים',{continuity_state:'transcript_pending'});return;}
  LIVE.speakWaited=false;clearTimeout(LIVE.speakWaitTimer);LIVE.speakWaitTimer=null;
- const force=!LIVE.replyOwed&&liveIsDataAsk(open.filter(e=>!e.skip&&e.text).map(e=>e.text).join(' '));
+ const words=open.filter(e=>!e.skip&&e.text).map(e=>e.text).join(' ');
+ const dataAsk=!LIVE.replyOwed&&liveIsDataAsk(words);const goAhead=!LIVE.replyOwed&&!dataAsk&&liveIsGoAhead(words);const force=dataAsk||goAhead;
  LIVE.pending=null;
- liveRecord('SPEAK',reason+(LIVE.replyOwed?' · כולל תשובת הכלי שחיכתה':'')+(force?' · שאלת נתונים — הכלי נדרש':''),{continuity_state:LIVE.replyOwed?'turn_end_with_tool_reply':LIVE.afterYield?'after_yield':'turn_end',outcome_evidence:force?'tool_required':''});LIVE.afterYield=false;LIVE.replyOwed=false;
+ liveRecord('SPEAK',reason+(LIVE.replyOwed?' · כולל תשובת הכלי שחיכתה':'')+(dataAsk?' · שאלת נתונים — הכלי נדרש':goAhead?' · אישור או המשך — הכלי נדרש':''),{continuity_state:LIVE.replyOwed?'turn_end_with_tool_reply':LIVE.afterYield?'after_yield':'turn_end',outcome_evidence:force?'tool_required':''});LIVE.afterYield=false;LIVE.replyOwed=false;
  liveCreateResponse(force);liveLabel('חושבת…');}
 /* Phase A (29.9, the 01:34:42 seam): a response can only answer utterances the
    VAD had CLOSED before it was asked for. The tool reply's response.create used

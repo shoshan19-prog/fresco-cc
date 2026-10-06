@@ -35,7 +35,7 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom, livePreambles, liveIsEarEcho, liveIsDataAsk, liveResponseCreate};')();
+  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom, livePreambles, liveIsEarEcho, liveIsDataAsk, liveIsGoAhead, liveResponseCreate};')();
 const POL = P.LIVE_POLICY;
 
 ok('the one tool is deep_answer — LIA\'s own deeper processing; the old name is still accepted during the rollout', P.LIVE_TOOL === 'deep_answer' && P.LIVE_TOOLS.join(',') === 'deep_answer,ask_lia');
@@ -62,6 +62,10 @@ ok('a user stop is never retried', !P.liveShouldReconnect({ attempt: 0, userStop
   ok('6.10: a status question about MATRIYA is a data ask', P.liveIsDataAsk('ליה, מה קורה עם הדוח של מטריאה שדיברנו עליו לפני דקה?'));
   ok('6.10: "כמה חשבוניות הופקו היום" is a data ask', P.liveIsDataAsk('ליה, כמה חשבוניות הופקו היום?'));
   ok('6.10: a greeting / thanks / "את שומעת אותי" is not', !P.liveIsDataAsk('שלום, את שומעת אותי?') && !P.liveIsDataAsk('תודה רבה.') && !P.liveIsDataAsk('מה נשמע') && !P.liveIsDataAsk(''));
+  /* A GO-AHEAD IS DELEGATED (6.10 evening, third live run): the mouth said "אני ממשיכה כמו שהסכמת" and never called the tool */
+  ok('6.10 third run: "אז אני מאשר, תמשיכי." is a go-ahead — the tool is required', P.liveIsGoAhead('אז אני מאשר, תמשיכי.') && P.liveIsGoAhead('אז אני מאשר.') && P.liveIsGoAhead('אוקיי, אני מאשר, תמשיכי') && P.liveIsGoAhead('בצעי'));
+  ok('6.10 third run: thanks, a greeting, a long sentence are not a go-ahead', !P.liveIsGoAhead('יופי, בהצלחה, תגידי לי שסיימת.') && !P.liveIsGoAhead('תודה רבה.') && !P.liveIsGoAhead('') && !P.liveIsGoAhead('אני מאשר את ההצעה של שבזי אבל קודם תבדקי את המחיר מול הספק ואז תשלחי לו את ההצעה המעודכנת בבקשה'));
+  ok('6.10 third run: liveSpeak forces the tool on a go-ahead as on a data ask', /const goAhead=!LIVE\.replyOwed&&!dataAsk&&liveIsGoAhead\(words\);const force=dataAsk\|\|goAhead;/.test(html) && /goAhead\?' · אישור או המשך — הכלי נדרש'/.test(html));
   ok('6.10: a forced response names the one tool; a free one is bare', JSON.stringify(P.liveResponseCreate(true)) === JSON.stringify({ type: 'response.create', response: { tool_choice: { type: 'function', name: P.LIVE_TOOL } } }) && JSON.stringify(P.liveResponseCreate(false)) === JSON.stringify({ type: 'response.create' }));
   ok('a failed transcription settles its utterance too', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.failed', item_id: 'item_u3' })) === '[{"kind":"ear_failed","item_id":"item_u3"}]');
   ok('a commit names its utterance', JSON.stringify(r({ type: 'input_audio_buffer.committed', item_id: 'item_u4' })) === '[{"kind":"speech_stopped","item_id":"item_u4","committed":true}]');
