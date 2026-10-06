@@ -778,7 +778,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-06.1';
+const LIA_BUILD='2026-10-06.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -4158,6 +4158,15 @@ const LIVE_EAR_HEAD='שיחה בעברית בין דוד',LIVE_EAR_MARK='ונח�
 const LIVE_EAR_TERMS=['ליה','פרסקו','פריוריטי','מטריאה','רילוקיישן','דוד','רחל','הזמנות','חשבוניות','תעודות משלוח','הצעת מחיר','גוונים','טיח'];
 function liveEarNorm(x){return String(x||'').replace(/[\u0600-\u06FF]/g,c=>c==='\u0645'?'מ':c==='\u0648'?'ו':'').replace(/["'״׳.,:;!?؟()\-–—]+/g,' ').replace(/\s+/g,' ').trim();}
 function liveIsEarEcho(text){const n=liveEarNorm(text);if(!n)return false;if(n.indexOf(liveEarNorm(LIVE_EAR_HEAD))===0)return true;return n.indexOf(LIVE_EAR_MARK)>=0&&LIVE_EAR_TERMS.filter(t=>n.indexOf(t)>=0).length>=6;}
+/* A DATA QUESTION IS DELEGATED, NOT ANSWERED BY THE MOUTH (David, 6.10 evening, driving: "אני שואל אותך שאלות ואת נותנת לי
+   תשובות… מפגרות"). Measured on the harness: "הצבר הזמנות גדל… ביחס לשנה שעברה… מה את אומרת?" — the voice model answered
+   "וואי, נשמע מעולה!" and never called the tool. The law lives in the session instructions; here it becomes a rule the
+   client enforces: when David's committed words (the ear's transcript) carry a business topic, the response is asked
+   for WITH the tool required, so the model cannot improvise the business. Small talk stays free. Pure. */
+const LIVE_DATA_TOPIC_RE=/(?:מכירות|הזמנ|צבר|חשבוני|פדיון|מחזור|תעוד|גביי|חייב|פריוריטי|פרויקט|לקוח|מייל|דוח|מטרי|שרפוינט|תחזוק|עבודה|חבילה|משימ|דשבורד|כמה|מתי|איפה\s+אנחנו|מה\s+(?:ה)?מצב|מה\s+קורה|יש\s+חדש|סטטוס|פרסקו|תזכורת|פגישה|יומן|קובץ|מסמך|ספק|מחיר|הצעת|רילוקיישן|גוונ|טיח|צבע)/u;
+const LIVE_SMALLTALK_RE=/^\s*(?:(?:היי|הי|שלום|הלו|בוקר\s+טוב|צהריים\s+טובים|ערב\s+טוב|לילה\s+טוב|תודה(?:\s+רבה)?|יופי|מעולה|בסדר|אוקיי|אוקי|כן|לא|ביי|להתראות|מה\s+נשמע|מה\s+שלומך|את\s+שומעת\s+אותי|רגע|ליה)[\s,.!?]*)+$/u;
+function liveIsDataAsk(text){const t=String(text||'').replace(/\s+/g,' ').trim();if(!t||LIVE_SMALLTALK_RE.test(t))return false;return LIVE_DATA_TOPIC_RE.test(t);}
+function liveResponseCreate(force){const m={type:'response.create'};if(force)m.response={tool_choice:{type:'function',name:LIVE_TOOL}};return m;}
 /* The tool gate: the model may ask for exactly one thing, and only with a
    question in it. Anything else is answered with an error and never run. */
 function liveToolCall(name,args){
@@ -4404,14 +4413,25 @@ function liveSpeak(reason){
  if(LIVE.speaking||LIVE.responseActive){
   if((LIVE.lastCreateFor||0)>=(LIVE.uttStartedAt||0)){LIVE.pending=null;liveRecord('WAIT',reason+' · התשובה לדברים האלה כבר בדרך (הכלי)',{continuity_state:'already_answered'});return;}
   LIVE.pending={answer_after:true,at:Date.now()};liveRecord('WAIT',reason+(LIVE.speaking?' · ליה עדיין מדברת — עונה כשתסיים':' · תשובה כבר בדרך — מצטרף אליה'),{continuity_state:'answer_after_lia'});return;}
+ /* 6.10 evening: what David's committed words were decides HOW the answer is asked for — nothing when the only thing heard
+    was the ear's own prompt; with the tool required when they carry a business topic. The transcript lands ~1 s after the
+    VAD closes, so when a committed utterance has none yet the decision waits for it, bounded (1.2 s), once. */
+ const open=LIVE.ear.filter(e=>!e.used&&e.committed);
+ if(open.length&&open.every(e=>e.skip&&e.text&&liveIsEarEcho(e.text))){open.forEach(e=>{e.used=true;});LIVE.pending=null;LIVE.speakWaited=false;
+  liveRecord('DROP',reason+' · רק הד הפרומפט נשמע — אין מה לענות',{continuity_state:'ear_echo_no_response',continuity_result:'dropped',outcome:'n/a'});liveLabel('מקשיבה…');return;}
+ if(!LIVE.replyOwed&&open.some(e=>e.text===null)&&!LIVE.speakWaited){LIVE.speakWaited=true;clearTimeout(LIVE.speakWaitTimer);
+  LIVE.speakWaitTimer=setTimeout(()=>{LIVE.speakWaitTimer=null;if(LIVE.on&&!LIVE.userSpeaking)liveSpeak(reason+' · אחרי המתנה לתמלול');},Math.min(1200,LIVE_POLICY.transcript_wait_ms));
+  liveRecord('WAIT',reason+' · ממתינה לתמלול (עד 1.2 ש׳) כדי לדעת אם זו שאלת נתונים',{continuity_state:'transcript_pending'});return;}
+ LIVE.speakWaited=false;clearTimeout(LIVE.speakWaitTimer);LIVE.speakWaitTimer=null;
+ const force=!LIVE.replyOwed&&liveIsDataAsk(open.filter(e=>!e.skip&&e.text).map(e=>e.text).join(' '));
  LIVE.pending=null;
- liveRecord('SPEAK',reason+(LIVE.replyOwed?' · כולל תשובת הכלי שחיכתה':''),{continuity_state:LIVE.replyOwed?'turn_end_with_tool_reply':LIVE.afterYield?'after_yield':'turn_end'});LIVE.afterYield=false;LIVE.replyOwed=false;
- liveCreateResponse();liveLabel('חושבת…');}
+ liveRecord('SPEAK',reason+(LIVE.replyOwed?' · כולל תשובת הכלי שחיכתה':'')+(force?' · שאלת נתונים — הכלי נדרש':''),{continuity_state:LIVE.replyOwed?'turn_end_with_tool_reply':LIVE.afterYield?'after_yield':'turn_end',outcome_evidence:force?'tool_required':''});LIVE.afterYield=false;LIVE.replyOwed=false;
+ liveCreateResponse(force);liveLabel('חושבת…');}
 /* Phase A (29.9, the 01:34:42 seam): a response can only answer utterances the
    VAD had CLOSED before it was asked for. The tool reply's response.create used
    to stamp the utterance David was still speaking, so his objection was later
    judged "already answered" (WAIT · already_answered) and never became a turn. */
-function liveCreateResponse(){LIVE.responseActive=true;LIVE.earMark=LIVE.ear.length;LIVE.lastCreateFor=LIVE.userSpeaking?(LIVE.lastCommittedUtt||0):(LIVE.uttStartedAt||0);liveSend({type:'response.create'});}
+function liveCreateResponse(force){LIVE.responseActive=true;LIVE.earMark=LIVE.ear.length;LIVE.lastCreateFor=LIVE.userSpeaking?(LIVE.lastCommittedUtt||0):(LIVE.uttStartedAt||0);liveSend(liveResponseCreate(!!force));}
 /* YIELD — David has the floor: cancel, silence, truncate to what he heard. */
 function liveYield(reason,overlapMs){
  clearTimeout(LIVE.overlapTimer);LIVE.overlapTimer=null;clearTimeout(LIVE.transcriptTimer);LIVE.transcriptTimer=null;
@@ -4429,7 +4449,7 @@ function liveOn(ev){
   else if(a.kind==='item_added'){LIVE.itemId=a.item_id;LIVE.responseId=a.response_id;}
   else if(a.kind==='speech_started'){
    LIVE.userSpeaking=true;LIVE.t={speech_started:Date.now()};LIVE.uttStartedAt=Date.now();LIVE.userItemId=String(a.item_id||'');
-   liveEarOpen(a.item_id);
+   liveEarOpen(a.item_id);LIVE.speakWaited=false;clearTimeout(LIVE.speakWaitTimer);LIVE.speakWaitTimer=null;
    if(LIVE.graceTimer){clearTimeout(LIVE.graceTimer);LIVE.graceTimer=null;const w=liveLastRecord(r=>r.decision==='WAIT'&&r.continuity_result==='n/a');if(w)w.continuity_result='user_resumed';}
    if(LIVE.speaking){
     /* David over LIA. Long = he is taking the turn → YIELD when the threshold passes;
@@ -4476,6 +4496,7 @@ function liveOn(ev){
     LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;continue;}
    liveResolveOutcomes(a.text);
    LIVE.lastHeard=heard;addTurn('me',heard);LIVE.earIdx=SESSION.turns.length-1;he.turn=SESSION.turns[LIVE.earIdx];
+   if(LIVE.speakWaitTimer){clearTimeout(LIVE.speakWaitTimer);LIVE.speakWaitTimer=null;if(!LIVE.userSpeaking)liveSpeak('התמלול הגיע');}
    if(short){
     if(LIVE.speaking){liveYield('חפיפה קצרה ('+short.overlap_ms+' מ״ש) שאינה אישור: "'+a.text.slice(0,30)+'"',short.overlap_ms);liveSpeak('תשובה לדברי דוד אחרי שנעצרה');}
     else liveSpeak(short.server_cut?'תשובה לדברי דוד אחרי שהשרת חתך את ליה':'דיבור קצר שהסתיים אחרי שליה סיימה');}}
@@ -4483,7 +4504,8 @@ function liveOn(ev){
   else if(a.kind==='ear_echo'){
    /* the prompt is not David: skipped at the ear (never reaches liveEarSince), never on the screen, recorded */
    liveEarHeard(a.item_id,a.text,true);
-   liveRecord('DROP','הד של פרומפט התמלול — לא דיבור של דוד',{continuity_state:'ear_echo_dropped',continuity_result:'dropped',outcome:'n/a',heard_head:a.text.slice(0,120),item_id:a.item_id});}
+   liveRecord('DROP','הד של פרומפט התמלול — לא דיבור של דוד',{continuity_state:'ear_echo_dropped',continuity_result:'dropped',outcome:'n/a',heard_head:a.text.slice(0,120),item_id:a.item_id});
+   if(LIVE.speakWaitTimer){clearTimeout(LIVE.speakWaitTimer);LIVE.speakWaitTimer=null;if(!LIVE.userSpeaking)liveSpeak('התמלול הגיע (הד)');}}
   else if(a.kind==='tool_call'){
    const d=liveToolCall(a.name,a.args);
    if(d.ok){LIVE.lastQ=d.question;LIVE.lastQAt=Date.now();
@@ -4616,7 +4638,7 @@ function liveTeardown(reason){
     session-local and dies here — measured 29.9: toolBusy and responseActive
     survived a stop and deferred or silenced the next session's first turns. */
  if(LIVE.sessionId)liveRecord('SESSION','סשן נסגר ('+String(reason||'')+')',{continuity_state:'session_teardown',continuity_result:String(reason||'').slice(0,40),outcome:'n/a'});
- LIVE.epoch++;LIVE.toolBusy=false;LIVE.replyOwed=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;LIVE.ear=[];LIVE.earMark=0;
+ LIVE.epoch++;LIVE.toolBusy=false;LIVE.replyOwed=false;LIVE.lastCreateFor=0;LIVE.afterYield=false;LIVE.t={};LIVE.userItemId='';LIVE.lastCommittedUtt=0;LIVE.uttStartedAt=0;LIVE.ear=[];LIVE.earMark=0;LIVE.speakWaited=false;LIVE.earEchoOnly=false;clearTimeout(LIVE.speakWaitTimer);LIVE.speakWaitTimer=null;
  clearTimeout(LIVE.timer);LIVE.timer=null;LIVE.ready=false;LIVE.speaking=false;liveClearTimers();LIVE.userSpeaking=false;LIVE.overlap=null;LIVE.pending=null;LIVE.audioStartedAt=0;LIVE.responseActive=false;
  const dc=LIVE.dc,pc=LIVE.pc;LIVE.dc=null;LIVE.pc=null;
  try{if(dc)dc.close();}catch(e){}try{if(pc)pc.close();}catch(e){}

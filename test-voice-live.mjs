@@ -35,7 +35,7 @@ const ok = (label, cond, extra) => { total++; if (!cond) { bad++; console.log(`F
 
 // ── the pure rules ──────────────────────────────────────────────────────────
 const P = new Function(slice("const LIVE_URL=", 'const LIVE={')
-  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom, livePreambles, liveIsEarEcho};')();
+  + '\nreturn {LIVE_TOOL, LIVE_TOOLS, LIVE_RECONNECT_MAX, liveReconnectDelay, liveShouldReconnect, liveReduce, liveToolCall, liveLatency, liveMintError, liveHeardText, LIVE_POLICY, liveIsBackchannel, liveOutcome, liveYieldActions, liveSeedItems, liveOverlapRatio, liveQuestionFrom, livePreambles, liveIsEarEcho, liveIsDataAsk, liveResponseCreate};')();
 const POL = P.LIVE_POLICY;
 
 ok('the one tool is deep_answer — LIA\'s own deeper processing; the old name is still accepted during the rollout', P.LIVE_TOOL === 'deep_answer' && P.LIVE_TOOLS.join(',') === 'deep_answer,ask_lia');
@@ -57,6 +57,12 @@ ok('a user stop is never retried', !P.liveShouldReconnect({ attempt: 0, userStop
   ok('6.10: the ear\'s own prompt (Arabic meem and all) reduces to ear_echo, never user_said', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_e1', transcript: ECHO6 })) === JSON.stringify([{ kind: 'ear_echo', text: ECHO6, item_id: 'item_e1' }]));
   ok('6.10: David\'s approval still reduces to user_said', r({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'item_e2', transcript: 'אז אני מאשר.' })[0].kind === 'user_said');
   ok('6.10: the pure rule — prompt yes, a sentence naming Priority and MATRIYA no', P.liveIsEarEcho(ECHO6) && !P.liveIsEarEcho('מה מצב ההזמנות בפריוריטי ומה קורה עם מטריאה?') && !P.liveIsEarEcho(''));
+  /* A DATA QUESTION IS DELEGATED (6.10 evening): the mouth answered the sales talk itself on the harness */
+  ok('6.10: sales talk is a data ask', P.liveIsDataAsk('היום נראה לי שעשינו יום טוב בפרסקו. הצבר הזמנות גדל, ההזמנות נכנסו היום, וביחס לשנה שעברה באותו חודש אנחנו במצב טוב. מה את אומרת?'));
+  ok('6.10: a status question about MATRIYA is a data ask', P.liveIsDataAsk('ליה, מה קורה עם הדוח של מטריאה שדיברנו עליו לפני דקה?'));
+  ok('6.10: "כמה חשבוניות הופקו היום" is a data ask', P.liveIsDataAsk('ליה, כמה חשבוניות הופקו היום?'));
+  ok('6.10: a greeting / thanks / "את שומעת אותי" is not', !P.liveIsDataAsk('שלום, את שומעת אותי?') && !P.liveIsDataAsk('תודה רבה.') && !P.liveIsDataAsk('מה נשמע') && !P.liveIsDataAsk(''));
+  ok('6.10: a forced response names the one tool; a free one is bare', JSON.stringify(P.liveResponseCreate(true)) === JSON.stringify({ type: 'response.create', response: { tool_choice: { type: 'function', name: P.LIVE_TOOL } } }) && JSON.stringify(P.liveResponseCreate(false)) === JSON.stringify({ type: 'response.create' }));
   ok('a failed transcription settles its utterance too', JSON.stringify(r({ type: 'conversation.item.input_audio_transcription.failed', item_id: 'item_u3' })) === '[{"kind":"ear_failed","item_id":"item_u3"}]');
   ok('a commit names its utterance', JSON.stringify(r({ type: 'input_audio_buffer.committed', item_id: 'item_u4' })) === '[{"kind":"speech_stopped","item_id":"item_u4","committed":true}]');
   const fc = r({ type: 'response.output_item.done', item: { type: 'function_call', call_id: 'c1', name: 'ask_lia', arguments: '{"question":"מה מצב REAL·LOCATION?"}' } });
@@ -166,7 +172,7 @@ ok('what goes back to the model is the server\'s voice_output', /output=res\.voi
 ok('the SDP goes to OpenAI with the client secret only', /Authorization:'Bearer '\+mint\.client_secret/.test(live) && !/sk-/.test(live) && !/sk-[A-Za-z0-9_-]{20,}/.test(src));
 ok('the secret is minted by command-center (voice_session), never held in the page — and the panel says it sends David\'s transcript', /ccApi\(\{action:'voice_session',transcript_question:true\}\)/.test(live) && !/localStorage\.setItem\('[^']*(secret|ek)/.test(live));
 ok('the button exists and starts hidden', /id="live" onclick="liveTap\(\)"[^>]*display:none/.test(html));
-ok('response.create has ONE door (liveCreateResponse); nothing else asks the model to speak', (live.match(/type:'response\.create'/g) || []).length === 1 && /function liveCreateResponse\(\)\{LIVE\.responseActive=true;/.test(live));
+ok('response.create has ONE door (liveCreateResponse); nothing else asks the model to speak — and the door takes the 6.10 force flag (tool required on a data ask)', (live.match(/type:'response\.create'/g) || []).length === 1 && /function liveCreateResponse\(force\)\{LIVE\.responseActive=true;/.test(live) && /liveSend\(liveResponseCreate\(!!force\)\)/.test(live));
 ok('a YIELD sends the wire of liveYieldActions and nothing decides an interruption elsewhere', /const acts=liveYieldActions\(\{item_id:LIVE\.itemId,audio_started_at:LIVE\.audioStartedAt/.test(live) && /acts\.forEach\(m=>liveSend\(m\)\)/.test(live));
 ok('the trace reaches the ledger through voice_trace_log, in batches of 50', /cap\('voice_trace_log',\{session_id:LIVE\.sessionId\|\|'',model:LIVE\.model\|\|'',events:batch\}\)/.test(live) && /i\+=50/.test(live));
 ok('a stop flushes what is left (pending → no_repair); EVERY connect (tap, reconnect, renewal) seeds the new channel from the recent conversation', /liveFlushTrace\(true\)/.test(live) && /LIVE\.renewing=true;liveTeardown\('renewal'\);liveFlushTrace\(false\)/.test(live) && /const seed=liveSeedItems\(SESSION\.turns,LIVE_POLICY\.seed_turns,Date\.now\(\),LIVE_POLICY\.seed_window_ms\);/.test(live));
@@ -806,7 +812,7 @@ ok('the question is bounded', P.liveQuestionFrom(['א'.repeat(3000)], '').questi
   ok('the tool sends the chosen question — the ear first — and records which one', /const asked=liveQuestionFrom\(await liveEarSince\(\),d\.question\);/.test(live) && /const text=asked\.question,reqId=run\.request_id;/.test(live) && /continuity_result:'question:'\+asked\.source/.test(live) && /outcome_evidence:\('model: '\+d\.question\)/.test(live));
   const td = slice('function liveTeardown(', 'function liveReleaseMic(');
   ok('the ear belongs to its session (teardown resets it)', /LIVE\.ear=\[\];LIVE\.earMark=0;/.test(td));
-  ok('every reply the panel asks for marks how far the ear had got', /function liveCreateResponse\(\)\{LIVE\.responseActive=true;LIVE\.earMark=LIVE\.ear\.length;/.test(src));
+  ok('every reply the panel asks for marks how far the ear had got', /function liveCreateResponse\(force\)\{LIVE\.responseActive=true;LIVE\.earMark=LIVE\.ear\.length;/.test(src));
   const on = slice('function liveOn(ev){', '/* The ear\'s ledger');
   ok('a reply that SAID something, completed without the tool, while no tool runs, settles what it answered (a silent reply answered nothing)', /if\(a\.status==='completed'&&a\.said&&!a\.tool&&!LIVE\.toolBusy\)liveEarAnswered\(\);/.test(on));
   ok('every utterance opens, commits and settles its ledger entry', /liveEarOpen\(a\.item_id\)/.test(on) && /if\(a\.committed\)liveEarCommit\(a\.item_id\);/.test(on) && /liveEarHeard\(a\.item_id,a\.text,bc\);/.test(on) && /a\.kind==='ear_failed'\)\{liveEarHeard\(a\.item_id,'',false\);/.test(on));
