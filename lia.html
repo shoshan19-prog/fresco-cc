@@ -778,7 +778,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-05.6';
+const LIA_BUILD='2026-10-06.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -4139,7 +4139,7 @@ function liveReduce(ev,st){
  else if(t==='response.output_item.added'&&ev.item&&ev.item.type==='message'&&ev.item.role==='assistant')out.push({kind:'item_added',item_id:String(ev.item.id||''),response_id:String(ev.response_id||'')});
  else if(t==='conversation.item.truncated')out.push({kind:'truncated',item_id:String(ev.item_id||''),audio_end_ms:Number(ev.audio_end_ms)||0});
  else if(t==='input_audio_buffer.speech_stopped'||t==='input_audio_buffer.committed')out.push({kind:'speech_stopped',item_id:String(ev.item_id||''),committed:t==='input_audio_buffer.committed'});
- else if(t==='conversation.item.input_audio_transcription.completed'){const s=String(ev.transcript||'').trim();if(s)out.push({kind:'user_said',text:s,item_id:String(ev.item_id||'')});else out.push({kind:'ear_failed',item_id:String(ev.item_id||'')});}
+ else if(t==='conversation.item.input_audio_transcription.completed'){const s=String(ev.transcript||'').trim();if(!s)out.push({kind:'ear_failed',item_id:String(ev.item_id||'')});else if(liveIsEarEcho(s))out.push({kind:'ear_echo',text:s,item_id:String(ev.item_id||'')});else out.push({kind:'user_said',text:s,item_id:String(ev.item_id||'')});}
  else if(t==='conversation.item.input_audio_transcription.failed')out.push({kind:'ear_failed',item_id:String(ev.item_id||'')});
  else if(t==='response.output_audio_transcript.delta'||t==='response.audio_transcript.delta')st.lia+=String(ev.delta||'');
  else if(t==='response.output_audio_transcript.done'||t==='response.audio_transcript.done'){const s=String(ev.transcript||st.lia||'').trim();st.lia='';if(s)out.push({kind:'lia_said',text:s});}
@@ -4150,6 +4150,14 @@ function liveReduce(ev,st){
  else if(t==='response.done')out.push({kind:'response_done',status:String((ev.response&&ev.response.status)||''),tool:(ev.response&&Array.isArray(ev.response.output)?ev.response.output:[]).some(o=>o&&o.type==='function_call'),said:(ev.response&&Array.isArray(ev.response.output)?ev.response.output:[]).some(o=>o&&o.type==='message')});
  else if(t==='error')out.push({kind:'error',message:String((ev.error&&ev.error.message)||ev.message||'unknown'),code:String((ev.error&&ev.error.code)||'')});
  return out;}
+/* THE EAR ECHOES ITS OWN PROMPT (David, 6.10 evening). The transcription prompt ("שיחה בעברית בין דוד, מנכ"ל פרסקו
+   צבעים, לבין ליה. מונחים ושמות: …") came back as David's words four times in one call — once with an Arabic meem — and
+   reached the brain as his question. A transcript that IS the prompt is dropped at the ear: not shown as "אתה", not
+   sent to the brain, recorded as DROP. The server drops it again for older builds. Pure. */
+const LIVE_EAR_HEAD='שיחה בעברית בין דוד',LIVE_EAR_MARK='ונחים ושמות';
+const LIVE_EAR_TERMS=['ליה','פרסקו','פריוריטי','מטריאה','רילוקיישן','דוד','רחל','הזמנות','חשבוניות','תעודות משלוח','הצעת מחיר','גוונים','טיח'];
+function liveEarNorm(x){return String(x||'').replace(/[\u0600-\u06FF]/g,c=>c==='\u0645'?'מ':c==='\u0648'?'ו':'').replace(/["'״׳.,:;!?؟()\-–—]+/g,' ').replace(/\s+/g,' ').trim();}
+function liveIsEarEcho(text){const n=liveEarNorm(text);if(!n)return false;if(n.indexOf(liveEarNorm(LIVE_EAR_HEAD))===0)return true;return n.indexOf(LIVE_EAR_MARK)>=0&&LIVE_EAR_TERMS.filter(t=>n.indexOf(t)>=0).length>=6;}
 /* The tool gate: the model may ask for exactly one thing, and only with a
    question in it. Anything else is answered with an error and never run. */
 function liveToolCall(name,args){
@@ -4472,6 +4480,10 @@ function liveOn(ev){
     if(LIVE.speaking){liveYield('חפיפה קצרה ('+short.overlap_ms+' מ״ש) שאינה אישור: "'+a.text.slice(0,30)+'"',short.overlap_ms);liveSpeak('תשובה לדברי דוד אחרי שנעצרה');}
     else liveSpeak(short.server_cut?'תשובה לדברי דוד אחרי שהשרת חתך את ליה':'דיבור קצר שהסתיים אחרי שליה סיימה');}}
   else if(a.kind==='ear_failed'){liveEarHeard(a.item_id,'',false);}
+  else if(a.kind==='ear_echo'){
+   /* the prompt is not David: skipped at the ear (never reaches liveEarSince), never on the screen, recorded */
+   liveEarHeard(a.item_id,a.text,true);
+   liveRecord('DROP','הד של פרומפט התמלול — לא דיבור של דוד',{continuity_state:'ear_echo_dropped',continuity_result:'dropped',outcome:'n/a',heard_head:a.text.slice(0,120),item_id:a.item_id});}
   else if(a.kind==='tool_call'){
    const d=liveToolCall(a.name,a.args);
    if(d.ok){LIVE.lastQ=d.question;LIVE.lastQAt=Date.now();
