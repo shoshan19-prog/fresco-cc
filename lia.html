@@ -4534,6 +4534,9 @@ async function liveEarSince(){
  if(epoch!==LIVE.epoch)return [];
  const take=LIVE.ear.filter(e=>!e.used&&e.committed);take.forEach(e=>{e.used=true;});
  const words=take.filter(e=>!e.skip&&e.text);
+ /* 6.10: when everything this ask consumed was the ear's own prompt, there are no words of David's — the model's
+    paraphrase of the echo must not become his question either (liveQuestionFrom would fall back to it) */
+ LIVE.earEchoOnly=take.length>0&&words.length===0&&take.some(e=>e.skip&&e.text&&liveIsEarEcho(e.text));
  LIVE.askTurn=(words.find(e=>e.turn)||{}).turn||null;   // 4.10: where this ask's words begin on the screen (livePreambles)
  return words.map(e=>e.text);}
 /* A reply that finished without the tool answered what was said before it was asked for:
@@ -4557,6 +4560,12 @@ async function liveRunTool(a){
   const ids={session_id:run.session_id,request_id:run.request_id,call_id:run.call_id,item_id:run.item_id};
   LIVE.tools++;LIVE.t.tool_started=run.started;LIVE.toolBusy=true;liveLabel('בודקת…');
   const asked=liveQuestionFrom(await liveEarSince(),d.question);
+  if(LIVE.earEchoOnly){
+   /* the only thing heard was the prompt: nothing is delegated, nothing is said (silent:true — the mouth is told to stay quiet) */
+   LIVE.earEchoOnly=false;LIVE.toolBusy=false;liveLabel('');
+   liveRecord('DROP','הכלי התבקש על הד הפרומפט בלבד — לא הואצל, לא נאמר דבר',Object.assign({continuity_state:'ear_echo_tool_refused',continuity_result:'dropped',outcome:'n/a',outcome_evidence:('model: '+d.question).slice(0,160)},ids));
+   liveSend({type:'conversation.item.create',item:{type:'function_call_output',call_id:a.call_id,output:JSON.stringify({answer:'',silent:true,note:'הד של פרומפט התמלול, לא דיבור של דוד — אין מה לענות'})}});
+   liveFlushTrace(false);return;}
   LIVE.lastQ=asked.question;LIVE.lastQAt=Date.now();
   /* ONE CONVERSATION (David, 4.10): the brain hears the history the text road would
      send for this ask — the filler she said before it is not its answer — and the
