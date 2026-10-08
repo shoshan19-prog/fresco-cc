@@ -238,6 +238,10 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .xi.ok .xn{background:#eaf7ee;color:var(--ok)}
 .xi.wait .xv{color:var(--dim);font-weight:600}
 .xi[data-x="needs"] .xs{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.workMeter{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;margin-top:10px}
+.workMeter h2{font-size:14px;margin:0 0 8px}.workMeter .wm{padding:8px 0;border-top:1px solid var(--line)}.workMeter .wm:first-of-type{border-top:0;padding-top:0}
+.workMeter .top{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600}.workMeter .top b{margin-inline-start:auto;font-variant-numeric:tabular-nums;color:var(--acc)}
+.workMeter .bar{height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin:6px 0}.workMeter .bar span{display:block;height:100%;background:var(--acc);border-radius:inherit}.workMeter .meta{font-size:12px;color:var(--dim);line-height:1.4}.workMeter .blocked .bar span{background:var(--warn)}.workMeter .done .bar span{background:var(--ok)}
 @media(max-height:740px){#exec{gap:5px}.xi{padding:7px 11px}.xi .xv{font-size:15px}.xi .xs{font-size:12.5px;line-height:1.35}
  main{padding-top:8px}#drillBtn,#projBtn{min-height:36px}}
 @media(max-height:700px){#topbar{padding-top:calc(4px + env(safe-area-inset-top));padding-bottom:4px}
@@ -655,6 +659,14 @@ function renderExec(){
   if(VIEW!=='overview'){el.hidden=true;return;}
   el.hidden=false;
   var m=execModel(X,Date.now());
+  var work=(X.alive||[]).filter(function(r){return r&&r.work_id;}).map(function(r){
+    var d=deriveRow(r),st=stateOf(r),blocked=!!r.blocker||st==='WAITING_INTERNAL'||st==='WAITING_EXTERNAL'||st==='WAITING_APPROVAL'||st==='FAILED';
+    var label=st==='DONE'?'הושלמה':blocked?'חסומה':st==='RUNNING'?'רצה':'ממתינה';
+    var pct=Number(d.pct!=null?d.pct:(r.progress_pct!=null?r.progress_pct:r.progress));
+    if(!isFinite(pct))pct=st==='DONE'?100:st==='QUEUED'?0:0;
+    pct=Math.max(0,Math.min(100,Math.round(pct)));
+    return {title:cleanTitle(r.objective||r.goal||r.work_id),label:label,pct:pct,tone:st==='DONE'?'done':blocked?'blocked':'',next:blocked?(r.blocker||r.next_step||r.current_step||'החסם לא פורט'):(r.next_step||r.current_step||'הצעד הבא לא דווח')};
+  });
   var all=m.every(function(x){return x.ready;});
   if(all&&X.readyMs==null){X.readyMs=Date.now()-X.t0;el.setAttribute('data-ready-ms',String(X.readyMs));}
   el.setAttribute('data-ready',all?'1':'0');
@@ -668,6 +680,7 @@ function renderExec(){
       +x.subs.map(function(t){return '<div class="xs">'+t+'</div>';}).join('')
       +'</'+tag+'>';
   }).join('')
+  +(work.length?'<section class="workMeter" data-lia-change="80061ef0" aria-label="מד התקדמות עבודה"><h2>מד התקדמות עבודה</h2>'+work.map(function(w){return '<div class="wm '+w.tone+'"><div class="top"><span>'+esc(w.title)+'</span><span class="tag">'+esc(w.label)+'</span><b>'+w.pct+'%</b></div><div class="bar" aria-label="'+w.pct+'%"><span style="width:'+w.pct+'%"></span></div><div class="meta">'+(w.tone==='blocked'?'חסם: ':'השלב הבא: ')+esc(w.next)+'</div></div>';}).join('')+'</section>':'')
   +(X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
   /* the projects screen (David, 4.10 — WORK 27d03f59) is its own page: the five answers stay five */
   +'<div class="xrow"><a id="projBtn" href="projects.html">הפרויקטים</a>'
