@@ -695,7 +695,6 @@ button#live.wait{opacity:.6}
  <span class="dim" id="recLabel">מקליט — לחץ ⏹ כשסיימת</span></div>
  <p class="dim" id="capHint" style="display:none"></p>
  <div id="attachBar"></div>
- <div id="capActions" style="margin-top:4px"><button class="ghost" type="button" onclick="askLia('הפכי את מקרה בית עבוד ליכולת Fresco: זהי סוג מבנה ומצע, מנגנוני כשל, תנאי סביבה, אבחון נדרש, משפחות פתרונות, מה מוכח ומה לא מאומת, והיתרון המקצועי/מסחרי. לאחר מכן בצעי Pattern → Market Search בישראל לפרויקטים ומבנים קיימים שבהם הדפוס הזה רלוונטי; הציגי התאמות, מקורות, רמת ביטחון והצעד הראשון.')" data-lia-change="92f3ab98">Pattern → Market Search</button></div>
  <div class="line">
   <textarea id="note" rows="1" placeholder="שאל את LIA…"></textarea>
   <button class="ghost" id="clip" onclick="clipTap()" title="צרף תמונה או קובץ" aria-label="צירוף קובץ" data-lia-change="248aef44">📎</button>
@@ -779,7 +778,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-06.4';
+const LIA_BUILD='2026-10-08.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
