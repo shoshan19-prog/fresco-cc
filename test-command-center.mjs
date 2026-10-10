@@ -325,6 +325,23 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('a row that needs him says so, in his words', needs.tone === 'needs' && needs.label === 'דורשת אותך' && needs.next === 'התוצר מוכן לאישורך', JSON.stringify(needs));
   const rows = S.meterRows([doneRaw, { work_id: 'a1a1ce0d', kind: 'maintenance', status: 'QUEUED', state: 'QUEUED' }, study, needsRaw]);
   ok('order: what needs him first, then blocked, finished last; housekeeping gone', rows.map((r) => r.work_id).join() === 'n1,e8431327aaaa,d1', rows.map((r) => r.work_id).join());
+
+  // ── A WAIT THAT CONTINUES BY ITSELF IS NOT A BLOCK (David, 11.10 01:41) ──
+  const NOW = Date.parse('2026-10-10T23:00:00Z');
+  const cycle = { ...study, work_id: 'c1', blocker: 'מחזור הלימוד הבא', waiting_on: { kind: 'timer', ref: 'study_cycle', condition: 'מחזור הלימוד הבא' }, next_wake_at: '2026-10-11T18:21:22.352Z' };
+  const mc = S.meterRowOf(cycle, NOW);
+  ok('a study cycle sleeping until its next wake is "ממתינה", said with the time it continues — never "חסומה"',
+    mc.tone === 'queued' && mc.label === 'ממתינה' && /^ממשיכה מעצמה ב-/.test(mc.next) && /מחזור הלימוד הבא/.test(mc.next), JSON.stringify(mc));
+  const past = S.meterRowOf({ ...cycle, next_wake_at: '2026-10-10T20:00:00Z' }, NOW);
+  ok('the same wait whose wake has passed and nobody woke it is a real block', past.tone === 'blocked' && past.label === 'חסומה', JSON.stringify(past));
+  const onWork = S.meterRowOf({ work_id: 'w9', kind: 'matriya_fix', objective: 'תיקון קטן ומדיד', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', waiting_on: { kind: 'WORK', ref: '1be96d56318310c0ae9c85a66adc583a', condition: 'אותה עבודה מתבצעת בחבילה 1be96d56' }, closure: closure({}) }, NOW);
+  ok('a wait on a follow-up package names it, as a queue row', onWork.tone === 'queued' && /ממתינה לחבילת ההמשך 1be96d56/.test(onWork.next), JSON.stringify(onWork));
+  const undefinedWait = S.meterRowOf({ work_id: 'w8', kind: 'matriya_fix', objective: 'x', status: 'WAITING_EXTERNAL', state: 'WAITING_EXTERNAL', closure: closure({}) }, NOW);
+  ok('a wait with no wake and no one to wake it stays blocked, and says the blocker was not stated', undefinedWait.tone === 'blocked' && undefinedWait.next === 'החסם לא פורט', JSON.stringify(undefinedWait));
+  const parked = S.meterRowOf({ ...needsRaw, next_wake_at: '2026-10-11T18:21:22.352Z' }, NOW);
+  ok('a park for David with a wake time still needs him — the wake never hides a decision', parked.tone === 'needs', JSON.stringify(parked));
+  const ordered = S.meterRows([cycle, past], NOW);
+  ok('blocked before self-waiting in the order', ordered.map((r) => r.work_id).join() === 'e8431327aaaa,c1'.replace('e8431327aaaa', past.work_id), ordered.map((r) => r.work_id).join());
 }
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
