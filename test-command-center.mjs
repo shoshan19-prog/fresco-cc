@@ -16,7 +16,7 @@ function slice(from, to) {
   return src.slice(a, b);
 }
 const S = new Function(slice('var DOMAINS=', '/* CC_STATE_END */')
-  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS};')();
+  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS,meterRowOf,meterRows};')();
 
 let bad = 0, total = 0;
 function eq(label, got, want) { total++; if (got !== want) { console.log(`FAIL  ${label}\n      got:  ${JSON.stringify(got)}\n      want: ${JSON.stringify(want)}`); bad++; } }
@@ -300,6 +300,31 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('4.10 launch: the other parks keep their own card', /data-dec="ACCEPT"/.test(D.decisionCard({ work_id: 'w1', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION' })));
   ok('4.10 launch: the label and the done line', /AWAITING_LAUNCH:'ממתינה לאישור שלך לשיגור'/.test(src) && D.DEC_DONE.LAUNCH === 'יצאה לדרך');
   ok('4.10 launch: launching asks once before it sends', /if\(dec==='LAUNCH'&&!confirm\(/.test(src));
+}
+
+// ── THE WORK METER (David, 10.10): what is cleared, what the number is, what a finished row shows ──
+{
+  const acc = (n, v) => Array.from({ length: n }, (_, i) => ({ id: `acc:x-${i}`, status: i < v ? 'VERIFIED' : 'OPEN', criterion: `c${i}` }));
+  const closure = (over) => Object.assign({ key: 'OPEN', label: 'פתוח', presence: 'NONE', presence_detail: '', progress: null, stage: 'מחזור 7', verified_by: '', verification_required: true, evidence_ref: null, product: { kind: 'report', ref: null, declared: false }, delivery: { result: '', ref: null, ref_kind: null, notice: '', interface_complete: false } }, over);
+  const study = { work_id: 'e8431327aaaa', kind: 'research', objective: 'להכיר את מטריאה', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', blocker: 'מחזור הלימוד הבא', current_step: 'לימוד MATRIYA · מחזור 7 הושלם', items: acc(9, 3), closure: closure({ progress: { done: 3, total: 9, source: 'ACCEPTANCE' } }) };
+  const m = S.meterRowOf(study);
+  ok('the number is the closure\'s real N/M — 3/9 = 33%, never Number(object) = 0', m.pct === 33 && m.gauge === '3/9', JSON.stringify(m));
+  ok('a blocked row says the blocker', m.tone === 'blocked' && m.label === 'חסומה' && /מחזור הלימוד הבא/.test(m.next), JSON.stringify(m));
+  const noDen = S.meterRowOf({ work_id: 'q1', kind: 'build', objective: 'x', status: 'QUEUED', state: 'QUEUED', current_step: 'ממתינה לתור', items: [], closure: closure({ stage: 'ממתינה לתור' }) });
+  ok('no denominator → no percentage at all, the stage instead (never an invented 0%)', noDen.pct === null && noDen.gauge === '' && noDen.stage === 'ממתינה לתור' && noDen.tone === 'queued', JSON.stringify(noDen));
+  ok('the machine\'s own housekeeping is not on his meter', S.meterRowOf({ work_id: 'a1a1ce0d', kind: 'maintenance', objective: 'תחזוקה', status: 'QUEUED', state: 'QUEUED' }) === null
+    && S.meterRowOf({ work_id: 'e5ab1c1a', kind: 'stabilization', objective: 'LIA STABILIZATION', status: 'QUEUED', state: 'QUEUED' }) === null);
+  ok('a retired object is a historical record, not a live row', S.meterRowOf({ work_id: 'h', kind: 'build', status: 'QUEUED', state: 'QUEUED', object_state: 'EXPIRED' }) === null);
+  const doneRaw = { work_id: 'd1', kind: 'research', objective: 'תדריך', status: 'DONE', state: 'DONE', items: acc(4, 4), closure: closure({ key: 'DONE_VERIFIED', label: 'הושלם · אומת', progress: { done: 4, total: 4, source: 'ACCEPTANCE' }, delivery: { result: 'התוצר מוכן · PDF (3 עמודים)', ref: 'https://x/report.pdf', ref_kind: 'url', notice: '', interface_complete: true } }) };
+  const done = S.meterRowOf(doneRaw);
+  ok('a finished row shows the product and its link, not a "next step"', done.tone === 'done' && done.pct === 100 && done.product === 'התוצר מוכן · PDF (3 עמודים)' && done.ref === 'https://x/report.pdf' && done.next === null && done.verified === true, JSON.stringify(done));
+  const sub = S.meterRowOf({ work_id: 's1', kind: 'build', objective: 'דוח', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', blocker: 'ניסיון חוזר', product_review: { submitted_at: '2026-10-09T11:50:50Z', result: 'התוצר הוגש · 2 קבצים', refs: ['https://x/a.pdf'] }, closure: closure({}) });
+  ok('a product already submitted for his review is said as such, with its link', sub.submitted === 'התוצר הוגש · 2 קבצים' && sub.ref === 'https://x/a.pdf', JSON.stringify(sub));
+  const needsRaw = { work_id: 'n1', kind: 'build', objective: 'y', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', parked_for_david: true, disposition: 'PRODUCT_REVIEW', closure: closure({}) };
+  const needs = S.meterRowOf(needsRaw);
+  ok('a row that needs him says so, in his words', needs.tone === 'needs' && needs.label === 'דורשת אותך' && needs.next === 'התוצר מוכן לאישורך', JSON.stringify(needs));
+  const rows = S.meterRows([doneRaw, { work_id: 'a1a1ce0d', kind: 'maintenance', status: 'QUEUED', state: 'QUEUED' }, study, needsRaw]);
+  ok('order: what needs him first, then blocked, finished last; housekeeping gone', rows.map((r) => r.work_id).join() === 'n1,e8431327aaaa,d1', rows.map((r) => r.work_id).join());
 }
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
