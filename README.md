@@ -9,5 +9,3 @@ by itself.
 
 The application logic, data and privileged credentials all live server-side in the
 private `fresco-marketing-os` project.
-
-בדיקת e2e סינתטית — ניתן למחוק
