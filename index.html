@@ -241,7 +241,7 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .workMeter{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;margin-top:10px}
 .workMeter h2{font-size:14px;margin:0 0 8px}.workMeter .wm{padding:8px 0;border-top:1px solid var(--line)}.workMeter .wm:first-of-type{border-top:0;padding-top:0}
 .workMeter .top{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600}.workMeter .top b{margin-inline-start:auto;font-variant-numeric:tabular-nums;color:var(--acc)}
-.workMeter .bar{height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin:6px 0}.workMeter .bar span{display:block;height:100%;background:var(--acc);border-radius:inherit}.workMeter .meta{font-size:12px;color:var(--dim);line-height:1.4}.workMeter .blocked .bar span{background:var(--warn)}.workMeter .done .bar span{background:var(--ok)}
+.workMeter .bar{height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin:6px 0}.workMeter .bar span{display:block;height:100%;background:var(--acc);border-radius:inherit}.workMeter .meta{font-size:12px;color:var(--dim);line-height:1.4}.workMeter .blocked .bar span,.workMeter .needs .bar span{background:var(--warn)}.workMeter .done .bar span{background:var(--ok)}.workMeter .moving .bar span{background:var(--ok)}.workMeter .top b.stage{font-size:12px;font-weight:500;color:var(--dim)}.workMeter .top b small{font-weight:500;color:var(--dim)}.workMeter .needs .tag{color:var(--warn)}.workMeter .done .tag{color:var(--ok)}.workMeter .failed{opacity:.75}
 @media(max-height:740px){#exec{gap:5px}.xi{padding:7px 11px}.xi .xv{font-size:15px}.xi .xs{font-size:12.5px;line-height:1.35}
  main{padding-top:8px}#drillBtn,#projBtn{min-height:36px}}
 @media(max-height:700px){#topbar{padding-top:calc(4px + env(safe-area-inset-top));padding-bottom:4px}
@@ -541,6 +541,35 @@ function summarize(alive,closed,extraNeeds,now){
   (closed||[]).forEach(function(r){if(stateOf(r)!=='DONE')return;if(tms(r.completed_at)<t0)return;if(verifiedOf(r))doneToday++;else doneUnverified++;});
   return {active:live.length,needs:needs+(extraNeeds||0),moving:moving,stale:stale,done_today:doneToday,done_today_unverified:doneUnverified};
 }
+/* THE WORK METER (David, 10.10 — "תפנה את מה שלא הכרחי… לכל משימה חדשה תן לי את המד של מה שהיא,
+   באיזה סטטוס היא נמצאת לאורך כל הדרך, ובסוף את התוצר"). One row per package David asked for:
+   the machine's own housekeeping (maintenance, stabilization) is never on his meter. The number is
+   the closure's real N/M or nothing — a row without a denominator shows the stage it is on, never
+   an invented 0%. A finished row shows the product, not a "next step". Before 10.10 the page did
+   Number(progress) on an OBJECT and every live row read 0% (measured on e8431327: 9 criteria, 0%). */
+var METER_INTERNAL_KINDS={maintenance:1,stabilization:1};
+var METER_ORDER={needs:0,moving:1,blocked:2,queued:3,done:4,failed:5};
+function meterRowOf(r){
+  if(!r||!r.work_id)return null;
+  if(METER_INTERNAL_KINDS[String(r.kind||'').toLowerCase()])return null;
+  if(r.object_state==='EXPIRED')return null;
+  var st=stateOf(r),d=deriveRow(r),c=closureOf(r),p=progressOf(r);
+  var done=st==='DONE',failed=st==='FAILED'||st==='CANCELLED';
+  var blocked=!done&&!failed&&(d.needs||!!r.blocker||st==='WAITING_INTERNAL'||st==='WAITING_EXTERNAL'||st==='WAITING_APPROVAL');
+  var tone=done?'done':failed?'failed':d.needs?'needs':blocked?'blocked':d.moving?'moving':'queued';
+  var label=done?d.label:failed?(STATE_HE[st]||st):d.needs?'דורשת אותך':blocked?'חסומה':d.moving?'בתנועה':st==='RUNNING'?'רצה':'ממתינה';
+  var pct=done?100:(p?p.pct:null);
+  var gauge=p?p.text:'';
+  var ref=(c&&c.delivery&&c.delivery.ref)||(c&&c.product&&c.product.ref)||(r.product_review&&Array.isArray(r.product_review.refs)&&r.product_review.refs[0])||null;
+  var product=done?((c&&c.delivery&&c.delivery.result)||r.result||r.outcome||'התוצר לא דווח'):null;
+  var submitted=(!done&&!failed&&r.product_review&&r.product_review.submitted_at)?(r.product_review.result||r.product_review.outcome||'התוצר הוגש'):null;
+  var next=(done||failed)?null:(blocked?(d.note||r.blocker||waitText(r)||'החסם לא פורט'):(r.next_step||r.current_step||'הצעד הבא לא דווח'));
+  if(failed&&!next)next=r.outcome||r.blocker||null;
+  return {work_id:r.work_id,title:String(r.objective||r.goal||r.work_id),label:label,pct:pct,gauge:gauge,stage:stageOf(r),tone:tone,order:METER_ORDER[tone],next:next,product:product,ref:ref,submitted:submitted,verified:done?!!d.verified:null};
+}
+function meterRows(alive){
+  return (alive||[]).map(meterRowOf).filter(Boolean).sort(function(a,b){return a.order-b.order;});
+}
 /* CC_STATE_END */
 
 /* ── THE DAILY SCREEN — FRESCO EXECUTIVE OS (David, 2.10) ─────────────────────
@@ -659,14 +688,7 @@ function renderExec(){
   if(VIEW!=='overview'){el.hidden=true;return;}
   el.hidden=false;
   var m=execModel(X,Date.now());
-  var work=(X.alive||[]).filter(function(r){return r&&r.work_id;}).map(function(r){
-    var d=deriveRow(r),st=stateOf(r),blocked=!!r.blocker||st==='WAITING_INTERNAL'||st==='WAITING_EXTERNAL'||st==='WAITING_APPROVAL'||st==='FAILED';
-    var label=st==='DONE'?'הושלמה':blocked?'חסומה':st==='RUNNING'?'רצה':'ממתינה';
-    var pct=Number(d.pct!=null?d.pct:(r.progress_pct!=null?r.progress_pct:r.progress));
-    if(!isFinite(pct))pct=st==='DONE'?100:st==='QUEUED'?0:0;
-    pct=Math.max(0,Math.min(100,Math.round(pct)));
-    return {title:cleanTitle(r.objective||r.goal||r.work_id),label:label,pct:pct,tone:st==='DONE'?'done':blocked?'blocked':'',next:blocked?(r.blocker||r.next_step||r.current_step||'החסם לא פורט'):(r.next_step||r.current_step||'הצעד הבא לא דווח')};
-  });
+  var work=meterRows(X.alive);
   var all=m.every(function(x){return x.ready;});
   if(all&&X.readyMs==null){X.readyMs=Date.now()-X.t0;el.setAttribute('data-ready-ms',String(X.readyMs));}
   el.setAttribute('data-ready',all?'1':'0');
@@ -680,7 +702,13 @@ function renderExec(){
       +x.subs.map(function(t){return '<div class="xs">'+t+'</div>';}).join('')
       +'</'+tag+'>';
   }).join('')
-  +(work.length?'<section class="workMeter" data-lia-change="80061ef0" aria-label="מד התקדמות עבודה"><h2>מד התקדמות עבודה</h2>'+work.map(function(w){return '<div class="wm '+w.tone+'"><div class="top"><span>'+esc(w.title)+'</span><span class="tag">'+esc(w.label)+'</span><b>'+w.pct+'%</b></div><div class="bar" aria-label="'+w.pct+'%"><span style="width:'+w.pct+'%"></span></div><div class="meta">'+(w.tone==='blocked'?'חסם: ':'השלב הבא: ')+esc(w.next)+'</div></div>';}).join('')+'</section>':'')
+  +(work.length?'<section class="workMeter" data-lia-change="80061ef0" aria-label="מד התקדמות עבודה"><h2>מד התקדמות עבודה</h2>'+work.map(function(w){
+    var num=w.pct!=null?'<b>'+w.pct+'%'+(w.gauge?' <small>'+esc(w.gauge)+'</small>':'')+'</b>':(w.stage?'<b class="stage">'+esc(w.stage)+'</b>':'');
+    var bar=w.pct!=null?'<div class="bar" aria-label="'+w.pct+'%"><span style="width:'+w.pct+'%"></span></div>':'';
+    var meta=w.product!=null?'התוצר: '+esc(w.product)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':'')
+      :w.submitted?'הוגש לבדיקתך: '+esc(w.submitted)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':'')
+      :w.tone==='needs'?'מחכה לך: '+esc(w.next):w.tone==='blocked'?'חסם: '+esc(w.next):w.tone==='failed'?esc(w.next||''):'השלב הבא: '+esc(w.next);
+    return '<div class="wm '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'"><div class="top"><span>'+esc(cleanTitle(w.title))+'</span><span class="tag">'+esc(w.label)+'</span>'+num+'</div>'+bar+'<div class="meta">'+meta+'</div></div>';}).join('')+'</section>':'')
   +(X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
   /* the projects screen (David, 4.10 — WORK 27d03f59) is its own page: the five answers stay five */
   +'<div class="xrow"><a id="projBtn" href="projects.html">הפרויקטים</a>'
