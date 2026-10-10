@@ -423,6 +423,27 @@ function waitText(r){
   if(w&&typeof w==='object'){var p=[w.ref,w.condition].filter(Boolean).join(' · ');if(p)return p;}
   return (r&&r.blocker)||null;
 }
+/* A WAIT THAT CONTINUES BY ITSELF IS NOT A BLOCK (David, 11.10 01:41 — "למה יש במרכז הבקרה עבודות שלא עולות על
+   המסלול?"). The meter read every WAITING_* row as "חסומה" — a study cycle sleeping until its next wake, a scheduled
+   retry, a package waiting on its own follow-up package all showed as stuck with "חסם: מחזור הלימוד הבא". A wait with a
+   future next_wake_at, or on a follow-up WORK package, is the machine's own cadence: it is said as what it is — when it
+   continues and on what — never as a block. A wait with no wake and nobody to wake it stays "חסומה": that one is real. */
+function selfWaitOf(r,now){
+  if(!r)return null;
+  var st=stateOf(r);
+  if(st!=='WAITING_INTERNAL'&&st!=='WAITING_EXTERNAL'&&st!=='QUEUED')return null;
+  if(needsDavidOf(r))return null;
+  var w=(r.waiting_on&&typeof r.waiting_on==='object')?r.waiting_on:null;
+  var cond=w?String(w.condition||''):'';
+  var at=tms(r.next_wake_at);
+  if(at&&at>(now||Date.now()))return {at:at,text:'ממשיכה מעצמה ב-'+whenHe(at)+(cond?' · '+cond:'')};
+  if(w&&String(w.kind||'').toUpperCase()==='WORK'&&w.ref)return {at:0,text:'ממתינה לחבילת ההמשך '+String(w.ref).slice(0,8)+(cond?' · '+cond:'')};
+  return null;
+}
+function whenHe(ms){
+  var d=new Date(ms);
+  try{return d.toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return d.toISOString().slice(0,16).replace('T',' ');}
+}
 function deriveRow(r){
   var st=stateOf(r);
   var out={state:st,key:st,label:STATE_HE[st]||'מצב לא ידוע',tone:'dim',needs:false,moving:false,stale:false,verified:null,persisted:false,historical:false,note:null};
@@ -549,13 +570,14 @@ function summarize(alive,closed,extraNeeds,now){
    Number(progress) on an OBJECT and every live row read 0% (measured on e8431327: 9 criteria, 0%). */
 var METER_INTERNAL_KINDS={maintenance:1,stabilization:1};
 var METER_ORDER={needs:0,moving:1,blocked:2,queued:3,done:4,failed:5};
-function meterRowOf(r){
+function meterRowOf(r,now){
   if(!r||!r.work_id)return null;
   if(METER_INTERNAL_KINDS[String(r.kind||'').toLowerCase()])return null;
   if(r.object_state==='EXPIRED')return null;
   var st=stateOf(r),d=deriveRow(r),c=closureOf(r),p=progressOf(r);
   var done=st==='DONE',failed=st==='FAILED'||st==='CANCELLED';
-  var blocked=!done&&!failed&&(d.needs||!!r.blocker||st==='WAITING_INTERNAL'||st==='WAITING_EXTERNAL'||st==='WAITING_APPROVAL');
+  var selfWait=(!done&&!failed)?selfWaitOf(r,now):null;
+  var blocked=!done&&!failed&&!selfWait&&(d.needs||!!r.blocker||st==='WAITING_INTERNAL'||st==='WAITING_EXTERNAL'||st==='WAITING_APPROVAL');
   var tone=done?'done':failed?'failed':d.needs?'needs':blocked?'blocked':d.moving?'moving':'queued';
   var label=done?d.label:failed?(STATE_HE[st]||st):d.needs?'דורשת אותך':blocked?'חסומה':d.moving?'בתנועה':st==='RUNNING'?'רצה':'ממתינה';
   var pct=done?100:(p?p.pct:null);
@@ -563,12 +585,12 @@ function meterRowOf(r){
   var ref=(c&&c.delivery&&c.delivery.ref)||(c&&c.product&&c.product.ref)||(r.product_review&&Array.isArray(r.product_review.refs)&&r.product_review.refs[0])||null;
   var product=done?((c&&c.delivery&&c.delivery.result)||r.result||r.outcome||'התוצר לא דווח'):null;
   var submitted=(!done&&!failed&&r.product_review&&r.product_review.submitted_at)?(r.product_review.result||r.product_review.outcome||'התוצר הוגש'):null;
-  var next=(done||failed)?null:(blocked?(d.note||r.blocker||waitText(r)||'החסם לא פורט'):(r.next_step||r.current_step||'הצעד הבא לא דווח'));
+  var next=(done||failed)?null:(blocked?(d.note||r.blocker||waitText(r)||'החסם לא פורט'):selfWait?selfWait.text:(r.next_step||r.current_step||'הצעד הבא לא דווח'));
   if(failed&&!next)next=r.outcome||r.blocker||null;
   return {work_id:r.work_id,title:String(r.objective||r.goal||r.work_id),label:label,pct:pct,gauge:gauge,stage:stageOf(r),tone:tone,order:METER_ORDER[tone],next:next,product:product,ref:ref,submitted:submitted,verified:done?!!d.verified:null};
 }
-function meterRows(alive){
-  return (alive||[]).map(meterRowOf).filter(Boolean).sort(function(a,b){return a.order-b.order;});
+function meterRows(alive,now){
+  return (alive||[]).map(function(r){return meterRowOf(r,now);}).filter(Boolean).sort(function(a,b){return a.order-b.order;});
 }
 /* CC_STATE_END */
 
