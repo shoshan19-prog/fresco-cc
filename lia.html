@@ -779,7 +779,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-06.4';
+const LIA_BUILD='2026-10-11.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1895,6 +1895,8 @@ function kpisFromSnapshot(s){
      never recomputed here; the derivation is kpiModel() (pure, tested). */
   month:monthFactsFromSnapshot(d,asOf,!!cachedAt),
   gross_profit:d.gross_profit||null,
+  /* PROFIT BEFORE TAX (David 11.10): the engine carries the pbt_kpi contract's row (≤24h) or nothing — the card says which */
+  pbt:d.pbt||null,
   verdict:s.verdict||null,
   status:s.verdict?{verdict:s.verdict,snapshot_today:d.today,rate:d.rate,as_of:asOf,cached:!!cachedAt,canonical_source:ENGINE}:null,
  };
@@ -2108,6 +2110,29 @@ function monthFactsFromSnapshot(d,asOf,cached){
   backlog:oo?{count:n(oo.count),remaining:oo.all_verified?n(oo.open_value):null,original:n(oo.original_value),unverified_lines:n(oo.unverified_lines)||0}:null,
   as_of:asOf||null,cached:!!cached};
 }
+function pbtCard(p,fmt,NA){
+ const sgn=(x)=>(x===null||x===undefined)?NA:((x>0?'+':'')+x+'%');
+ const card=(o)=>Object.assign({key:'pbt',label:'רווח לפני מס',value:null,pct:null,sub:'',dot:'',state:'none',detail:[],wide:false},o);
+ if(!p||p.ytd===null||p.ytd===undefined){
+  const why=(p&&p.blockers&&p.blockers[0])||'אין KPI מהכרטסת ב-24 השעות האחרונות — להריץ pbt_kpi';
+  return card({sub:'מהכרטסת לפי חודש · '+NA,detail:[{b:'למה אין מספר',t:why},{b:'מקור',t:'פקודות היומן (FNCTRANS) לפי סיווג החשבונות של פריוריטי; לא רווח תפעולי'}]});
+ }
+ const tag=p.verification==='VERIFIED'?'מאומת':'חלקי';
+ const asof=p.last_entry||(p.as_of?String(p.as_of).slice(0,10):'');
+ return card({value:fmt(p.ytd),pct:(p.pct_ytd!=null?p.pct_ytd+'% מהמכירות נטו':NA)+' · מתחילת '+p.year,
+  sub:'החודש '+fmt(p.month)+(p.pct_month!=null?' ('+p.pct_month+'%)':''),
+  dot:'מול אשתקד '+sgn(p.ytd_vs_ly_pct)+' · '+tag+' · נכון ל-'+asof,
+  state:p.ytd_vs_ly_pct==null?'none':(p.ytd_vs_ly_pct>=0?'ok':(p.ytd_vs_ly_pct>-10?'warn':'bad')),
+  detail:[
+   {b:'מתחילת השנה',t:fmt(p.ytd)+(p.pct_ytd!=null?' · '+p.pct_ytd+'% מהמכירות נטו ('+fmt(p.net_sales_ytd)+')':'')},
+   {b:'החודש ('+(p.month_key||'')+')',t:fmt(p.month)+(p.pct_month!=null?' · '+p.pct_month+'% מהמכירות נטו':'')},
+   {b:'אותה תקופה אשתקד',t:(p.ly_ytd!=null?fmt(p.ly_ytd)+' → '+sgn(p.ytd_vs_ly_pct):NA)+' · החודש אשתקד (אותם ימים) '+(p.ly_month!=null?fmt(p.ly_month)+' → '+sgn(p.month_vs_ly_pct):NA)},
+   {b:'הגדרה',t:'הכנסות + הכנסות אחרות + הכנסות מימון − עלות המכר (קניות ± שינוי מלאי) − הוצאות תפעול − הוצאות מימון; מס מוחרג. לא רווח תפעולי.'},
+   {b:'מקור ומועד',t:'פקודות היומן (FNCTRANS) לפי סיווג החשבונות של פריוריטי, חודש-חודש · רישום אחרון '+asof+' · '+tag},
+   {b:'התאמה לדוח',t:p.gap_pbt!=null?'מול יתרות החשבונות (ACCOUNTS.BALANCE1): פער '+fmt(p.gap_pbt):NA+' — יתרות החשבונות לא נקראו'}]
+   .concat((p.caveats||[]).slice(0,3).map(function(c){return {t:'הסתייגות: '+c,dim:true};}))
+   .concat((p.blockers||[]).slice(0,2).map(function(c){return {t:'חסם: '+c};}))});
+}
 function kpiModel(k,fmt){
  fmt=fmt||kfmtRaw;k=k||{};
  const m=k.month||null,NA='לא מאומת';
@@ -2127,7 +2152,7 @@ function kpiModel(k,fmt){
  if(!m){
   const na=(key,label)=>card({key:key,label:label,sub:'מנוע תמונת המצב לא ענה — רענן',detail:[{t:'מנוע תמונת המצב (fresco_snapshot) לא ענה; כל מספר בכרטיסים מגיע רק ממנו.',dim:true}]});
   return {ok:false,header:'אין תמונת מצב',header2:'מנוע תמונת המצב לא ענה',ref:null,rows:ROWS,more:more,
-   cards:[na('sales','מכירות'),na('forecast','Forecast'),na('gap','פער ל-Baseline'),na('cover','כיסוי הפער'),na('unbilled_due','תעודות לחיוב'),na('backlog','הזמנות פתוחות'),na('vs_ly','מול אשתקד'),na('vs_avg','מול ממוצע')]};
+   cards:[na('sales','מכירות'),na('forecast','Forecast'),na('gap','פער ל-Baseline'),na('cover','כיסוי הפער'),na('unbilled_due','תעודות לחיוב'),na('backlog','הזמנות פתוחות'),na('vs_ly','מול אשתקד'),na('vs_avg','מול ממוצע'),na('pbt','רווח לפני מס')]};
  }
  /* Baseline (David, 5.10): no official target exists; until one is set the historical
     run rate is the Baseline — the same month last year, the engine's own verified field —
@@ -2220,14 +2245,18 @@ function kpiModel(k,fmt){
    detail:[
     {b:'ממוצע חודשי 2025',t:avg2025!==null?fmt(avg2025)+' ('+fmt(m.ly_year.net)+' / 12)':NA},
     {b:'ממוצע חודשי 2026 עד היום',t:avg2026!==null?fmt(avg2026)+' · Forecast מולו '+sgn(delta(fc,avg2026)):NA},
-    {b:'ממוצע 12 חודשים אחרונים',t:NA+' — המנוע מחזיק שנה קודמת מלאה ומתחילת השנה, לא חלון נע'}]})];
+    {b:'ממוצע 12 חודשים אחרונים',t:NA+' — המנוע מחזיק שנה קודמת מלאה ומתחילת השנה, לא חלון נע'}]}),
+  /* PROFIT BEFORE TAX (David, 11.10): from the books — FNCTRANS by Priority's own account classes, month by month,
+     reconciled to ACCOUNTS.BALANCE1. The value is the pbt_kpi contract's number or "לא מאומת" with the exact blocker;
+     never the operating figure, never derived on this screen. */
+  pbtCard(k.pbt,fmt,NA)];
  return {ok:true,
   header:m.name+' · Baseline '+fmt(base),
   header2:wd?'יום עבודה '+wd.done+' מתוך '+wd.total:'',
   ref:(wd?'ימי עבודה '+wd.done+'/'+wd.total:'')+(m.elapsed_days!=null?(wd?' · ':'')+'קלנדרי '+m.elapsed_days+'/'+m.days_in_month:''),
   rows:ROWS,cards:cards,more:more};
 }
-const KPI_CARD_KEYS=['sales','forecast','gap','cover','unbilled_due','backlog','vs_ly','vs_avg','more'];
+const KPI_CARD_KEYS=['sales','forecast','gap','cover','unbilled_due','backlog','vs_ly','vs_avg','pbt','more'];
 /* KPI_MODEL_END */
 function kfmt(n){return privacyOn()?'—':kfmtRaw(n);}
 function kpiAgeText(r){
@@ -2358,6 +2387,7 @@ const CARD_ROUTES=[
  {test:r=>/^contract unbilled\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'unbilled'},
  {test:r=>/^contract receivables\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'receivables'},
  {test:r=>/^contract open_orders\b/.test(((r.sources||[])[0])||''),kind:'kpi',key:'open_orders'},
+ {test:r=>/^contract pbt\b/.test(((r.sources||[])[0])||'')||(r.capabilities_used||[]).includes('pbt_kpi'),kind:'kpi',key:'pbt'},
  /* 12.9: a Pulse / Snapshot answer routes to the status tile — the SAME engine
     (engine:'fresco_snapshot' rides every such answer) the tiles were built from. */
  {test:r=>r.engine==='fresco_snapshot'||(r.capabilities_used||[]).some(c=>c==='fresco_snapshot'||c==='fresco_pulse'),kind:'kpi',key:'status'},

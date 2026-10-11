@@ -51,7 +51,7 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   ok(`${tag}: the header is the reference point`, /FRESCO KPIs אוקטובר · Baseline ₪770K/.test(head), head);
   ok(`${tag}: the body opens on the official pace — working days first, calendar as reference (decision 164)`, await page.$eval('#kpiCard', (x) => /ימי עבודה 3\/21 · קלנדרי 5\/31/.test(x.innerText.replace(/\s+/g, ' '))));
   let tiles = await tileText(page);
-  ok(`${tag}: nine cards drawn (eight + נתונים נוספים), all folded`, tiles.length === 9 && tiles.every((t) => t.open === 'false'), JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
+  ok(`${tag}: ten cards drawn (eight + רווח לפני מס + נתונים נוספים), all folded`, tiles.length === 10 && tiles.every((t) => t.open === 'false'), JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   ok(`${tag}: screen test (David 5.10 evening) — the five numbers without opening a card: 18% מה-Baseline + the pace line · Forecast marked pace-only · 137% כיסוי leads, the raw ₪870K follows`, /₪136K 18% מה-Baseline היינו צריכים להיות ב־14% 4 נק׳ מעל הקצב/.test(tiles[0].text) && /₪953K 124% מה-Baseline תחזית קצב בלבד · ביטחון נמוך/.test(tiles[1].text) && /₪633K 82% חסר/.test(tiles[2].text) && /137% כיסוי ₪870K זמינים מול פער ₪633K/.test(tiles[3].text), tiles.slice(0, 4).map((t) => t.text).join(' || '));
   const over = await page.$$eval('#kpis .kpiTile .p, #kpis .kpiTile .v, #kpis .kpiTile .lbl', (xs) => xs.filter((x) => x.scrollWidth > x.clientWidth + 1).map((x) => x.textContent));
   ok(`${tag}: no single-line text overflows its card (the new wording fits the tile)`, over.length === 0, over.join(' | '));
