@@ -46,7 +46,7 @@ check('ROW CLICKS: the detail (and its form) is a sibling of the row — a click
   assert(/\+\(inline\?'<div class="orgDetail" id="orgDetail_'\+esc\(d\.key\)\+'"><\/div>':''\);/.test(lia), 'sibling');
   assert(/const keyOf=e=>\{const row=e\.target&&e\.target\.closest\?e\.target\.closest\('\.orgItem\[data-org\]'\):null;/.test(lia), 'row-only delegation');
 });
-check('BUILD: bumped', () => { assert(/const LIA_BUILD='2026-10-05\.6';/.test(lia)); });
+check('BUILD: bumped (2026-10-05.6 or later — a floor; the organizer of 11.10 moved it again)', () => { const b = (lia.match(/const LIA_BUILD='([^']+)';/) || [])[1] || ''; assert(b >= '2026-10-05.6', b); });
 
 console.log(`\norganizer map · ${passed} passed · ${failed} failed`);
 process.exit(failed ? 1 : 0);
