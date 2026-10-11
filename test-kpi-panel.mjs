@@ -75,11 +75,22 @@ ok('"נתונים נוספים" (wide, neutral) holds the score, receivables and
 
 // ── the screen test (David): without opening a card ──
 ok('screen test: ₪136K | 18% | 4 above the working-day pace — Forecast ₪953K | 124% — missing ₪633K | 137% covered', sales.value === '₪136K' && sales.pct.startsWith('18%') && sales.dot.startsWith('4 ') && fc.value === '₪953K' && fc.pct.startsWith('124%') && gap.value === '₪633K' && cover.value.startsWith('137%'));
-ok('eight cards, four rows, in the approved order', m.cards.map((c) => c.key).join(',') === 'sales,forecast,gap,cover,unbilled_due,backlog,vs_ly,vs_avg' && m.rows.length === 4);
+ok('nine cards (eight approved 5.10 + רווח לפני מס, David 11.10), four rows, in the approved order', m.cards.map((c) => c.key).join(',') === 'sales,forecast,gap,cover,unbilled_due,backlog,vs_ly,vs_avg,pbt' && m.rows.length === 4, m.cards.map((c) => c.key).join(','));
+{ // PROFIT BEFORE TAX (David 11.10): the engine's pbt_kpi row or the exact blocker — never operating profit, never a number from this screen
+  const none = card('pbt');
+  ok('pbt: no row in the engine → "לא מאומת" with the reason, and the definition says it is not operating profit', none.value === null && /להריץ pbt_kpi/.test(none.detail[0].t) && /לא רווח תפעולי/.test(none.detail[1].t), JSON.stringify(none));
+  const withPbt = M.kpiModel(Object.assign({}, k, { pbt: { ytd: 1234567, month: 98765, ly_ytd: 1100000, ly_month: 90000, pct_ytd: 14.3, pct_month: 12.1, ytd_vs_ly_pct: 12.2, month_vs_ly_pct: 9.7,
+    net_sales_ytd: 8632000, verification: 'PARTIAL', caveats: ['לפני התאמת מלאי'], blockers: [], last_entry: '2026-10-11', as_of: '2026-10-11T08:00:00Z', gap_pbt: 1500, year: 2026, month_key: '2026-10' } }));
+  const c = withPbt.cards.find((x) => x.key === 'pbt');
+  ok('pbt: value = YTD in David\'s notation, % of net sales, the month, last year, verification and the last entry date', c.value === '₪1.23M' && /14\.3% מהמכירות נטו · מתחילת 2026/.test(c.pct) && /החודש ₪98\.8K \(12\.1%\)/.test(c.sub) && /מול אשתקד \+12\.2% · חלקי · נכון ל-2026-10-11/.test(c.dot) && c.state === 'ok', JSON.stringify(c));
+  ok('pbt: the detail carries the definition (tax out, not operating profit), the reconciliation gap and the caveat', c.detail.some((d) => /מס מוחרג/.test(d.t) && /לא רווח תפעולי/.test(d.t)) && c.detail.some((d) => /פער ₪1\.5K/.test(d.t)) && c.detail.some((d) => /הסתייגות: לפני התאמת מלאי/.test(d.t)), JSON.stringify(c.detail));
+  const blocked = M.kpiModel(Object.assign({}, k, { pbt: { ytd: null, blockers: ['חודשים שלא נקראו בזמן: 2026-03'], caveats: [], verification: 'UNKNOWN' } })).cards.find((x) => x.key === 'pbt');
+  ok('pbt: a blocker is shown as the reason, no number', blocked.value === null && /2026-03/.test(blocked.detail[0].t), JSON.stringify(blocked));
+}
 
 // ── when the engine does not answer ──
 const e = M.kpiModel({});
-ok('no engine row → the header says so and every card is grey "לא מאומת" — no number invented', e.header === 'אין תמונת מצב' && e.header2 === 'מנוע תמונת המצב לא ענה' && e.cards.length === 8 && e.cards.every((c) => c.value === null && c.state === 'na'));
+ok('no engine row → the header says so and every card is grey "לא מאומת" — no number invented', e.header === 'אין תמונת מצב' && e.header2 === 'מנוע תמונת המצב לא ענה' && e.cards.length === 9 && e.cards.every((c) => c.value === null && c.state === 'na'));
 const partial = M.kpiModel({ month: Object.assign({}, k.month, { ly_month: null, unbilled: null, backlog: null }) });
 ok('no Baseline → percentages are "לא מאומת", the ₪ facts stay; no pipeline → coverage grey', partial.cards.find((c) => c.key === 'sales').pct === 'לא מאומת' && partial.cards.find((c) => c.key === 'sales').value === '₪136K' && partial.cards.find((c) => c.key === 'cover').state === 'na' && partial.cards.find((c) => c.key === 'cover').value === null && partial.header === 'אוקטובר · Baseline לא מאומת', partial.header);
 
@@ -88,13 +99,13 @@ ok('the section is the SAME panel (id, class, change mark) and the same grid ele
 ok('no second dashboard: one #kpis grid, one renderKpis, one model call', (html.match(/id="kpis"/g) || []).length === 1 && (src.match(/function renderKpis\(\)/g) || []).length === 1 && /const m=kpiModel\(k,kfmt\);RAILS\.kpiModel=m;/.test(src));
 ok('the two-line head is set from the model, and keeps the height the desktop lock measured (two 19.2px lines)', /setKpiHeader\(m\.header,m\.header2\)/.test(src) && /#kpiCard \.railHeadMeta\{[^}]*line-height:19\.2px/.test(html));
 ok('accordion: opening a card folds every other open card in the grid, and remembers one', /if\(!open\)document\.querySelectorAll\('#kpis \.kpiTile\[data-open="true"\]'\)\.forEach/.test(src));
-ok('a chat answer still lands on its card: every CARD_ROUTES kpi key maps to one of the eight (or to נתונים נוספים)', (() => { const keys = [...src.matchAll(/kind:'kpi',key:'([a-z_0-9]+)'/g)].map((x) => x[1]); const alias = src.match(/const KPI_ROUTE_ALIAS=\{([^}]*)\}/)[1]; return keys.length >= 6 && keys.every((key) => M.KPI_CARD_KEYS.includes(key) || new RegExp('\\b' + key + ":'").test(alias)); })());
+ok('a chat answer still lands on its card: every CARD_ROUTES kpi key maps to one of the nine (or to נתונים נוספים)', (() => { const keys = [...src.matchAll(/kind:'kpi',key:'([a-z_0-9]+)'/g)].map((x) => x[1]); const alias = src.match(/const KPI_ROUTE_ALIAS=\{([^}]*)\}/)[1]; return keys.length >= 6 && keys.every((key) => M.KPI_CARD_KEYS.includes(key) || new RegExp('\\b' + key + ":'").test(alias)); })());
 ok('opening a routed card also un-collapses the panel it lives in', /function openKpiDetail\(key\)\{\s*key=KPI_ROUTE_ALIAS\[key\]\|\|key;[\s\S]*?toggleRailSection\('kpiCard'\)/.test(src));
 ok('the phone drawer answers the new keys from the same model', /if\(KPI_CARD_KEYS\.indexOf\(key\)>=0\)\{\s*const m=RAILS\.kpiModel\|\|kpiModel\(RAILS\.kpis\|\|\{\},kfmt\);/.test(src));
 ok('the month facts ride the one engine row (kpisFromSnapshot), copied not recomputed', /month:monthFactsFromSnapshot\(d,asOf,!!cachedAt\),/.test(src));
 ok('a signed value keeps its sign in front — the big number is bidi-isolated (dir=auto)', /<div class="v" dir="auto">/.test(src));
 ok('privacy mode still hides money on the cards', /function kfmt\(n\)\{return privacyOn\(\)\?'—':kfmtRaw\(n\);\}/.test(src));
-ok('the build stamp moved to 5.10', /const LIA_BUILD='2026-10-05\.\d+';/.test(src));
+ok('the build stamp moved to 11.10 (PBT card)', /const LIA_BUILD='2026-10-11\.\d+';/.test(src));
 ok('the fixture is the engine\'s real row of 5.10 14:28Z', F.at === '2026-10-05T14:28:09.797Z' && F.row.invoices.mtd.net === 136174 && F.row.rate.projected_month === 953218 && F.row.rate.day_kind === 'working' && F.row.windows.working_days.total === 21 && /decision 164/.test(F.note_164));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} KPI panel asserts passed`);
