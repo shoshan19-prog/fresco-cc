@@ -79,7 +79,7 @@ ok('every row shows a pointer cursor', rows.every((r) => r.cursor === 'pointer')
 ok('no row carries its own navigation handler (delegated only)', rows.every((r) => r.onclick === null));
 ok('the labels are the eight David listed', rows.map((r) => r.text).join('|') === 'שיווק תוכן|שיווק|פרסום|מכירות|רכש|תפעול|מו"פ|כספים', rows.map((r) => r.text).join('|'));
 const table = await d.page.evaluate(() => Object.keys(ORGANIZATION_ROUTES));
-ok('ORGANIZATION_ROUTES is one table with exactly the eight keys', table.join(',') === KEYS.join(','), table.join(','));
+ok('ORGANIZATION_ROUTES is one table — the eight keys first, then the organizer\'s three (11.10)', table.join(',') === KEYS.concat(['management', 'customers', 'growth']).join(','), table.join(','));
 
 // ── 1 + 5: click the TEXT (not the dot) → same-page expand + scroll + hash ──
 await d.page.click('.orgItem[data-org="rnd"] .nm');

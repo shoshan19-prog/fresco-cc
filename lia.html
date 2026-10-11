@@ -204,6 +204,25 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .orgDetail .wq{margin:2px 0 0 0;padding:0;list-style:none}
 .orgDetail .wq li{margin:0 0 2px;color:var(--dim)}
 .orgDetail .wq li b{font-weight:500;color:var(--txt)}
+.orgItem.h-OK .dot{background:var(--ok,#4caf82)}
+.orgItem.h-ATTENTION .dot,.orgItem.h-NO_DATA .dot{background:var(--warn,#e0a63c)}
+.orgItem.h-BLOCKED .dot{background:#ff6b6b}
+/* THE ORGANIZER (11.10): the overview strip, the KPI table, the severity marks */
+.orgOverview{margin:0 -6px 6px;padding:6px 6px 8px;border-bottom:1px solid var(--line);font-size:11.5px;line-height:1.5;color:var(--dim)}
+.orgOverview p{margin:0 0 3px}.orgOverview b{color:var(--txt);font-weight:600}
+.orgOverview .chip{display:inline-block;margin:0 0 3px 4px;padding:1px 7px;border-radius:9px;font-size:11px;background:var(--card2);color:var(--txt)}
+.orgOverview .chip.h-BLOCKED{background:#ff6b6b;color:#fff}.orgOverview .chip.h-ATTENTION{background:var(--warn,#e0a63c);color:#1a1a1a}
+.orgOverview .wq,.orgDetail .wq{margin:2px 0 0 0;padding:0;list-style:none}
+.sev{display:inline-block;min-width:36px;padding:0 5px;border-radius:7px;font-size:10px;text-align:center;background:var(--card2);color:var(--txt)}
+.sev-HIGH{background:#ff6b6b;color:#fff}.sev-MED{background:var(--warn,#e0a63c);color:#1a1a1a}
+.orgKpi{width:100%;border-collapse:collapse;margin:2px 0 6px;font-size:11px}
+.orgKpi th{text-align:right;font-weight:600;color:var(--txt);padding:2px 3px;border-bottom:1px solid var(--line)}
+.orgKpi td{padding:2px 3px;vertical-align:top;color:var(--dim)}
+.orgKpi td.kl{color:var(--txt)}.orgKpi td.kv{white-space:nowrap;font-variant-numeric:tabular-nums}
+.orgKpi tr.v-NOT_CONNECTED td.kv,.orgKpi tr.v-NOT_CONNECTED td.kver{color:#ff6b6b}
+.orgKpi tr.v-STALE td.kver{color:var(--warn,#e0a63c)}.orgKpi tr.v-VERIFIED td.kver{color:var(--ok,#4caf82)}
+.orgKpi tr.kdef{display:none}.orgKpi tr.kdef.on{display:table-row}
+.orgKpi tbody tr:not(.kdef){cursor:pointer}
 .orgEditBtn{font:inherit;font-size:11.5px;color:var(--acc);background:none;border:0;padding:4px 0;cursor:pointer}
 .orgEditBtn:hover{text-decoration:underline}
 .orgEdit{display:none;margin-top:4px;padding-top:6px;border-top:1px dashed var(--line)}
@@ -779,7 +798,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-11.1';
+const LIA_BUILD='2026-10-11.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1347,7 +1366,7 @@ function greet(){const hh=new Date().getHours();
    ones capFocus and capImportant have always used. No new endpoint, no new
    table, nothing invented: if a number is not in a response, the row is not
    drawn. The rails are desktop-only; the phone stays one column. */
-let RAILS={sales:null,decisions:[],queue:[],kpis:{},org:null};
+let RAILS={sales:null,decisions:[],queue:[],kpis:{},org:null,organizer:null};
 function railsOn(){return window.matchMedia('(min-width:1100px)').matches;}
 function pad2(n){return (n<10?'0':'')+n;}
 function tickClock(){const el=document.getElementById('clock');if(!el)return;
@@ -1865,7 +1884,7 @@ async function loadRails(){
  RAILS.snapshot=s;
  RAILS.kpis=kpisFromSnapshot(s);
  RAILS.kpis.kpi_quotes_to_orders_60d=(kq&&kq.rows&&kq.rows[0]&&kq.rows[0].text)||null;
- RAILS.org=(tw&&tw.departments)||null;
+ RAILS.org=(tw&&tw.departments)||null;RAILS.organizer=(tw&&tw.organizer)||null;
  renderRails();renderKpis();renderOrg();}
 /* The snapshot row → the tile rows the existing helpers already render.
    Every number below is the engine's own field, copied — never recomputed,
@@ -2513,9 +2532,60 @@ const ORGANIZATION_ROUTES={
  operations: {kind:'org',key:'operations'},   // תפעול
  rnd:        {kind:'org',key:'rnd'},          // מו"פ
  capital:    {kind:'org',key:'capital'},      // כספים (finance)
+ /* THE ORGANIZER'S THREE (David, 11.10 — migration 035): the company picture, the customers, the initiatives beyond Fresco */
+ management: {kind:'org',key:'management'},
+ customers:  {kind:'org',key:'customers'},
+ growth:     {kind:'org',key:'growth'},
 };
 const DEPT_LABEL={branding:'שיווק תוכן',marketing:'שיווק',advertising:'פרסום',sales:'מכירות',
- purchasing:'רכש',operations:'תפעול',rnd:'מו"פ',capital:'כספים'};
+ purchasing:'רכש',operations:'תפעול',rnd:'מו"פ',capital:'כספים',management:'הנהלה',customers:'לקוחות',growth:'יוזמות צמיחה'};
+/* THE ORGANIZER (David, 11.10 — "מערכת הניהול הארגונית של LIA, לא לוח משימות"): the tower's `organizer` block and the
+   per-department kpis / health / exceptions / proposed_next / history / next. Health and verification words come from
+   the server (HEALTH_HE / VERIFICATION_HE) — the screen never invents a state; a KPI the server marks NOT_CONNECTED is
+   shown as לא מחובר, never 0. What David sees first is the overview: exceptions, decisions, the connection census. */
+const ORG_HEALTH_HE={OK:'תקין',ATTENTION:'דורש תשומת לב',BLOCKED:'חסום',NO_DATA:'אין נתון'};
+const ORG_VERIF_HE={VERIFIED:'מאומת',STALE:'ישן',UNVERIFIED:'חלקי',NOT_CONNECTED:'לא מחובר'};
+const ORG_SCOPE_HE={fresco:'פרסקו',matriya:'מטריה',ventures:'יוזמות',all:'משותף'};
+const ORG_SEV_HE={HIGH:'גבוה',MED:'בינוני',LOW:'נמוך'};
+function orgDate(iso){if(!iso)return '';const d=new Date(iso);if(isNaN(d))return String(iso).slice(0,10);return d.toLocaleDateString('he-IL',{day:'numeric',month:'numeric'})+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});}
+function orgOverviewHtml(){
+ const o=RAILS.organizer&&RAILS.organizer.overview;
+ if(!o){return RAILS.organizer&&RAILS.organizer.error?'<div class="orgOverview"><p class="dim">תמונת העל לא חושבה: '+esc(RAILS.organizer.error)+'</p></div>':'';}
+ const h=o.health||{},k=o.kpis||{};
+ const chips=['BLOCKED','ATTENTION','NO_DATA','OK'].filter(x=>h[x]).map(x=>'<span class="chip h-'+x+'">'+esc(ORG_HEALTH_HE[x])+' '+h[x]+'</span>').join('');
+ const census='<p class="src">KPI מחוברים '+esc(String((k.verified||0)+(k.stale||0)+(k.unverified||0)))+' מתוך '+esc(String(k.total||0))
+  +' · מאומתים '+esc(String(k.verified||0))+' · ישנים '+esc(String(k.stale||0))+' · חלקיים '+esc(String(k.unverified||0))+' · לא מחוברים '+esc(String(k.not_connected||0))
+  +(o.scopes?' · פרסקו '+o.scopes.fresco+' · מטריה '+o.scopes.matriya+' · יוזמות '+o.scopes.ventures:'')+'</p>';
+ const dec=(o.decisions||[]).length?'<p class="mf"><b>החלטות שרק דוד מכריע:</b></p><ul class="wq">'+(o.decisions||[]).map(d=>'<li><b>'+esc(d.dept_name||d.dept)+'</b> — '+esc(d.decision)+'</li>').join('')+'</ul>':'';
+ const ex=(o.exceptions||[]).slice(0,8);
+ const exh=ex.length?'<p class="mf"><b>חריגים (החמורים קודם):</b></p><ul class="wq">'+ex.map(e=>'<li><span class="sev sev-'+esc(e.severity)+'">'+esc(ORG_SEV_HE[e.severity]||e.severity)+'</span> <b>'+esc(e.dept_name||e.dept)+'</b> — '+esc(e.text)+(e.action?' <span class="src">← '+esc(e.action)+'</span>':'')+'</li>').join('')+'</ul>':'<p class="dim">אין חריגים פתוחים.</p>';
+ return '<div class="orgOverview" id="orgOverview"><p class="mf"><b>תמונת על</b> <span class="src">'+esc(orgDate(o.as_of))+'</span></p><p>'+chips+'</p>'+census+dec+exh+'</div>';
+}
+function orgKpiTable(d){
+ const list=d.kpis||[];
+ if(!list.length)return '';
+ const rows=list.map(k=>{const v=k.verification||'NOT_CONNECTED';
+  return '<tr class="v-'+esc(v)+'"><td class="kl">'+esc(k.label)+'</td><td class="kv">'+esc(v==='NOT_CONNECTED'?'לא מחובר':String(k.display||''))+'</td>'
+   +'<td class="kver">'+esc(ORG_VERIF_HE[v]||v)+'</td><td class="kas">'+esc(k.as_of?orgDate(k.as_of):'—')+'</td><td class="kwin">'+esc(k.window||'')+'</td></tr>'
+   +'<tr class="kdef"><td colspan="5"><span class="src">'+esc(k.formula||'')+' · מקור: '+esc(k.source||'')+(k.note?' · '+esc(k.note):'')+'</span></td></tr>';}).join('');
+ return '<p class="mf"><b>מדדים:</b> <span class="src">(ערך · אימות · נכון ל · חלון; לחיצה על שורה פותחת את ההגדרה)</span></p><table class="orgKpi"><thead><tr><th>מדד</th><th>ערך</th><th>אימות</th><th>נכון ל</th><th>חלון</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+function orgExceptionsHtml(d){
+ const ex=d.exceptions||[];
+ if(!ex.length)return '<p class="mf"><b>חריגים:</b> אין</p>';
+ return '<p class="mf"><b>חריגים, חסמים ותלויות:</b></p><ul class="wq">'+ex.map(e=>'<li><span class="sev sev-'+esc(e.severity)+'">'+esc(ORG_SEV_HE[e.severity]||e.severity)+'</span> '+esc(e.text)+(e.action?' <span class="src">← '+esc(e.action)+'</span>':'')+'</li>').join('')+'</ul>';
+}
+function orgNextHtml(d){
+ const n=d.next||{};const nd='<span class="nd">'+NOT_DEFINED+'</span>';const val=v=>(v===null||v===undefined||String(v).trim()==='')?nd:esc(String(v));
+ return '<p class="mf"><b>הפעולה הבאה:</b> '+val(n.action)+' · <b>מבצע:</b> '+val(n.executor)+' · <b>מבחן הצלחה:</b> '+val(n.success_test)+'</p>'
+  +'<p class="mf"><b>אחראי ביצועי:</b> '+val(n.exec_owner)+' · <b>תלויות:</b> '+val(n.dependencies)+'</p>'
+  +(d.proposed_next?'<p class="mf"><b>ליה מציעה:</b> '+esc(d.proposed_next)+' <span class="src">(מהחריג העליון — הצעה, לא נכתב לרישום)</span></p>':'');
+}
+function orgHistoryHtml(d){
+ const h=d.history||[];
+ if(!h.length)return '';
+ return '<p class="mf"><b>היסטוריה:</b></p><ul class="wq">'+h.slice(0,8).map(x=>'<li><span class="src">'+esc(orgDate(x.at))+'</span> '+esc(x.text||x.kind)+(x.work_id?' <span class="src">'+esc(x.work_id)+'</span>':'')+'</li>').join('')+'</ul>';
+}
 const ORG_STATE_HE={LIVE:'חי',EMPTY:'ריק',HIDDEN:'קיים ולא חשוף',BLOCKED:'חסום',MISSING:'חסר'};
 let ORG_OPEN='';
 function orgHashKey(){const m=/^#org\/([a-z_]+)$/.exec(location.hash||'');return m?m[1]:'';}
@@ -2579,6 +2649,11 @@ function orgDetailLines(key){
   if(f==='kpi'&&d.registry&&d.registry.kpi_label)html='<span class="kv"><b>'+esc(d.registry.kpi_label)+'</b></span>'+(html===nd?'':' · '+html);
   lines.push('<p class="mf mf-'+f+'"><b>'+label+':</b> '+html+'</p>');
  }
+ /* THE ORGANIZER (11.10): scope · the KPI table · exceptions · the next action with its executor and success test · history */
+ if(d.health){
+  lines.push('<p class="mf"><b>בריאות מחושבת:</b> '+esc(ORG_HEALTH_HE[d.health]||d.health)+(d.scope?' · <b>תחום:</b> '+esc(ORG_SCOPE_HE[d.scope]||d.scope):'')+'</p>');
+  lines.push(orgKpiTable(d));lines.push(orgExceptionsHtml(d));lines.push(orgNextHtml(d));lines.push(orgHistoryHtml(d));
+ }
  if(d.note)lines.push('<p class="dim">'+esc(d.note)+'</p>');
  if((d.cmds||[]).length)lines.push('<p class="cmds">'+esc(d.cmds.join(' · '))+'</p>');
  lines.push(orgEditHtml(key,d));
@@ -2589,9 +2664,12 @@ const WORK_STATUS_HE={QUEUED:'בתור',RUNNING:'בביצוע',RETRYING:'ניס�
    prefilled with what the registry holds (a seed included, so he edits rather than retypes) and posts department_set —
    a door that answers only to his principal; the server reads the row back before it says "נשמר". */
 const ORG_EDIT_FIELDS=[['goal','מטרה','textarea'],['owner','אחראי','input'],['kpi_label','המדד, במילים שלך','input'],['next_action','הפעולה הבאה','input'],['blocker','חסם שאתה יודע עליו','input']];
+/* the organizer's four (11.10, migration 035): the executing owner, who runs the next action, what proves it, what it waits on */
+const ORG_EDIT_FIELDS_ORG=[['exec_owner','אחראי ביצועי','input'],['next_executor','מי מבצע את הפעולה הבאה (ליה / דוד / אריק…)','input'],['success_test','מבחן ההצלחה של הפעולה הבאה','input'],['dependencies','תלויות — על מה זה ממתין','input']];
+const ORG_EDIT_ALL=ORG_EDIT_FIELDS.concat(ORG_EDIT_FIELDS_ORG);
 function orgEditHtml(key,d){
  const r=(d&&d.registry)||{};
- const fields=ORG_EDIT_FIELDS.map(([f,label,tag])=>'<label for="orgEdit_'+esc(key)+'_'+f+'">'+label+'</label>'
+ const fields=ORG_EDIT_ALL.map(([f,label,tag])=>'<label for="orgEdit_'+esc(key)+'_'+f+'">'+label+'</label>'
   +(tag==='textarea'?'<textarea id="orgEdit_'+esc(key)+'_'+f+'" name="'+f+'" rows="2">'+esc(String(r[f]||''))+'</textarea>'
    :'<input id="orgEdit_'+esc(key)+'_'+f+'" name="'+f+'" type="text" value="'+esc(String(r[f]||''))+'">')).join('');
  return '<p><button type="button" class="orgEditBtn" data-orgedit="'+esc(key)+'" aria-expanded="false" aria-controls="orgEdit_'+esc(key)+'">'
@@ -2609,14 +2687,14 @@ function toggleOrgEdit(key,open){
 async function saveOrgEdit(form){
  const key=form.getAttribute('data-key');const res=form.querySelector('.res');const btn=form.querySelector('button[type=submit]');
  const body={action:'department_set',key};
- for(const [f] of ORG_EDIT_FIELDS){const el=form.elements[f];if(el)body[f]=String(el.value||'').trim();}
+ for(const [f] of ORG_EDIT_ALL){const el=form.elements[f];if(el)body[f]=String(el.value||'').trim();}
  if(btn)btn.disabled=true;if(res)res.textContent='שומר…';
  try{
   const x=await ccApi(body);
   if(!x||!x.ok){if(res)res.textContent='לא נשמר: '+((x&&(x.reason||x.code))||'שגיאה');return;}
   /* the map is re-read from the tower — the card shows what the server holds, never what the form said */
   const tw=await ccApi({action:'tower'}).catch(()=>null);
-  if(tw&&tw.departments){RAILS.org=tw.departments;renderOrg();renderOrgMobile();
+  if(tw&&tw.departments){RAILS.organizer=tw.organizer||null;RAILS.org=tw.departments;renderOrg();renderOrgMobile();
    if(railsOn())showOrgInline(key,false);else openDrawer(orgDetailLines(key).join(''),DEPT_LABEL[key]||key);}
   const r2=document.querySelector('#orgEdit_'+key+' .res');if(r2)r2.textContent='נשמר · המפה עודכנה';
  }catch(e){if(res)res.textContent='לא נשמר: '+(e&&e.message||'שגיאה');}
@@ -2628,6 +2706,10 @@ document.addEventListener('click',e=>{
  const b=t.closest('[data-orgedit]');if(b){e.preventDefault();toggleOrgEdit(b.getAttribute('data-orgedit'));return;}
  const c=t.closest('[data-orgcancel]');if(c){e.preventDefault();toggleOrgEdit(c.getAttribute('data-orgcancel'),false);}
 });
+document.addEventListener('click',e=>{
+ const tr=e.target&&e.target.closest?e.target.closest('table.orgKpi tbody tr:not(.kdef)'):null;if(!tr)return;
+ const def=tr.nextElementSibling;if(def&&def.classList.contains('kdef'))def.classList.toggle('on');
+});
 document.addEventListener('submit',e=>{
  const f=e.target&&e.target.closest?e.target.closest('form.orgEdit'):null;if(!f)return;
  e.preventDefault();saveOrgEdit(f);
@@ -2636,10 +2718,11 @@ document.addEventListener('submit',e=>{
    the row carries its route id, never its own navigation. */
 function orgRowHtml(d){
  const m=(d.metrics||[])[0];
- const metTxt=m?(m.value+' '+m.label):'';
+ /* the organizer's computed health leads the row (11.10); the first metric stays when the server carries no health */
+ const metTxt=d.health?(ORG_HEALTH_HE[d.health]||d.health)+((d.exceptions||[]).length?' · '+(d.exceptions||[]).length+' חריגים':''):(m?(m.value+' '+m.label):'');
  const r=ORGANIZATION_ROUTES[d.key]||{kind:'org',key:d.key};
  const inline=r.kind==='org'&&railsOn();
- return '<div class="orgItem s-'+esc(d.state||'')+'" data-org="'+esc(d.key)+'" role="button" tabindex="0"'
+ return '<div class="orgItem s-'+esc(d.state||'')+(d.health?' h-'+esc(d.health):'')+'" data-org="'+esc(d.key)+'" role="button" tabindex="0"'
   +(inline?' aria-expanded="false" aria-controls="orgDetail_'+esc(d.key)+'"':'')
   +'><span class="dot"></span>'
   +'<span class="nm">'+esc(DEPT_LABEL[d.key]||d.name)+'</span>'
@@ -2653,7 +2736,7 @@ function renderOrgMobile(){
  const box=document.getElementById('orgMobile'),el=document.getElementById('orgListMobile');if(!box||!el)return;
  const list=RAILS.org;
  if(railsOn()||!list||!list.length){box.style.display='none';return;}
- el.innerHTML=list.map(orgRowHtml).join('');
+ el.innerHTML=orgOverviewHtml()+list.map(orgRowHtml).join('');
  /* the card never squeezes the chat out (11.9): collapsed state is the phone's own choice, remembered */
  let collapsed=false;try{collapsed=localStorage.getItem('rail:orgMobile')==='1';}catch(e){}
  box.setAttribute('data-collapsed',collapsed?'true':'false');
@@ -2670,14 +2753,14 @@ function toggleOrgMobile(){
 async function loadOrgMobile(){
  if(railsOn()||!CODE)return;
  const tw=await ccApi({action:'tower'}).catch(()=>null);
- if(tw&&tw.departments)RAILS.org=tw.departments;
+ if(tw&&tw.departments){RAILS.org=tw.departments;RAILS.organizer=tw.organizer||null;}
  renderOrgMobile();
 }
 function renderOrg(){
  const el=document.getElementById('orgList');if(!el)return;
  const list=RAILS.org;
  if(!list||!list.length){el.innerHTML='<p class="railEmpty">מצב הארגון עדיין לא נטען.</p>';return;}
- el.innerHTML=list.map(orgRowHtml).join('');
+ el.innerHTML=orgOverviewHtml()+list.map(orgRowHtml).join('');
  /* the rail re-renders every refresh — what the URL says is open stays open */
  const k=orgHashKey();
  if(k&&ORGANIZATION_ROUTES[k]&&ORGANIZATION_ROUTES[k].kind==='org')showOrgInline(k,false);
@@ -2700,7 +2783,7 @@ function showOrgInline(key,scroll){
 async function ensureOrgData(){
  if(RAILS.org&&RAILS.org.length)return;
  const tw=await ccApi({action:'tower'}).catch(()=>null);
- RAILS.org=(tw&&tw.departments)||null;
+ RAILS.org=(tw&&tw.departments)||null;RAILS.organizer=(tw&&tw.organizer)||null;
 }
 function collapseOrgInline(){
  document.querySelectorAll('.orgItem[data-open="true"]').forEach(r=>{
