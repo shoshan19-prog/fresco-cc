@@ -470,6 +470,8 @@ function deriveRow(r){
     out.note=waitText(r);
   }else if(st==='WAITING_INTERNAL'){
     out.note=r.blocker||(r.liveness&&r.liveness.why)||waitText(r)||null;out.persisted=!!r.blocker;
+    /* 14.10: a product that ADMITS it is unmet is not a decision for David (park_kind from the server) — it is open work or an external block, said as such */
+    if(r.park_kind==='PRODUCT_UNMET'){out.key='PRODUCT_UNMET';out.label='התוצר חלקי — המשימה פתוחה';out.tone='dim';out.note=out.note||'התוצר מודה שחלק מהדרישה לא הושג; ממשיכה או חסומה על גורם חיצוני';}
   }else{
     out.key='UNKNOWN';out.label='מצב לא ידוע';out.note='הסטטוס השמור: '+String((r&&r.status)||'—');
   }
