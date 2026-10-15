@@ -23,7 +23,7 @@ const D = [
     registry: { goal: 'לייצר ולהפעיל כל ערוץ חוקי שמחבר את פרסקו לעולם — כדי שהזדמנויות יגיעו אלינו ושפרסקו תשפיע מוקדם במחזור-החיים (מפרט לפני רכש).', source: SEED } },
   { key: 'advertising', name: 'פרסום', state: 'HIDDEN', metrics: [M('קמפיינים', 'לא-מדיד', 'אין מקור — מנוע פרסום לא קיים')], cmds: ['wp'], ceo: 'גישה לחשבונות', registry: { source: 'seed' } },
   { key: 'sales', name: 'מכירות', state: 'LIVE', metrics: [M('הזמנות החודש', 25, 'ORDERS · קריאה חיה'), M('מיילים באינדקס', 73377, 'mail_index'), M('אנשים בגרף', 602, 'actor')], cmds: ['dormant', 'retention', 'priority'], ceo: 'האצלה לסוכן',
-    registry: { goal: 'להפוך קשרים קיימים ונכנסים לעסקאות: רדומים, מעקבים, המרות — הכסף הקרוב ביותר.', owner: 'אריק', kpi_label: '₪ מיוחס החודש', next_action: 'לסגור את שלוש הצעות המחיר הפתוחות מעל ₪50K', source: 'david' },
+    registry: { goal: 'להפוך קשרים קיימים ונכנסים לעסקאות: רדומים, מעקבים, המרות — הכסף הקרוב ביותר.', owner: 'אריק', kpi_label: '₪ מיוחס החודש', next_action: 'לסגור את שלוש הצעות המחיר הפתוחות מעל ₪50K', source: 'david', review_at: '2099-10-22', budget: '₪120,000 לרבעון — מייל אורנה 14.10', updated_by: 'lia' }, health: 'ATTENTION', scope: 'fresco',
     aw: AW(2, [['2f325a31', 'WAITING_APPROVAL', 'תאחדי את ההמייל למילטוניה ותהקשי את שני הפריסות למניפה ולכרטיס'], ['264acac9', 'WAITING_APPROVAL', 'תבדקי במייל שלי בגרנונאת הבקשה למניפות בצורה ברורה']]) },
   { key: 'purchasing', name: 'רכש', state: 'LIVE', metrics: [M('ספקים בפנקס', 1508, 'supplier · SUPPLIERS מפריוריטי'), M('מחירונים', 17, 'supplier_pricelist · PRICELIST מפריוריטי')], cmds: ['import_independence'], ceo: null, registry: { source: 'seed' } },
   { key: 'operations', name: 'ייצור ותפעול', state: 'LIVE', metrics: [M('פריטים בקטלוג השרפוינט', 81371, 'sharepoint_catalog'), M('תעודות משלוח', 43580, 'delivery_note · DOCUMENTS_D'), M('ריצות סנכרון', 4, 'sync_run')], cmds: ['sync'], ceo: null,
@@ -82,6 +82,8 @@ async function open(viewport, tag) {
   ok(`${tag}: the sales card carries David's row — goal, owner, KPI in his words, next action`, /מטרה: להפוך קשרים/.test(det) && /אחראי: אריק/.test(det) && /KPI: ₪ מיוחס החודש/.test(det) && /הפעולה הבאה: לסגור את שלוש/.test(det), det.slice(0, 400));
   ok(`${tag}: the department's queue lists its packages in Hebrew`, /2 חבילות/.test(det) && /ממתינה לאישורך · 2f325a31/.test(det), det.slice(0, 600));
   ok(`${tag}: a row David filled offers "עדכון המחלקה"`, /עדכון המחלקה ✎/.test(det));
+  /* 15.10 (migration 036): the review date and the budget, with who wrote them */
+  ok(`${tag}: the card shows the next review date and the budget, and that LIA wrote them`, /תאריך בדיקה: 22\.10\.2099/.test(det) && /תקציב: ₪120,000 לרבעון/.test(det) && /עודכן ע״י ליה/.test(det), det.slice(0, 900));
   await page.screenshot({ path: OUT + tag + '-1-sales-card.png', clip: { x: 0, y: 0, width: 1440, height: 900 } });
   const rail = await page.$('#railL') || await page.$('#orgWrap');
   if (rail) await rail.screenshot({ path: OUT + tag + '-2-rail.png' });

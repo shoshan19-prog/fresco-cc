@@ -2576,9 +2576,12 @@ function orgExceptionsHtml(d){
  return '<p class="mf"><b>חריגים, חסמים ותלויות:</b></p><ul class="wq">'+ex.map(e=>'<li><span class="sev sev-'+esc(e.severity)+'">'+esc(ORG_SEV_HE[e.severity]||e.severity)+'</span> '+esc(e.text)+(e.action?' <span class="src">← '+esc(e.action)+'</span>':'')+'</li>').join('')+'</ul>';
 }
 function orgNextHtml(d){
- const n=d.next||{};const nd='<span class="nd">'+NOT_DEFINED+'</span>';const val=v=>(v===null||v===undefined||String(v).trim()==='')?nd:esc(String(v));
+ const n=d.next||{};const r=d.registry||{};const nd='<span class="nd">'+NOT_DEFINED+'</span>';const val=v=>(v===null||v===undefined||String(v).trim()==='')?nd:esc(String(v));
  return '<p class="mf"><b>הפעולה הבאה:</b> '+val(n.action)+' · <b>מבצע:</b> '+val(n.executor)+' · <b>מבחן הצלחה:</b> '+val(n.success_test)+'</p>'
   +'<p class="mf"><b>אחראי ביצועי:</b> '+val(n.exec_owner)+' · <b>תלויות:</b> '+val(n.dependencies)+'</p>'
+  /* 15.10 (migration 036): the review date and the budget — LIA writes them too (organizer_update), with the source on the ledger */
+  +'<p class="mf mf-review"><b>תאריך בדיקה:</b> '+(r.review_at?esc(String(r.review_at).slice(0,10).split('-').reverse().join('.'))+(String(r.review_at).slice(0,10)<new Date().toISOString().slice(0,10)?' <span class="src">(עבר)</span>':''):nd)
+  +' · <b>תקציב:</b> '+val(r.budget)+(r.updated_by?' <span class="src">· עודכן ע״י '+esc(r.updated_by==='lia'?'ליה':r.updated_by==='david'?'דוד':String(r.updated_by).slice(0,24))+'</span>':'')+'</p>'
   +(d.proposed_next?'<p class="mf"><b>ליה מציעה:</b> '+esc(d.proposed_next)+' <span class="src">(מהחריג העליון — הצעה, לא נכתב לרישום)</span></p>':'');
 }
 function orgHistoryHtml(d){
@@ -2666,12 +2669,14 @@ const WORK_STATUS_HE={QUEUED:'בתור',RUNNING:'בביצוע',RETRYING:'ניס�
 const ORG_EDIT_FIELDS=[['goal','מטרה','textarea'],['owner','אחראי','input'],['kpi_label','המדד, במילים שלך','input'],['next_action','הפעולה הבאה','input'],['blocker','חסם שאתה יודע עליו','input']];
 /* the organizer's four (11.10, migration 035): the executing owner, who runs the next action, what proves it, what it waits on */
 const ORG_EDIT_FIELDS_ORG=[['exec_owner','אחראי ביצועי','input'],['next_executor','מי מבצע את הפעולה הבאה (ליה / דוד / אריק…)','input'],['success_test','מבחן ההצלחה של הפעולה הבאה','input'],['dependencies','תלויות — על מה זה ממתין','input']];
-const ORG_EDIT_ALL=ORG_EDIT_FIELDS.concat(ORG_EDIT_FIELDS_ORG);
+/* 15.10 (migration 036): the next review date and the department budget */
+const ORG_EDIT_FIELDS_036=[['review_at','תאריך הבדיקה הבא','date'],['budget','תקציב (סכום · תקופה · מקור)','input']];
+const ORG_EDIT_ALL=ORG_EDIT_FIELDS.concat(ORG_EDIT_FIELDS_ORG,ORG_EDIT_FIELDS_036);
 function orgEditHtml(key,d){
  const r=(d&&d.registry)||{};
  const fields=ORG_EDIT_ALL.map(([f,label,tag])=>'<label for="orgEdit_'+esc(key)+'_'+f+'">'+label+'</label>'
   +(tag==='textarea'?'<textarea id="orgEdit_'+esc(key)+'_'+f+'" name="'+f+'" rows="2">'+esc(String(r[f]||''))+'</textarea>'
-   :'<input id="orgEdit_'+esc(key)+'_'+f+'" name="'+f+'" type="text" value="'+esc(String(r[f]||''))+'">')).join('');
+   :'<input id="orgEdit_'+esc(key)+'_'+f+'" name="'+f+'" type="'+(tag==='date'?'date':'text')+'" value="'+esc(String(tag==='date'?String(r[f]||'').slice(0,10):(r[f]||'')))+'">')).join('');
  return '<p><button type="button" class="orgEditBtn" data-orgedit="'+esc(key)+'" aria-expanded="false" aria-controls="orgEdit_'+esc(key)+'">'
   +(r.source==='david'?'עדכון המחלקה':'מלא את המחלקה')+' ✎</button></p>'
   +'<form class="orgEdit" id="orgEdit_'+esc(key)+'" data-key="'+esc(key)+'" autocomplete="off">'+fields
