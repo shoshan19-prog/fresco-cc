@@ -72,8 +72,17 @@ h1{font-size:18px;margin:0}
 const API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/lia?api=1';
 const CC='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 let CODE=localStorage.getItem('yaeli_code')||'';
-let HIST=[];            // [{q,a}] — this device's short memory, sent with each ask
+let HIST=[];            // [{q,a}] — the last exchanges, sent with each ask
 let INFLIGHT=0;         // ask-in-a-row (David, 1.9): questions never wait for each other
+/* MEMORY UNDER ARIK'S OWN NAME (David, 18.10 — the Arik pilot). The conversation is no longer this tab's
+   memory: every question and answer is stored on the server under the identity of the code that sent it
+   (chat_sync + the durable kernel turn), so it survives a reload, follows Arik across devices, and never
+   appears in David's conversation list — the server files it by user_id, not by this page. */
+let CONV='';
+const DEVICE=(()=>{let d='';try{d=localStorage.getItem('yaeli_device')||'';}catch(e){}
+ if(!/^[0-9a-zA-Z-]{8,64}$/.test(d)){d='yd-'+Math.random().toString(36).slice(2,12)+Date.now().toString(36);try{localStorage.setItem('yaeli_device',d);}catch(e){}}
+ return d;})();
+function rid(p){return p+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);}
 
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 async function post(url,body){
@@ -98,6 +107,32 @@ async function login(){
 function boot(){
  document.getElementById('login').style.display='none';
  document.getElementById('app').style.display='flex';
+ restore();
+}
+/* the stored conversation comes back on every boot — the server's copy, not the tab's */
+async function restore(){
+ try{
+  const {status,json}=await post(CC,{action:'chat_sync',device_id:DEVICE,messages:[]});
+  if(status!==200||!json||!json.conversation_id)return;
+  CONV=String(json.conversation_id);
+  const msgs=(json.messages||[]).filter(m=>m&&m.content);
+  if(!msgs.length)return;
+  document.getElementById('thread').innerHTML='';
+  let q='';
+  for(const m of msgs){
+   bubble(m.role==='me'?'me':'her',m.content);
+   if(m.role==='me')q=m.content;else if(q){HIST.push({q,a:m.content});q='';}
+  }
+  if(HIST.length>12)HIST=HIST.slice(-12);
+ }catch(e){/* history is a help — the page still asks without it */}
+}
+async function storeMine(text){
+ if(!CONV)await restore();
+ if(!CONV)return false;
+ const {status,json}=await post(CC,{action:'chat_sync',device_id:DEVICE,conversation_id:CONV,
+  messages:[{message_id:rid('ym'),role:'me',content:text,created_at:new Date().toISOString()}]});
+ if(status===200&&json&&json.conversation_id)CONV=String(json.conversation_id);
+ return status===200&&!!(json&&json.accepted);
 }
 
 function bubble(role,text,meta){
@@ -127,8 +162,16 @@ async function send(text){
  const w=bubble('her','חושבת…');
  INFLIGHT++;
  try{
-  const {status,json}=await post(CC,{action:'kernel',body:t,history:HIST.slice(-6)});
+  const saved=await storeMine(t).catch(()=>false);
+  const turn=rid('yt');
+  const ask={action:'kernel',body:t,history:HIST.slice(-6),turn_id:turn,conversation_id:CONV,device_id:DEVICE};
+  let {status,json}=await post(CC,saved&&CONV?ask:{action:'kernel',body:t,history:HIST.slice(-6)});
   if(status===401){localStorage.removeItem('yaeli_code');location.reload();return;}
+  /* a long answer is still being worked on server-side: the same turn_id is asked again, and it never runs twice */
+  for(let i=0;status===202&&i<60;i++){
+   await new Promise(r=>setTimeout(r,4000));
+   ({status,json}=await post(CC,ask));
+  }
   const r=json||{};
   const ans=String(r.answer||r.text||'לא התקבלה תשובה.');
   const src=(r.sources||[]).length;
