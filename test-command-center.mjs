@@ -139,7 +139,8 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   eq('LIA\'s own engineering kinds are תפעול', B({ work_id: '9' + '0'.repeat(31), kind: 'engineering' }), 'operations');
   eq('a package nobody claims has no domain — overview only', B({ work_id: '9' + '0'.repeat(31), kind: 'build', objective: 'מכירות מכירות מכירות' }), '');
   eq('a package can belong to two domains', B({ work_id: 'aaaaaaaa' + '0'.repeat(24), kind: 'maintenance' }), 'sales,operations');
-  ok('the five domains, in order, with Hebrew names', S.DOMAINS.map((d) => d.key + ':' + d.he).join(' ') === 'overview:סקירה sales:מכירות marketing:שיווק matriya:מטריאה operations:תפעול');
+  ok('the six domains, in order, with Hebrew names — management reachable (18.10)', S.DOMAINS.map((d) => d.key + ':' + d.he).join(' ') === 'overview:סקירה sales:מכירות marketing:שיווק matriya:מטריאה operations:תפעול management:הנהלה');
+  ok('the management tab gathers the organizer\'s three departments', JSON.stringify(S.DOMAINS.find((d) => d.key === 'management').depts) === JSON.stringify(['management', 'customers', 'growth']));
 }
 
 // ── ordering and the summary ──────────────────────────────────────────────
