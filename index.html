@@ -309,7 +309,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-19.1';
+var CC_BUILD='2026-10-19.2';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -713,7 +713,7 @@ function loadExec(){
   api({action:'state'}).then(function(st){X.appr=(st&&Array.isArray(st.approvals))?st.approvals:[];renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   cap('alerts').then(function(x){X.alerts=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   /* 19.10 — mail waiting for David's approval (outbound_pending): it was in the queue and on no screen */
-  cap('outbound_pending').then(function(x){X.drafts=rowsOf(x).filter(function(d){return !d.decided_at&&String(d.status||'PENDING').toUpperCase()==='PENDING';});renderExec();render();}).catch(function(){X.drafts=[];renderExec();});
+  cap('outbound_pending').then(function(x){X.drafts=pendingDrafts(rowsOf(x));renderExec();render();}).catch(function(){X.drafts=[];renderExec();});
 }
 function renderExec(){
   var el=B('#exec');if(!el)return;
@@ -1224,6 +1224,11 @@ function ackAlert(id,btn){
 }
 /* David's decision on a queued mail (19.10). "אשר ושלח" is his sentence; the server sends through Graph, verifies it in
    Sent Items and returns what actually happened — that, not this button, is what the card then says. */
+/* only a live decision: undecided, still PENDING, and prepared in the last 7 days — older drafts stay in the queue
+   (nothing is deleted) but a week-old letter is not "what needs David now" (19.10: 18 August–October drafts surfaced at once) */
+var DRAFT_FRESH_DAYS=7;
+function pendingDrafts(rows){var lim=Date.now()-DRAFT_FRESH_DAYS*864e5;
+  return (rows||[]).filter(function(d){return !d.decided_at&&String(d.status||'PENDING').toUpperCase()==='PENDING'&&tms(d.created_at)>=lim;});}
 function decideDraft(id,dec,btn){
   var d=(X.drafts||[]).filter(function(x){return String(x.draft_id)===String(id);})[0];if(!d)return;
   var cm=(d.commitments||[]).length>0;
@@ -1238,7 +1243,7 @@ function decideDraft(id,dec,btn){
   cap('outbound_decide',args).then(function(x){
     var r=rowsOf(x)[0]||{};
     if(res)res.textContent=String((x&&x.source)||r.result||r.status||'בוצע');
-    return cap('outbound_pending').then(function(y){X.drafts=rowsOf(y).filter(function(q){return !q.decided_at&&String(q.status||'PENDING').toUpperCase()==='PENDING';});renderExec();});
+    return cap('outbound_pending').then(function(y){X.drafts=pendingDrafts(rowsOf(y));renderExec();});
   }).catch(function(e){if(res)res.textContent='לא הושלם: '+String(e.message||e).slice(0,160);for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;});
 }
 function decide(action,idx,btn){
