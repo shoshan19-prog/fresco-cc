@@ -177,6 +177,7 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .appr{background:var(--card);border:1px solid var(--line);border-inline-start:3px solid var(--warn);border-radius:var(--r);padding:12px 14px;margin-bottom:8px}
 .appr .claim{font-size:15px;font-weight:600;line-height:1.4}
 .appr .why{font-size:13px;color:var(--dim);margin-top:4px}
+.appr .letter{white-space:pre-wrap;font-size:14px;line-height:1.55;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px;max-height:340px;overflow:auto}
 .btns{display:flex;gap:7px;margin-top:10px}
 .btns button{flex:1;border-radius:10px;padding:10px 6px;font-size:14px;font-weight:600;min-height:42px}
 .b-ok{background:var(--acc);color:#fff}.b-ed{background:var(--card2);color:var(--txt);border:1px solid var(--line)}.b-no{background:var(--card2);color:var(--dim);border:1px solid var(--line)}
@@ -308,7 +309,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-18.1';
+var CC_BUILD='2026-10-19.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -681,6 +682,7 @@ function execModel(src,nowMs){
     alive.forEach(function(r){if(!isTerminal(stateOf(r))&&deriveRow(r).needs)items.push({t:cleanTitle(r.objective||r.goal||r.work_id),id:r.work_id});});
     appr.forEach(function(a){items.push({t:'המלצה לאישור: '+cleanTitle(a.claim)});});
     alerts.forEach(function(al){if(al.state!=='resolved')items.push({t:'התראה: '+cleanTitle(al.title)});});
+    (src.drafts||[]).forEach(function(d){items.push({t:'מייל לאישור: אל '+cleanTitle(d.to)+' — '+cleanTitle(d.subject||'ללא נושא')});});
     var n5=items.length;
     var subs5=items.slice(0,2).map(function(x){return xesc(x.t.length>70?x.t.slice(0,69)+'…':x.t);});
     if(n5>2)subs5.push('ועוד '+(n5-2));
@@ -696,7 +698,7 @@ var D={tower:null,alive:[],closed:[],at:0,att:{dept:{},proj:{}}};
 var VIEW='overview',Q='';
 var DRILL=false;
 /* the daily screen's own reads: four fast calls in parallel, none of them the tower (3–5 s measured 2.10) */
-var X={snap:null,snapAt:'',alive:null,appr:null,alerts:null,t0:0,readyMs:null,err:''};
+var X={snap:null,snapAt:'',alive:null,appr:null,alerts:null,drafts:null,t0:0,readyMs:null,err:''};
 function cachedAtOf(r){var m=((r&&r.evidence)||[]).map(function(e){return /מהמטמון — חושב ב-(\S+)/.exec(String(e));}).filter(Boolean)[0];return m?m[1]:new Date().toISOString();}
 function takeSnap(x){var r=rowsOf(x)[0]||{};if(r.snapshot){X.snap=r.snapshot;X.snapAt=cachedAtOf(r);}renderExec();return r;}
 function loadExec(){
@@ -710,6 +712,8 @@ function loadExec(){
   cap('work_status').then(function(x){X.alive=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   api({action:'state'}).then(function(st){X.appr=(st&&Array.isArray(st.approvals))?st.approvals:[];renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   cap('alerts').then(function(x){X.alerts=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
+  /* 19.10 — mail waiting for David's approval (outbound_pending): it was in the queue and on no screen */
+  cap('outbound_pending').then(function(x){X.drafts=rowsOf(x).filter(function(d){return !d.decided_at&&String(d.status||'PENDING').toUpperCase()==='PENDING';});renderExec();render();}).catch(function(){X.drafts=[];renderExec();});
 }
 function renderExec(){
   var el=B('#exec');if(!el)return;
@@ -834,7 +838,8 @@ function render(){
   var approvals=VIEW==='overview'?(T.approvals||[]):[];
   var alerts=VIEW==='overview'?(T.alerts||[]).filter(function(al){return al.state!=='resolved';}):[];
   var needsRows=alive.filter(function(r){return deriveRow(r).needs;});
-  var needsCount=needsRows.length+approvals.length+alerts.length;
+  var drafts=VIEW==='overview'?(X.drafts||[]):[];
+  var needsCount=needsRows.length+approvals.length+alerts.length+drafts.length;
   var sum=summarize(alive,closed,approvals.length+alerts.length,now);
   var dom=DOMAINS.filter(function(d){return d.key===VIEW;})[0]||DOMAINS[0];
   var h='';
@@ -883,6 +888,18 @@ function render(){
         +'<button class="b-ed" data-a="edit" data-i="'+i+'">תקן</button>'
         +'<button class="b-no" data-a="rejected" data-i="'+i+'">דחה</button></div></div>';
     }).join('');
+    /* a queued mail: the WHOLE letter, and the two decisions — nothing leaves until "אשר ושלח" (outbound_decide) */
+    h+=drafts.map(function(d){
+      var cm=(d.commitments||[]).map(function(c){return c.he||c.kind||'';}).filter(Boolean);
+      return '<div class="appr" id="dr'+esc(String(d.draft_id).slice(0,8))+'"><div class="claim">מייל לאישור · אל '+esc(d.to||'')+'</div>'
+        +'<div class="why">נושא: '+esc(d.subject||'ללא נושא')+' · נשלח מ-'+esc(d.mailbox||'')+'</div>'
+        +(d.about?'<div class="why">'+esc(d.about)+'</div>':'')
+        +(cm.length?'<div class="why"><span class="tag warn">כולל התחייבות: '+esc(cm.join(' · '))+'</span></div>':'')
+        +'<div class="letter">'+esc(d.body||'')+'</div>'
+        +'<div class="btns"><button class="b-ok draftDec" data-id="'+esc(d.draft_id)+'" data-d="approve">אשר ושלח</button>'
+        +'<button class="b-no draftDec" data-id="'+esc(d.draft_id)+'" data-d="reject">בטל</button></div>'
+        +'<div class="why draftRes"></div></div>';
+    }).join('');
     h+=alerts.map(function(al){
       return '<div class="appr"><div class="claim">'+esc(al.title)+'</div>'
         +(al.detail?'<div class="why">'+esc(al.detail)+'</div>':'')
@@ -913,6 +930,7 @@ function render(){
   Array.prototype.forEach.call(B('#m').querySelectorAll('[data-open]'),function(b){b.onclick=function(){openDetail(b.getAttribute('data-open'));};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.btns button[data-a]'),function(b){b.onclick=function(){decide(b.getAttribute('data-a'),Number(b.getAttribute('data-i')),b);};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.alertAck'),function(b){b.onclick=function(){ackAlert(b.getAttribute('data-id'),b);};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftDec'),function(b){b.onclick=function(){decideDraft(b.getAttribute('data-id'),b.getAttribute('data-d'),b);};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.sum button'),function(b){b.onclick=function(){var t=document.getElementById(b.getAttribute('data-to'));if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};});
 }
 function tile(k,n,label,frac,tone){
@@ -1203,6 +1221,25 @@ function ackAlert(id,btn){
   cap('alert_ack',{alert_id:id,action:'acknowledge'})
     .then(fetchAll).then(render)
     .catch(function(e){if(btn){btn.disabled=false;btn.textContent='אישרתי';}alert('שגיאה: '+e.message);});
+}
+/* David's decision on a queued mail (19.10). "אשר ושלח" is his sentence; the server sends through Graph, verifies it in
+   Sent Items and returns what actually happened — that, not this button, is what the card then says. */
+function decideDraft(id,dec,btn){
+  var d=(X.drafts||[]).filter(function(x){return String(x.draft_id)===String(id);})[0];if(!d)return;
+  var cm=(d.commitments||[]).length>0;
+  if(dec==='approve'&&!confirm('לשלוח עכשיו את המייל אל '+(d.to||'')+'?'+(cm?' המייל כולל התחייבות — האישור חל גם עליה.':'')))return;
+  if(dec==='reject'&&!confirm('לבטל את הטיוטה? שום דבר לא יישלח.'))return;
+  var card=btn.closest('.appr'),all=card?card.querySelectorAll('button'):[];
+  for(var i=0;i<all.length;i++)all[i].disabled=true;
+  var was=btn.textContent;btn.textContent='…';
+  var args={draft_id:id,decision:dec,david_quote:(dec==='approve'?'אשר ושלח':'בטל')+' — מרכז הבקרה, טיוטה '+String(id).slice(0,8)};
+  if(dec==='approve'&&cm)args.confirm_commitment=true;
+  var res=card?card.querySelector('.draftRes'):null;
+  cap('outbound_decide',args).then(function(x){
+    var r=rowsOf(x)[0]||{};
+    if(res)res.textContent=String((x&&x.source)||r.result||r.status||'בוצע');
+    return cap('outbound_pending').then(function(y){X.drafts=rowsOf(y).filter(function(q){return !q.decided_at&&String(q.status||'PENDING').toUpperCase()==='PENDING';});renderExec();});
+  }).catch(function(e){if(res)res.textContent='לא הושלם: '+String(e.message||e).slice(0,160);for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;});
 }
 function decide(action,idx,btn){
   var r=(D.tower.approvals||[])[idx];if(!r)return;

@@ -242,6 +242,9 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('the old view renders into the drill-down, unchanged', /B\('#drill'\)\.innerHTML=h;/.test(src) && !/B\('#m'\)\.innerHTML=h;/.test(src));
   ok('the domain nav is part of the drill-down on the overview', /#domains\.off\{display:none\}/.test(css) && /B\('#domains'\)\.classList\.toggle\('off',!DRILL&&VIEW==='overview'\)/.test(src));
   ok('the screen states when it was ready (verifiable in production)', /data-ready-ms/.test(src));
+  // 19.10 — a mail waiting for David's approval was in the queue and on no screen
+  ok('queued mail is read on the daily screen and counted in "what needs David"', /cap\('outbound_pending'\)/.test(src) && /\(src\.drafts\|\|\[\]\)\.forEach/.test(src) && /alerts\.length\+drafts\.length/.test(src));
+  ok('a queued mail shows the whole letter and decides only through outbound_decide', /class="letter">'\+esc\(d\.body/.test(src) && /cap\('outbound_decide',args\)/.test(src) && /confirm\('לשלוח עכשיו/.test(src));
 }
 
 // ── 4.10: every package is on this screen (56 live, 31 were on no screen) ──
