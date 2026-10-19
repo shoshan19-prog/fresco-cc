@@ -1,4 +1,4 @@
-// YAELI: A DROPPED CONNECTION IS NOT A LOST ANSWER (Arik, 19.10).
+// YAELI · ORNA · LAB: A DROPPED CONNECTION IS NOT A LOST ANSWER (Arik, 19.10).
 //
 // Both of Arik's questions ("מי הלקוח הכי גדול שלנו בארבע שנים האחרונות?") ran ~105s server-side, finished, stored
 // the reply and answered 200 — after his phone had already closed the socket. The page showed "Load failed" and
@@ -13,19 +13,20 @@
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import { fileURLToPath } from 'node:url';
 
-const PAGE = 'file://' + fileURLToPath(new URL('./yaeli.html', import.meta.url));
+/* orna.html and lab.html are copies of yaeli.html for other codes — the same send(), the same gap, the same pin */
+const PAGES = [['yaeli', 'yaeli_code'], ['orna', 'orna_code'], ['lab', 'lab_code']];
 const ANSWER = 'תדהר בניה בע״מ — 2,421,070 ₪ בחשבוניות סופיות.';
 let passed = 0, failed = 0;
 const check = (n, c, m) => { if (c) { passed++; console.log('PASS ', n); } else { failed++; console.log('FAIL ', n, '—', m || ''); } };
 
-async function scenario(browser, { storeOk }) {
+async function scenario(browser, { storeOk, name, codeKey }) {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   // the 4s wait between re-asks is the page's own pacing — collapsed here so the test runs in seconds
-  await page.addInitScript(() => {
-    localStorage.setItem('yaeli_code', 'test-code');
+  await page.addInitScript((k) => {
+    localStorage.setItem(k, 'test-code');
     const st = window.setTimeout; window.setTimeout = (f, ms, ...a) => st(f, ms >= 1000 ? 5 : ms, ...a);
-  });
+  }, codeKey);
   const S = { kernel: [], runs: 0 };
   await page.route('**/functions/v1/**', async (route) => {
     const req = route.request();
@@ -48,7 +49,7 @@ async function scenario(browser, { storeOk }) {
     }
     return route.fulfill({ status: 400, body: 'unknown' });
   });
-  await page.goto(PAGE);
+  await page.goto('file://' + fileURLToPath(new URL(`./${name}.html`, import.meta.url)));
   await page.waitForSelector('#app', { state: 'visible' });
   await page.fill('#note', 'מי הלקוח הכי גדול שלנו בארבע שנים האחרונות?');
   await page.click('#send');
@@ -61,16 +62,18 @@ async function scenario(browser, { storeOk }) {
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }).catch(() => chromium.launch());
 try {
-  const a = await scenario(browser, { storeOk: true });
-  check('A: the stored answer lands after the drop', (a.last || '').includes('תדהר'), a.last);
-  check('A: "לא הצלחתי להגיע" never shows', !/לא הצלחתי להגיע/.test(a.last || ''), a.last);
-  check('A: the dropped turn is asked again with the SAME turn_id (never a new run)',
-    a.S.kernel.length === 3 && a.S.kernel.every((k) => k.turn_id && k.turn_id === a.S.kernel[0].turn_id), JSON.stringify(a.S.kernel.map((k) => k.turn_id)));
-  check('A: every re-ask names the conversation', a.S.kernel.every((k) => k.conversation_id === 'c'.repeat(32)));
+  for (const [name, codeKey] of PAGES) {
+    const a = await scenario(browser, { storeOk: true, name, codeKey });
+    check(`${name} A: the stored answer lands after the drop`, (a.last || '').includes('תדהר'), a.last);
+    check(`${name} A: "לא הצלחתי להגיע" never shows`, !/לא הצלחתי להגיע/.test(a.last || ''), a.last);
+    check(`${name} A: the dropped turn is asked again with the SAME turn_id (never a new run)`,
+      a.S.kernel.length === 3 && a.S.kernel.every((k) => k.turn_id && k.turn_id === a.S.kernel[0].turn_id), JSON.stringify(a.S.kernel.map((k) => k.turn_id)));
+    check(`${name} A: every re-ask names the conversation`, a.S.kernel.every((k) => k.conversation_id === 'c'.repeat(32)));
 
-  const b = await scenario(browser, { storeOk: false });
-  check('B: without a durable turn a drop is reported, not retried', /לא הצלחתי להגיע/.test(b.last || '') && b.S.kernel.length === 1,
-    `${b.S.kernel.length} kernel calls · ${b.last}`);
+    const b = await scenario(browser, { storeOk: false, name, codeKey });
+    check(`${name} B: without a durable turn a drop is reported, not retried`, /לא הצלחתי להגיע/.test(b.last || '') && b.S.kernel.length === 1,
+      `${b.S.kernel.length} kernel calls · ${b.last}`);
+  }
 } finally { await browser.close(); }
 console.log(`\n${passed} passed · ${failed} failed`);
 process.exit(failed ? 1 : 0);
