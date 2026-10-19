@@ -168,13 +168,18 @@ async function send(text){
   const saved=await storeMine(t).catch(()=>false);
   const turn=rid('yt');
   const ask={action:'kernel',body:t,history:HIST.slice(-6),turn_id:turn,conversation_id:CONV,device_id:DEVICE};
-  let {status,json}=await post(CC,saved&&CONV?ask:{action:'kernel',body:t,history:HIST.slice(-6)});
+  const durable=saved&&!!CONV;
+  /* THE CONNECTION DROPS, THE TURN DOES NOT (yaeli.html #144, Arik 19.10): a dropped durable ask is asked again with
+     the SAME turn_id — 202 while it runs, the stored answer once done, never a second run. */
+  const dropped=e=>{if(durable)return {status:0,json:null};throw e;};
+  let {status,json}=await post(CC,durable?ask:{action:'kernel',body:t,history:HIST.slice(-6)}).catch(dropped);
   if(status===401){localStorage.removeItem('lab_code');location.reload();return;}
   /* a long answer is still being worked on server-side: the same turn_id is asked again, and it never runs twice */
-  for(let i=0;status===202&&i<60;i++){
+  for(let i=0;(status===202||status===0)&&i<60;i++){
    await new Promise(r=>setTimeout(r,4000));
-   ({status,json}=await post(CC,ask));
+   ({status,json}=await post(CC,ask).catch(dropped));
   }
+  if(status===0)throw new Error('Load failed');
   const r=json||{};
   const ans=String(r.answer||r.text||'לא התקבלה תשובה.');
   const src=(r.sources||[]).length;
