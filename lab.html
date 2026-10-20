@@ -42,6 +42,16 @@ h1{font-size:18px;margin:0}
 .empty{color:var(--dim);text-align:center;margin-top:24px;font-size:13.5px}
 #chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0 2px}
 #chips button{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:999px;padding:8px 12px;font-size:13.5px;width:auto;margin:0}
+#clip{background:var(--card);border:1px solid var(--line);color:var(--txt);width:auto;padding:0 14px}
+#attachBar{display:none;flex-wrap:wrap;gap:6px;padding:6px 0 0}
+#attachBar.on{display:flex}
+.att{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px 8px;font-size:12.5px;max-width:100%}
+.att img{width:34px;height:34px;object-fit:cover;border-radius:6px}
+.att .nm{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att .dim{color:var(--dim)}
+.att.err{border-color:#c0392b}
+.att .x{background:none;border:0;color:var(--dim);font-size:14px;padding:0 2px;margin:0;width:auto}
+#composer.drag{outline:2px dashed var(--acc);outline-offset:4px;border-radius:12px}
 </style>
 </head>
 <body>
@@ -64,8 +74,11 @@ h1{font-size:18px;margin:0}
   <div class="sub" id="sub">אלפא · מחוברת</div></div></header>
  <main id="thread"><p class="empty">שאלי אותי על ניסויים, מדידות, חומרים והכרעות במטריאה — או ספרי לי מה לא עובד במטריאה, ונדייק יחד בקשת תיקון.</p>
  <div id="chips"><button data-q="יש בעיה במטריאה: ">דווחי על בעיה במטריאה</button><button data-q="מה הסטטוס של הבקשות שלי?">הבקשות שלי</button><button data-q="מה הניסויים האחרונים בפרויקט ">ניסויים בפרויקט</button><button data-q="מה ידוע במטריאה על החומר ">חומר במטריאה</button><button data-q="מה הוכרע בניסוי ">הכרעת ניסוי</button></div></main>
+ <div id="attachBar"></div>
  <footer id="composer">
   <textarea id="note" rows="1" placeholder="כתבי לי…"></textarea>
+  <input type="file" id="filePick" multiple style="display:none">
+  <button id="clip" onclick="document.getElementById('filePick').click()" title="צירוף תמונה או קובץ" aria-label="צירוף קובץ">📎</button>
   <button id="mic" onclick="toggleMic()" title="דברי אליי">🎤</button>
   <button id="send" onclick="send()">שלח</button>
  </footer>
@@ -157,22 +170,95 @@ function fillBubble(w,text,meta){
  const b=w.querySelector('.bubble');
  b.innerHTML=esc(text)+(meta?'<span class="meta">'+esc(meta)+'</span>':'');
  const th=document.getElementById('thread');th.scrollTop=th.scrollHeight;}
+/* ── FILES AND PHOTOS (Rachel + Meital, 20.10 — "על מנת להמשיך להזין לך נתונים אני חייבת שיהיה ניתן לשלוח לך תמונה או
+   קבצים"). The same pipeline as lia.html: one whitelist, a picker, paste and drop; an image is shrunk to 1600px JPEG
+   (enough to read a spectrophotometer screen or a lab sheet); the bytes travel with THIS turn's first request only —
+   never with the re-asks while it runs, never into the stored conversation (that keeps the file's name). */
+const ATT_KINDS={
+ image:{exts:['png','jpg','jpeg','webp'],mimes:['image/png','image/jpeg','image/webp'],cap:10*1024*1024},
+ doc:{exts:['pdf','docx','pptx','txt','md'],cap:15*1024*1024,
+      mimes:['application/pdf','text/plain','text/markdown',
+             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+             'application/vnd.openxmlformats-officedocument.presentationml.presentation']},
+ sheet:{exts:['xlsx','csv'],cap:10*1024*1024,
+        mimes:['text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']}};
+const ATT_ACCEPT=Object.values(ATT_KINDS).map(k=>k.exts.map(e=>'.'+e).join(',')).join(',');
+function sanitizeName(n){return String(n||'').split(/[\\/]/).pop().replace(/[\x00-\x1f<>:"|?*]/g,'').trim().slice(0,120)||'קובץ';}
+function attKind(mime,name){
+ const base=String(name||'').toLowerCase(),dot=base.lastIndexOf('.');
+ const ext=dot>0?base.slice(dot+1):'';
+ for(const k in ATT_KINDS)if(ATT_KINDS[k].exts.indexOf(ext)>=0)return k;
+ if(ext)return null;                   // an extension off the whitelist loses even with a friendly mime
+ for(const k in ATT_KINDS)if(mime&&ATT_KINDS[k].mimes.indexOf(String(mime).toLowerCase())>=0)return k;
+ return null;}
+function attValidate(name,mime,size){
+ const kind=attKind(mime,name);
+ if(!kind)return {ok:false,reason:'סוג הקובץ לא נתמך'};
+ if(size>ATT_KINDS[kind].cap)return {ok:false,reason:'גדול מדי (המקסימום '+Math.round(ATT_KINDS[kind].cap/1048576)+'MB)'};
+ return {ok:true,kind:kind};}
+let ATTACH=[],ATT_SEQ=0;
+function fileB64(f){return new Promise((res,rej)=>{const rd=new FileReader();
+ rd.onload=()=>res(String(rd.result).split(',')[1]||'');rd.onerror=rej;rd.readAsDataURL(f);});}
+function shrinkImage(f){return new Promise((res,rej)=>{
+ const img=new Image();const url=URL.createObjectURL(f);
+ img.onload=()=>{URL.revokeObjectURL(url);
+  const mx=Math.max(img.width,img.height),sc=mx>1600?1600/mx:1;
+  const c=document.createElement('canvas');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  const durl=c.toDataURL('image/jpeg',0.85),b64=durl.split(',')[1]||'';
+  res({b64:b64,mime:'image/jpeg',preview:durl,size:Math.round(b64.length*0.75)});};
+ img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('bad image'));};
+ img.src=url;});}
+async function addFiles(files){
+ for(const f of Array.from(files||[])){
+  const name=sanitizeName(f.name),v=attValidate(name,f.type,f.size);
+  if(!v.ok){ATTACH.push({source_id:'s_'+Date.now().toString(36)+'_'+(++ATT_SEQ),filename:name,status:'ERROR',error:v.reason});continue;}
+  const a={source_id:'s_'+Date.now().toString(36)+'_'+(++ATT_SEQ),source_type:v.kind==='image'?'CHAT_IMAGE':'CHAT_FILE',kind:v.kind,
+           filename:name,mime:f.type||'',size:f.size,created_at:Date.now(),status:'READING'};
+  ATTACH.push(a);renderAttachBar();
+  try{
+   if(v.kind==='image'){const r=await shrinkImage(f);a.data_b64=r.b64;a.mime=r.mime;a.preview=r.preview;a.size=r.size;}
+   else a.data_b64=await fileB64(f);
+   a.status='READY';
+  }catch(e){a.status='ERROR';a.error='לא הצלחתי לקרוא את הקובץ';}
+  renderAttachBar();}
+ renderAttachBar();}                   // a refused file (continue above) shows too
+function removeAtt(id){ATTACH=ATTACH.filter(a=>a.source_id!==id);renderAttachBar();}
+function renderAttachBar(){
+ const el=document.getElementById('attachBar');if(!el)return;
+ el.classList.toggle('on',ATTACH.length>0);
+ el.innerHTML=ATTACH.map(a=>{
+  const x='<button class="x" onclick="removeAtt(\''+a.source_id+'\')" aria-label="הסר">✕</button>';
+  if(a.status==='ERROR')return '<span class="att err"><span class="nm">'+esc(a.filename)+'</span><span class="dim">'+esc(a.error||'')+'</span>'+x+'</span>';
+  const face=a.preview?'<img src="'+a.preview+'" alt="">':'<span>'+(a.kind==='sheet'?'📊':'📄')+'</span>';
+  return '<span class="att">'+face+'<span class="nm">'+esc(a.filename)+'</span>'+(a.status==='READING'?'<span class="dim">קוראת…</span>':'')+x+'</span>';}).join('');}
+/* this turn's files, as the server reads them (inputRoute.realSources: named, with bytes) — and only READY ones */
+function takeSources(){
+ const ready=ATTACH.filter(a=>a.status==='READY'&&a.data_b64);
+ ATTACH=ATTACH.filter(a=>a.status==='READING');renderAttachBar();
+ return ready.map(a=>({source_id:a.source_id,source_type:a.source_type,kind:a.kind,filename:a.filename,mime:a.mime,size:a.size,created_at:a.created_at,data_b64:a.data_b64}));}
 async function send(text){
  const ta=document.getElementById('note');
- const t=String(text!==undefined?text:ta.value).trim();if(!t)return;
+ if(ATTACH.some(a=>a.status==='READING')){bubble('her','רגע — הקובץ עדיין נקרא. שלחי שוב בעוד שנייה.');return;}
+ const srcs=text===undefined?takeSources():[];
+ let t=String(text!==undefined?text:ta.value).trim();
+ if(!t&&!srcs.length)return;
  if(text===undefined)ta.value='';
- bubble('me',t);
+ const names=srcs.map(s=>'📎 '+s.filename).join('\n');
+ bubble('me',[t,names].filter(Boolean).join('\n'));
+ if(!t)t='';
  const w=bubble('her','חושבת…');
  INFLIGHT++;
  try{
-  const saved=await storeMine(t).catch(()=>false);
+  const saved=await storeMine([t,names].filter(Boolean).join('\n')).catch(()=>false);
   const turn=rid('yt');
   const ask={action:'kernel',body:t,history:HIST.slice(-6),turn_id:turn,conversation_id:CONV,device_id:DEVICE};
+  const first=srcs.length?Object.assign({},ask,{sources:srcs}):ask;   // the bytes ride the first request only
   const durable=saved&&!!CONV;
   /* THE CONNECTION DROPS, THE TURN DOES NOT (yaeli.html #144, Arik 19.10): a dropped durable ask is asked again with
      the SAME turn_id — 202 while it runs, the stored answer once done, never a second run. */
   const dropped=e=>{if(durable)return {status:0,json:null};throw e;};
-  let {status,json}=await post(CC,durable?ask:{action:'kernel',body:t,history:HIST.slice(-6)}).catch(dropped);
+  let {status,json}=await post(CC,durable?first:Object.assign({action:'kernel',body:t,history:HIST.slice(-6)},srcs.length?{sources:srcs}:{})).catch(dropped);
   if(status===401){localStorage.removeItem('lab_code');location.reload();return;}
   /* a long answer is still being worked on server-side: the same turn_id is asked again, and it never runs twice */
   for(let i=0;(status===202||status===0)&&i<60;i++){
@@ -184,7 +270,7 @@ async function send(text){
   const ans=String(r.answer||r.text||'לא התקבלה תשובה.');
   const src=(r.sources||[]).length;
   fillBubble(w,ans,src?('מקורות: '+src):null);
-  HIST.push({q:t,a:ans});if(HIST.length>12)HIST=HIST.slice(-12);
+  HIST.push({q:[t,names].filter(Boolean).join('\n'),a:ans});if(HIST.length>12)HIST=HIST.slice(-12);
  }catch(e){
   fillBubble(w,'לא הצלחתי להגיע למערכת ('+(e&&e.message||'רשת')+') — נסה שוב.');
  }
@@ -249,6 +335,14 @@ document.getElementById('note').addEventListener('keydown',ev=>{
  if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}});
 if(CODE){post(API,'{"action":"state"}').then(({status})=>{if(status>=200&&status<300)boot();
  else if(status===401)localStorage.removeItem('lab_code');}).catch(()=>{});}
+(function(){const fp=document.getElementById('filePick');fp.setAttribute('accept',ATT_ACCEPT);
+ fp.addEventListener('change',()=>{addFiles(fp.files);fp.value='';});
+ document.addEventListener('paste',e=>{const items=(e.clipboardData&&e.clipboardData.files)||[];if(items.length){e.preventDefault();addFiles(items);}});
+ const comp=document.getElementById('composer');
+ for(const ev of ['dragover','dragenter'])document.addEventListener(ev,e=>{e.preventDefault();comp.classList.add('drag');});
+ for(const ev of ['dragleave','dragend'])document.addEventListener(ev,e=>{if(!e.relatedTarget)comp.classList.remove('drag');});
+ document.addEventListener('drop',e=>{e.preventDefault();comp.classList.remove('drag');
+  if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});})();
 /* the five things the lab does most (David, 19.10): one tap asks; a chip that ends with a space waits for her to finish it */
 document.querySelectorAll('#chips button').forEach(function(b){b.onclick=function(){var q=b.getAttribute('data-q');var n=document.getElementById('note');n.value=q;if(/\s$/.test(q)){n.focus();}else{send();}};});
 </script>
