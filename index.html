@@ -239,6 +239,11 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .xi.ok .xn{background:#eaf7ee;color:var(--ok)}
 .xi.wait .xv{color:var(--dim);font-weight:600}
 .xi[data-x="needs"] .xs{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.team{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;margin-top:10px}
+.team h2{font-size:14px;margin:0 0 8px}.team .tm{padding:8px 0;border-top:1px solid var(--line)}.team .tm:first-of-type{border-top:0;padding-top:0}
+.team .top{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;flex-wrap:wrap}.team .top small{font-weight:400;color:var(--dim)}
+.team .tag{margin-inline-start:auto;font-size:12px;font-weight:400;color:var(--dim)}.team .meta{font-size:12.5px;color:var(--dim);margin-top:3px;overflow-wrap:anywhere}
+.team .need{font-size:13px;margin-top:3px;color:var(--warn);overflow-wrap:anywhere}
 .workMeter{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;margin-top:10px}
 .workMeter h2{font-size:14px;margin:0 0 8px}.workMeter .wm{padding:8px 0;border-top:1px solid var(--line)}.workMeter .wm:first-of-type{border-top:0;padding-top:0}
 .workMeter .top{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600}.workMeter .top b{margin-inline-start:auto;font-variant-numeric:tabular-nums;color:var(--acc)}
@@ -309,7 +314,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-19.2';
+var CC_BUILD='2026-10-20.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -714,6 +719,20 @@ function loadExec(){
   cap('alerts').then(function(x){X.alerts=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   /* 19.10 — mail waiting for David's approval (outbound_pending): it was in the queue and on no screen */
   cap('outbound_pending').then(function(x){X.drafts=pendingDrafts(rowsOf(x));renderExec();render();}).catch(function(){X.drafts=[];renderExec();});
+  /* 20.10 — what the people with a personal code asked, did and need (team_activity, David only) */
+  cap('team_activity',{days:7}).then(function(x){X.team=rowsOf(x);renderExec();}).catch(function(){X.team=null;renderExec();});
+}
+/* one line per person: activity, then what she needs — the needs are the point (David, 20.10) */
+function teamHtml(rows){
+  if(!rows||!rows.length)return '';
+  return '<section class="team" aria-label="הצוות — מה ביקשו ומה צריך"><h2>הצוות · 7 ימים</h2>'+rows.map(function(p){
+    var act=p.active?(p.turns+' פניות · '+p.active_days+' ימים'+(p.last_active?' · אחרונה '+String(p.last_active).slice(5,10).split('-').reverse().join('.'):'')):'לא השתמש/ה בעוזרת';
+    var q=(p.questions||[]).slice(-2).map(function(x){return '"'+esc(String(x.q).slice(0,70))+'"';}).join(' · ');
+    var needs=(p.needs||[]).filter(function(n){return !/^לא השתמשה/.test(n);});
+    return '<div class="tm'+(needs.length?' needs':'')+'" data-who="'+esc(p.who)+'"><div class="top"><span>'+esc(p.name)+' <small>'+esc(p.role||'')+'</small></span><span class="tag">'+esc(act)+'</span></div>'
+      +(q?'<div class="meta">שאל/ה: '+q+'</div>':'')
+      +(needs.length?needs.map(function(n){return '<div class="need">צריך/ה: '+esc(n)+'</div>';}).join(''):(p.active?'<div class="meta">אין צורך פתוח בנתונים</div>':''))
+      +'</div>';}).join('')+'</section>';
 }
 function renderExec(){
   var el=B('#exec');if(!el)return;
@@ -741,6 +760,7 @@ function renderExec(){
       :w.submitted?'הוגש לבדיקתך: '+esc(w.submitted)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':'')
       :w.tone==='needs'?'מחכה לך: '+esc(w.next):w.tone==='blocked'?'חסם: '+esc(w.next):w.tone==='failed'?esc(w.next||''):'השלב הבא: '+esc(w.next);
     return '<div class="wm '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'"><div class="top"><span>'+esc(cleanTitle(w.title))+'</span><span class="tag">'+esc(w.label)+'</span>'+num+'</div>'+bar+'<div class="meta">'+meta+'</div></div>';}).join('')+'</section>':'')
+  +teamHtml(X.team)
   +(X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
   /* the projects screen (David, 4.10 — WORK 27d03f59) is its own page: the five answers stay five */
   +'<div class="xrow"><a id="projBtn" href="projects.html">הפרויקטים</a>'

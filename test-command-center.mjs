@@ -349,5 +349,21 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('blocked before self-waiting in the order', ordered.map((r) => r.work_id).join() === 'e8431327aaaa,c1'.replace('e8431327aaaa', past.work_id), ordered.map((r) => r.work_id).join());
 }
 
+/* 20.10 — the team section: per person, activity then needs; nothing when the report did not load */
+{
+  const T = new Function('esc', slice('function teamHtml(rows){', '\nfunction renderExec(){') + '\nreturn teamHtml;')((x) => String(x).replace(/</g, '&lt;'));
+  const rows = [
+    { who: 'orna', name: 'אורנה', role: 'תפעול', active: true, turns: 3, active_days: 2, last_active: '2026-10-19T19:21:40Z', questions: [{ q: 'האם כל ההזמנות נקלטו?' }], needs: ['1 משימות באיחור — "לבדוק הזמנה" (2026-10-18)'] },
+    { who: 'meital', name: 'מיטל', role: 'מעבדה', active: false, turns: 0, active_days: 0, last_active: null, questions: [], needs: ['לא השתמשה/השתמש בעוזרת בתקופה'] },
+  ];
+  const h = T(rows);
+  ok('team: a section with one row per person', /class="team"/.test(h) && (h.match(/class="tm/g) || []).length === 2, h.slice(0, 200));
+  ok('team: activity and date on the row', /3 פניות · 2 ימים · אחרונה 19\.10/.test(h));
+  ok('team: the need is shown and the row is marked', /data-who="orna"/.test(h) && /class="tm needs"/.test(h) && /צריך\/ה: 1 משימות באיחור/.test(h));
+  ok('team: an idle person says so, without a fake need', /לא השתמש\/ה בעוזרת/.test(h) && !/צריך\/ה: לא השתמשה/.test(h));
+  ok('team: nothing rendered when the report did not load', T(null) === '' && T([]) === '');
+  ok('team: loaded on the overview and placed in the exec view', /cap\('team_activity',\{days:7\}\)/.test(src) && /\+teamHtml\(X\.team\)/.test(src));
+}
+
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);
