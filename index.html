@@ -182,6 +182,12 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .btns button{flex:1;border-radius:10px;padding:10px 6px;font-size:14px;font-weight:600;min-height:42px}
 .b-ok{background:var(--acc);color:#fff}.b-ed{background:var(--card2);color:var(--txt);border:1px solid var(--line)}.b-no{background:var(--card2);color:var(--dim);border:1px solid var(--line)}
 .btns button:disabled{opacity:.5}
+/* 22.10 — David edits a queued mail before he approves it: recipients, subject, the whole letter */
+.dedit{margin-top:8px}.dedit label{display:block;font-size:12px;color:var(--dim);margin-top:8px}
+.dedit input,.dedit textarea{width:100%;box-sizing:border-box;margin-top:4px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;font-size:14px;color:var(--txt)}
+.dedit textarea{min-height:260px;resize:vertical;line-height:1.55;white-space:pre-wrap}
+.dedit input:focus,.dedit textarea:focus{outline:0;border-color:var(--acc);box-shadow:var(--glow)}
+.dedit input[dir=ltr]{text-align:left}
 /* 5.10 — corrections before launch / before go-live: one box on the card, his words go to the executor */
 .fix{margin-top:10px}.fix label{display:block;font-size:13px}.fix textarea{width:100%;box-sizing:border-box;margin-top:6px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;color:var(--txt);resize:vertical;min-height:64px}.fix textarea:focus{outline:0;border-color:var(--acc);box-shadow:var(--glow)}
 
@@ -314,7 +320,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-20.1';
+var CC_BUILD='2026-10-22.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -852,6 +858,8 @@ function inView(r){
 }
 function render(){
   if(!D.tower)return;
+  /* 22.10 — while David types in a draft, the minute poll does not redraw under his cursor; it redraws after he leaves the field */
+  var ae=document.activeElement;if(X.editing&&ae&&ae.closest&&ae.closest('.dedit'))return;
   var now=Date.now(),T=D.tower;
   var alive=D.alive.filter(function(r){return !isTerminal(stateOf(r));}).filter(function(r){return deriveRow(r).needs;}).filter(inView).filter(matchesQ);
   var closed=[];
@@ -915,9 +923,15 @@ function render(){
         +'<div class="why">נושא: '+esc(d.subject||'ללא נושא')+' · נשלח מ-'+esc(d.mailbox||'')+'</div>'
         +(d.about?'<div class="why">'+esc(d.about)+'</div>':'')
         +(cm.length?'<div class="why"><span class="tag warn">כולל התחייבות: '+esc(cm.join(' · '))+'</span></div>':'')
-        +'<div class="letter">'+esc(d.body||'')+'</div>'
-        +'<div class="btns"><button class="b-ok draftDec" data-id="'+esc(d.draft_id)+'" data-d="approve">אשר ושלח</button>'
-        +'<button class="b-no draftDec" data-id="'+esc(d.draft_id)+'" data-d="reject">בטל</button></div>'
+        +(d.edit_count?'<div class="why"><span class="tag">נערך על ידך ×'+esc(String(d.edit_count))+'</span></div>':'')
+        +(X.editing===d.draft_id
+          ? draftEditForm(d)
+            +'<div class="btns"><button class="b-ok draftSave" data-id="'+esc(d.draft_id)+'">שמור טיוטה</button>'
+            +'<button class="b-no draftEditX" data-id="'+esc(d.draft_id)+'">ביטול עריכה</button></div>'
+          : '<div class="letter">'+esc(d.body||'')+'</div>'
+            +'<div class="btns"><button class="b-ok draftDec" data-id="'+esc(d.draft_id)+'" data-d="approve">אשר ושלח</button>'
+            +'<button class="b-ed draftEdit" data-id="'+esc(d.draft_id)+'">ערוך</button>'
+            +'<button class="b-no draftDec" data-id="'+esc(d.draft_id)+'" data-d="reject">בטל</button></div>')
         +'<div class="why draftRes"></div></div>';
     }).join('');
     h+=alerts.map(function(al){
@@ -951,6 +965,10 @@ function render(){
   Array.prototype.forEach.call(B('#m').querySelectorAll('.btns button[data-a]'),function(b){b.onclick=function(){decide(b.getAttribute('data-a'),Number(b.getAttribute('data-i')),b);};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.alertAck'),function(b){b.onclick=function(){ackAlert(b.getAttribute('data-id'),b);};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.draftDec'),function(b){b.onclick=function(){decideDraft(b.getAttribute('data-id'),b.getAttribute('data-d'),b);};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftEdit'),function(b){b.onclick=function(){startDraftEdit(b.getAttribute('data-id'));};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftEditX'),function(b){b.onclick=function(){X.editing=null;X.editBuf=null;renderExec();render();};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftSave'),function(b){b.onclick=function(){saveDraft(b.getAttribute('data-id'),b);};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.dedit [data-f]'),function(el){el.oninput=function(){if(X.editBuf)X.editBuf[el.getAttribute('data-f')]=el.value;};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.sum button'),function(b){b.onclick=function(){var t=document.getElementById(b.getAttribute('data-to'));if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};});
 }
 function tile(k,n,label,frac,tone){
@@ -1249,6 +1267,30 @@ function ackAlert(id,btn){
 var DRAFT_FRESH_DAYS=7;
 function pendingDrafts(rows){var lim=Date.now()-DRAFT_FRESH_DAYS*864e5;
   return (rows||[]).filter(function(d){return !d.decided_at&&String(d.status||'PENDING').toUpperCase()==='PENDING'&&tms(d.created_at)>=lim;});}
+/* 22.10 — David edits a queued mail before he approves it. The form holds his text in X.editBuf, so a refresh of the screen
+   never wipes what he typed; "שמור טיוטה" saves a new version on the server (outbound_edit — nothing is sent), and only then
+   can "אשר ושלח" send it, carrying the fingerprint of exactly the version on the card. */
+function draftEditForm(d){var b=X.editBuf||{};
+  return '<div class="dedit">'
+    +'<label>אל</label><input data-f="to" dir="ltr" value="'+esc(b.to!=null?b.to:(d.to||''))+'">'
+    +'<label>עותק (לא חובה)</label><input data-f="cc" dir="ltr" value="'+esc(b.cc!=null?b.cc:(d.cc||''))+'">'
+    +'<label>נושא</label><input data-f="subject" value="'+esc(b.subject!=null?b.subject:(d.subject||''))+'">'
+    +'<label>תוכן</label><textarea data-f="body" dir="auto">'+esc(b.body!=null?b.body:(d.body||''))+'</textarea></div>';}
+function startDraftEdit(id){var d=(X.drafts||[]).filter(function(x){return String(x.draft_id)===String(id);})[0];if(!d)return;
+  X.editing=d.draft_id;X.editBuf={to:d.to||'',cc:d.cc||'',subject:d.subject||'',body:d.body||''};renderExec();render();
+  var f=B('#dr'+String(d.draft_id).slice(0,8)+' .dedit textarea');if(f)f.focus();}
+function saveDraft(id,btn){var b=X.editBuf||{};
+  var card=btn.closest('.appr'),all=card?card.querySelectorAll('button'):[],res=card?card.querySelector('.draftRes'):null;
+  for(var i=0;i<all.length;i++)all[i].disabled=true;var was=btn.textContent;btn.textContent='שומר…';
+  cap('outbound_edit',{draft_id:id,to:b.to,cc:b.cc,subject:b.subject,body:b.body,
+      david_quote:'ערוך ← שמור טיוטה — מרכז הבקרה, טיוטה '+String(id).slice(0,8)}).then(function(x){
+    var r=rowsOf(x)[0]||{};
+    if(!r.saved){if(res)res.textContent=String((x&&x.source)||r.reason||'לא נשמר');for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;return;}
+    X.editing=null;X.editBuf=null;
+    return cap('outbound_pending').then(function(y){X.drafts=pendingDrafts(rowsOf(y));renderExec();render();
+      var c=B('#dr'+String(id).slice(0,8)),rr=c?c.querySelector('.draftRes'):null;if(rr)rr.textContent='נשמר · לא נשלח דבר · זו הגרסה שתישלח אם תאשר';});
+  }).catch(function(e){if(res)res.textContent='לא נשמר: '+String(e.message||e).slice(0,160);for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;});
+}
 function decideDraft(id,dec,btn){
   var d=(X.drafts||[]).filter(function(x){return String(x.draft_id)===String(id);})[0];if(!d)return;
   var cm=(d.commitments||[]).length>0;
@@ -1259,6 +1301,8 @@ function decideDraft(id,dec,btn){
   var was=btn.textContent;btn.textContent='…';
   var args={draft_id:id,decision:dec,david_quote:(dec==='approve'?'אשר ושלח':'בטל')+' — מרכז הבקרה, טיוטה '+String(id).slice(0,8)};
   if(dec==='approve'&&cm)args.confirm_commitment=true;
+  /* the fingerprint of the version on this card — if the stored letter differs, the server sends nothing */
+  if(dec==='approve'&&d.payload_hash)args.expect_payload_hash=d.payload_hash;
   var res=card?card.querySelector('.draftRes'):null;
   cap('outbound_decide',args).then(function(x){
     var r=rowsOf(x)[0]||{};
