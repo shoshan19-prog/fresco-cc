@@ -1,0 +1,20 @@
+name: live-probe-155
+on:
+  push:
+    branches: [claude/live-probe-155]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Live lia.html carries CEO Cockpit B
+        run: |
+          for i in $(seq 1 20); do
+            curl -sS "https://shoshan19-prog.github.io/fresco-cc/lia.html?probe=$RANDOM" -o live.html
+            if grep -q "LIA_BUILD='2026-10-27.1'" live.html; then break; fi
+            sleep 15
+          done
+          for m in "LIA_BUILD='2026-10-27.1'" 'id="opsCard"' 'function kpiLeadHtml' 'function renderOps' 'data-lia-change="819cffba"' 'id="orgWrap"' 'grid-template-columns:400px minmax(0,1fr);max-width:1440px'; do
+            if grep -qF "$m" live.html; then echo "LIVE OK  $m"; else echo "LIVE MISSING  $m"; fail=1; fi
+          done
+          sha256sum live.html
+          exit ${fail:-0}
