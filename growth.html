@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Fresco · צמיחה</title>
+<meta name="theme-color" content="#f7f8fa" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/png" href="lia-icon-192.png" />
+<link rel="apple-touch-icon" href="lia-icon-180.png" />
+<!--
+  THE GROWTH SCREEN (27.10.2026 — fresco-marketing-os PR #806). New renovation/preservation
+  opportunities, the professional already in contact, and the one next commercial action.
+  Static page, no credential inside: it calls the `growth` edge function with the same panel
+  code as the chat (localStorage lia_code) — the function itself cannot serve HTML from
+  supabase.co (the platform rewrites it to text/plain), so the screen lives here, beside lia.html.
+  Certainty rule: an order is never attributed to a building without evidence — a brief that
+  says "no order" is shown as "שיוך הזמנה לפרויקט לא אומת".
+-->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+:root{--bg:#f7f8fa;--bg2:#fff;--card:#fff;--card2:#f2f4f7;--line:#e4e7ec;--line2:#d0d5dd;--txt:#16181d;--dim:#667085;
+--acc:#2f6bff;--accSoft:#eaf0ff;--ok:#12a150;--warn:#c77700;--r:18px;--rs:14px;--glow:0 0 0 3px rgba(47,107,255,.13)}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--txt);font:16px/1.55 system-ui,'Segoe UI',Arial,sans-serif;overflow-x:hidden;overflow-wrap:anywhere}
+button,select,input{font:inherit;color:inherit}
+header{padding:16px 16px 8px;max-width:1180px;margin:0 auto}
+h1{font-size:22px;line-height:1.25}
+.sub{color:var(--dim);font-size:14px;margin-top:2px}
+.kpis{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--rs);padding:8px 12px;font-size:14px;color:var(--dim)}
+.kpi b{color:var(--txt);font-size:18px;margin-inline-end:4px}
+main{max-width:1180px;margin:0 auto;padding:8px 16px 40px;display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:960px){main{grid-template-columns:minmax(0,1fr) 440px;align-items:start}#mapwrap{position:sticky;top:12px}}
+#mapwrap{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+#map{height:46vh;min-height:300px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--dim);padding:10px 12px;border-top:1px solid var(--line)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#98a2b3;margin-inline-end:6px;vertical-align:middle}
+.pinlg{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--acc);color:#fff;font-size:11px;align-items:center;justify-content:center;margin-inline-end:6px}
+.cards{display:grid;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;scroll-margin-top:12px}
+.card.sel{box-shadow:var(--glow);border-color:var(--acc)}
+.top{display:flex;gap:10px;align-items:flex-start}
+.num{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;cursor:pointer}
+.num.nomap{background:var(--card2);color:var(--dim);border:1px dashed var(--line2)}
+.card h2{font-size:17px;line-height:1.35}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--card2);color:var(--dim)}
+.chip.ok{color:var(--ok)}.chip.warn{color:var(--warn)}.chip.acc{background:var(--accSoft);color:var(--acc)}
+.why{margin-top:10px;font-size:15px}
+.kv{margin-top:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:14px}
+.kv dt{color:var(--dim)}
+.next{margin-top:12px;background:var(--accSoft);border-radius:var(--rs);padding:10px 12px;font-size:15px}
+.next b{color:var(--acc)}
+.safety{margin-top:10px;border:1px solid #f1d9a6;background:#fff8eb;color:#7a4b00;border-radius:var(--rs);padding:8px 12px;font-size:14px}
+details{margin-top:10px;font-size:14px}
+summary{cursor:pointer;color:var(--dim);min-height:32px;display:flex;align-items:center}
+ul{padding-inline-start:18px}
+li{margin:2px 0}
+.gaps li{color:var(--warn)}
+.ev a{color:var(--acc)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+.act{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.act select,.act input{border:1px solid var(--line2);border-radius:12px;padding:8px 10px;background:var(--bg2);min-height:44px}
+.act input{width:150px}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:12px;padding:10px 16px;min-height:44px;cursor:pointer}
+.btn:disabled{opacity:.6}
+.msg{font-size:13px;color:var(--dim)}
+.hist{font-size:13px;color:var(--dim);margin-top:6px}
+#login{max-width:380px;margin:18vh auto 0;padding:16px;display:none}
+#login .card input{width:100%;border:1px solid var(--line2);border-radius:12px;padding:12px;margin-top:10px;min-height:44px}
+#login .btn{width:100%;margin-top:10px}
+.empty{color:var(--dim);padding:24px 0}
+</style>
+</head>
+<body>
+<div id="login"><div class="card"><h2>Fresco · צמיחה</h2><p class="sub">קוד הגישה של הפאנל</p>
+<input id="code" type="password" autocomplete="current-password" placeholder="קוד" aria-label="קוד גישה" />
+<button class="btn" id="lb" type="button">כניסה</button><p class="msg" id="le"></p></div></div>
+<div id="app" hidden="hidden">
+<header>
+<h1>הזדמנויות שיקום חדשות</h1>
+<p class="sub">בניינים בשיקום ושימור, עם גורם מקצועי שכבר בקשר — ולמי לפנות מחר</p>
+<div class="kpis" id="kpis"></div>
+</header>
+<main>
+<section id="mapwrap" aria-label="מפה"><div id="map"></div>
+<div class="legend"><span><span class="pinlg">1</span>הזדמנות</span><span><span class="dot"></span>פרויקט פרסקו קודם (הקשר בלבד)</span><span>קרבה במפה אינה קשר מקצועי</span></div></section>
+<section class="cards" id="cards" aria-live="polite"><p class="empty">טוען…</p></section>
+</main>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/growth';
+var B=function(q){return document.querySelector(q);};
+var STATE_HE={qualified:'מאומתת',contacted:'נוצר קשר',meeting:'פגישה',quoted:'הצעת מחיר',won:'הזמנה',lost:'ירדה'};
+var STAGE_HE={need:'צורך',planning:'תכנון',spec:'מפרט',tender:'מכרז',procurement:'רכש'};
+var NEXT={qualified:'contacted',contacted:'meeting',meeting:'quoted',quoted:'won'};
+var ROLE_HE={approver:'מאשר/ת חומרים',specifier:'קובע/ת מפרט',contractor:'קבלן מבצע',buyer:'רכש'};
+var D=null,map=null,pins={};
+var CODE_FROM='';
+function code(){CODE_FROM='';
+  try{var s=sessionStorage.getItem('fc');if(s){CODE_FROM='fc';return s;}
+      var l=localStorage.getItem('lia_code');if(l){CODE_FROM='lia_code';return l;}}catch(e){}
+  return '';}
+/* No order is attributed to a building without evidence (Priority orders carry the customer, not the site). */
+function orderClaim(t){return String(t==null?'':t).replace(/אין (עדיין )?הזמנה( בפריוריטי)?/g,'שיוך הזמנה לפרויקט לא אומת');}
+function esc(s){return (s==null?'':String(s)).replace(/[<>&"]/g,function(c){return c==='<'?'&lt;':c==='>'?'&gt;':c==='&'?'&amp;':'&quot;';});}
+function showLogin(m){B('#app').hidden=true;B('#login').style.display='block';B('#le').textContent=m||'';}
+function api(b){return fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-fresco-code':code()},body:JSON.stringify(b)}).then(function(r){
+  if(r.status===401){try{sessionStorage.removeItem('fc');if(CODE_FROM==='lia_code')localStorage.removeItem('lia_code');}catch(e){}showLogin('הקוד לא התקבל');throw new Error('401');}
+  return r.json().then(function(j){if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j;});});}
+function day(iso){var p=String(iso||'').slice(0,10).split('-');return p.length===3?(Number(p[2])+'.'+Number(p[1])+'.'+p[0].slice(2)):'';}
+function chan(c){return (c||[]).map(function(x){return esc(String(x).replace(/^mail:/,'✉ ').replace(/^priority:/,'Priority '));}).join('<br/>');}
+function card(o,i){
+  var b=o.brief||{},a=o.actor||{},n=i+1;
+  var h='<article class="card" id="c-'+o.key+'" data-id="'+o.id+'"><div class="top">'
+   +'<button type="button" class="num'+(o.location?'':' nomap')+'" data-fly="'+o.key+'" title="'+(o.location?'הצג במפה':'מיקום לא מאומת')+'">'+n+'</button>'
+   +'<div><h2>'+esc(o.title)+'</h2><div class="chips">'
+   +'<span class="chip acc">'+esc(STATE_HE[o.state]||o.state)+'</span>'
+   +'<span class="chip">'+esc(STAGE_HE[o.stage]||o.stage||'')+'</span>'
+   +(o.location?'<span class="chip ok">מיקום: '+(o.location.precision==='address_point'?'נקודת כתובת עירונית':esc(o.location.precision))+'</span>':'<span class="chip warn">מיקום לא מאומת</span>')
+   +'<span class="chip">מאז '+day(o.since)+'</span></div></div></div>'
+   +'<p class="why">'+esc(orderClaim(b.why))+'</p>'
+   +(b.safety?'<div class="safety">⚠ '+esc(b.safety)+'</div>':'')
+   +'<dl class="kv"><dt>איש קשר</dt><dd>'+esc(b.contact)+'</dd>'
+   +'<dt>ערוץ</dt><dd>'+esc(b.channel)+'</dd>'
+   +'<dt>גורם</dt><dd>'+esc(a.name||'')+(a.decision_role?' · '+esc(ROLE_HE[a.decision_role]||a.decision_role):'')+(a.customer_priority_id?' · <span class="mono">Priority '+a.customer_priority_id+'</span>':'')+'</dd>'
+   +(b.fit?'<dt>התאמה</dt><dd>'+esc(b.fit)+'</dd>':'')+'</dl>'
+   +'<div class="next"><b>הפעולה הבאה:</b> '+esc(orderClaim(b.next_action))+'</div>'
+   +'<details><summary>ראיות ('+(o.signals||[]).length+')</summary><ul class="ev">'
+   +(o.signals||[]).map(function(s){return '<li>'+day(s.date)+' · '+esc(s.title)+(s.url?' · <a href="'+esc(s.url)+'" target="_blank" rel="noopener">מקור</a>':'')+'</li>';}).join('')
+   +'</ul>'+((b.gaps||[]).length?'<ul class="gaps">'+b.gaps.map(function(g){return '<li>'+esc(orderClaim(g))+'</li>';}).join('')+'</ul>':'')
+   +(a.channels&&a.channels.length?'<p class="msg">ערוצים רשומים:<br/>'+chan(a.channels)+'</p>':'')+'</details>'
+   +'<div class="act"><select aria-label="שלב">'+Object.keys(STATE_HE).map(function(s){return '<option value="'+s+'"'+(s===(NEXT[o.state]||o.state)?' selected="selected"':'')+'>'+STATE_HE[s]+'</option>';}).join('')+'</select>'
+   +'<input type="text" placeholder="PQ / SO מפריוריטי" aria-label="מספר בפריוריטי" />'
+   +'<button type="button" class="btn" data-save="'+o.id+'">עדכון</button><span class="msg"></span></div>'
+   +(o.history&&o.history.length?'<div class="hist">'+o.history.map(function(x){return day(x.at)+' '+esc(STATE_HE[x.from]||x.from)+' → '+esc(STATE_HE[x.to]||x.to)+(x.quote?' · <span class="mono">'+esc(x.quote)+'</span>':'')+' ('+esc(x.by)+')';}).join('<br/>')+'</div>':'')
+   +'</article>';
+  return h;
+}
+function render(){
+  var c=D.counts||{};
+  B('#kpis').innerHTML='<span class="kpi"><b>'+(c.open||0)+'</b>פתוחות</span>'
+   +['contacted','meeting','quoted','won'].map(function(s){return '<span class="kpi"><b>'+((c.by_state||{})[s]||0)+'</b>'+STATE_HE[s]+'</span>';}).join('')
+   +'<span class="kpi">עודכן '+day(D.generated_at)+'</span>';
+  B('#cards').innerHTML=D.opportunities.length?D.opportunities.map(card).join(''):'<p class="empty">אין הזדמנויות פתוחות</p>';
+  drawMap();
+}
+function drawMap(){
+  if(!window.L){B('#map').innerHTML='<p class="empty" style="padding:16px">המפה לא נטענה</p>';return;}
+  if(!map){map=L.map('map',{zoomControl:true,attributionControl:true}).setView([32.066,34.772],14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);}
+  (D.fresco||[]).forEach(function(p){L.circleMarker([p.lat,p.lon],{radius:4,color:'#98a2b3',weight:1,fillColor:'#98a2b3',fillOpacity:.7}).bindTooltip(esc(p.name)+(p.last?' · '+day(p.last):''),{direction:'top'}).addTo(map);});
+  var pts=[];
+  D.opportunities.forEach(function(o,i){if(!o.location)return;
+    var icon=L.divIcon({className:'',html:'<div class="num" style="width:30px;height:30px;box-shadow:0 2px 6px rgba(0,0,0,.25)">'+(i+1)+'</div>',iconSize:[30,30],iconAnchor:[15,15]});
+    var m=L.marker([o.location.lat,o.location.lon],{icon:icon,title:o.title}).addTo(map);
+    m.on('click',function(){select(o.key,false);});pins[o.key]=m;pts.push([o.location.lat,o.location.lon]);});
+  if(pts.length)map.fitBounds(pts,{padding:[40,40],maxZoom:16});
+}
+function select(k,fly){
+  [].forEach.call(document.querySelectorAll('.card'),function(c){c.classList.remove('sel');});
+  var el=B('#c-'+k);if(el){el.classList.add('sel');if(!fly)el.scrollIntoView({behavior:'smooth',block:'start'});}
+  if(fly&&pins[k]&&map){map.flyTo(pins[k].getLatLng(),17);B('#mapwrap').scrollIntoView({behavior:'smooth',block:'start'});}
+}
+document.addEventListener('click',function(e){
+  var f=e.target.closest('[data-fly]');if(f){select(f.getAttribute('data-fly'),true);return;}
+  var s=e.target.closest('[data-save]');if(!s)return;
+  var box=s.parentNode,msg=box.querySelector('.msg');
+  s.disabled=true;msg.textContent='שומר…';
+  api({action:'set_state',id:s.getAttribute('data-save'),state:box.querySelector('select').value,quote:box.querySelector('input').value.trim()||null})
+   .then(function(){return api({action:'board'});}).then(function(d){D=d;render();})
+   .catch(function(err){if(String(err.message)!=='401'){msg.textContent=err.message;s.disabled=false;}});
+});
+function load(){B('#login').style.display='none';B('#app').hidden=false;
+  api({action:'board'}).then(function(d){D=d;render();}).catch(function(e){if(String(e.message)!=='401')B('#cards').innerHTML='<p class="empty">שגיאה: '+esc(e.message)+'</p>';});}
+B('#lb').onclick=function(){var c=B('#code').value.trim();if(!c)return;try{sessionStorage.setItem('fc',c);}catch(e){}load();};
+B('#code').addEventListener('keydown',function(e){if(e.key==='Enter')B('#lb').click();});
+if(code())load();else showLogin('');
+</script>
+</body>
+</html>
