@@ -642,7 +642,7 @@ button#live.wait{opacity:.6}
   <div class="railHead" onclick="toggleRailSection('kpiCard')">
    <span>FRESCO KPIs</span><span class="railHeadMeta" id="kpiSummary"></span><span class="railChev">▾</span>
   </div>
-  <div class="kpiGrid railBody" id="kpis"></div>
+  <div class="kpiGrid railBody" id="kpis" data-lia-change="9d0d79f9"></div>
  </section>
  <section class="railCard">
   <div class="railHead"><span>TODAY</span><span id="tDate"></span></div>
@@ -2384,6 +2384,24 @@ function renderKpis(){
   html+=kpiTile(c,c.key===openKey);
  });
  if(m.more)html+=kpiTile(m.more,m.more.key===openKey);
+ /* יעד שנתי: סך המכירות של השנה שעברה בתוספת 7%. הפער מחושב מול תחזית
+    סוף השנה בקצב המכירות מתחילת השנה, בלי להמציא נתון כשחסר מקור מאומת. */
+ const annualFacts=k.month||{};
+ const annualTarget=annualFacts.ly_year&&annualFacts.ly_year.net!=null?annualFacts.ly_year.net*1.07:null;
+ const annualYtd=annualFacts.ytd&&annualFacts.ytd.net!=null?annualFacts.ytd.net:null;
+ const annualAsOf=new Date(annualFacts.as_of||Date.now());
+ const annualYear=annualAsOf.getFullYear();
+ const annualStart=new Date(annualYear,0,1);
+ const annualDays=Math.max(1,Math.floor((annualAsOf-annualStart)/86400000)+1);
+ const annualTotalDays=new Date(annualYear+1,0,1).getTime()-annualStart.getTime();
+ const annualForecast=annualYtd!=null&&isFinite(annualAsOf.getTime())?annualYtd/annualDays*(annualTotalDays/86400000):null;
+ const annualGap=annualTarget!=null&&annualForecast!=null?(annualTarget-annualForecast)/annualTarget*100:null;
+ const annualGapText=annualGap==null?'פער לא מאומת':annualGap>0?'רחוקים '+annualGap.toFixed(1)+'% מהיעד':annualGap<0?'מעל היעד ב-'+Math.abs(annualGap).toFixed(1)+'%':'בדיוק ביעד';
+ html+=kpiTile({key:'annual_target',label:'יעד שנתי',value:annualTarget==null?null:kfmt(annualTarget),pct:'אשתקד +7%',state:annualGap==null?'na':annualGap>0?'warn':'good',sub:annualGapText,
+  detail:[{b:'מכירות שנתיות אשתקד',t:annualFacts.ly_year&&annualFacts.ly_year.net!=null?kfmt(annualFacts.ly_year.net):'לא מאומת'},
+   {b:'יעד סוף שנה',t:annualTarget!=null?kfmt(annualTarget)+' (אשתקד +7%)':'לא מאומת'},
+   {b:'תחזית סוף שנה לפי קצב מתחילת השנה',t:annualForecast!=null?kfmt(annualForecast):'לא מאומת'},
+   {b:'פער מהיעד',t:annualGapText}]},false);
  el.innerHTML=html;
  setKpiHeader(m.header,m.header2);
 }
