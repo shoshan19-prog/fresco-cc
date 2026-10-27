@@ -2379,6 +2379,16 @@ function renderKpis(){
  let html='';
  const ref=[m.ref,k.month&&k.month.as_of?kpiAgeText(k.month):''].filter(Boolean).join(' · ');
  if(ref)html+='<div class="kpiRef">'+esc(ref)+'</div>';
+ /* דוד (WORK 819cffba): תמונת צבר פשוטה כבר בכרטיסי המדדים — פרויקטים
+    בעבודה, מה שכבר בתהליך חיוב, והצעות המחיר. סכום שלא אומת נשאר מפורש כך. */
+ const backlog=k.open_orders||{},billing=k.unbilled||{};
+ const projectValue=backlog.remaining!=null?kfmt(backlog.remaining):'לא מאומת';
+ const billingValue=billing.sums&&billing.sums.TOTPRICE!=null?kfmt(billing.sums.TOTPRICE):'לא מאומת';
+ const quotes=k.kpi_quotes_to_orders_60d||'לא מאומת';
+ html+='<div class="kpiRef" data-lia-change="819cffba"><b>הערכת צבר קדימה</b><br>'
+  +'פרויקטים בעבודה: '+esc(String(backlog.headline_count!=null?backlog.headline_count:'לא מאומת'))+' · '+esc(projectValue)
+  +' · בתהליך חיוב: '+esc(String(billing.headline_count!=null?billing.headline_count:'לא מאומת'))+' · '+esc(billingValue)
+  +' · הצעות מחיר: '+esc(quotes)+'</div>';
  m.cards.forEach((c,i)=>{
   if(i%2===0&&m.rows[i/2])html+='<div class="kpiRow">'+esc(m.rows[i/2])+'</div>';
   html+=kpiTile(c,c.key===openKey);
