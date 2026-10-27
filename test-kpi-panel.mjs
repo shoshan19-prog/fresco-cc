@@ -57,25 +57,40 @@ ok('כיסוי (David 5.10 evening): the meaning leads — "137% כיסוי" —
 const ub = card('unbilled_due'), bk = card('backlog');
 ok('תעודות לחיוב: ₪55.7K net · 9% of the gap · 12 notes, oldest 11 days', ub.value === '₪55.7K' && ub.pct === 'נטו · 9% מהפער' && ub.sub === '12 תעודות · הוותיקה 11 יום', text(ub));
 ok('הזמנות פתוחות: ₪814K remaining · "expected this month" is NOT verified, said so · 31 orders', bk.value === '₪814K' && bk.pct === 'יתרה לספק' && /^צפוי החודש: לא מאומת · 31 הזמנות/.test(bk.sub), text(bk));
-ok('quotes → orders left the main screen and lives in the folded detail', !m.cards.some((c) => /הצעות/.test(text(c))) && bk.detail.some((l) => /הצעות מחיר → הזמנות/.test(l.b) && l.t === '16 מתוך 50 הצעות (32%)'));
+ok('backlog detail still carries quotes → orders (the folded line David approved 5.10)', bk.detail.some((l) => /הצעות מחיר → הזמנות/.test(l.b) && l.t === '16 מתוך 50 הצעות (32%)'));
 
-// ── row 4: history ──
-const ly = card('vs_ly'), avg = card('vs_avg');
-ok('מול אשתקד: the same days (+380%, 25 vs 4 invoices — the thin base is on the card)', ly.value === '+380%' && ly.pct === 'אותם ימים אשתקד' && ly.sub === '25 מול 4 חשבוניות', text(ly));
-ok('מול אשתקד detail: Forecast vs the full month last year (+24% on the working-day rate) and YTD vs YTD (-10%)', ly.detail.some((l) => /Forecast מול/.test(l.b) && l.t.startsWith('+24%')) && ly.detail.some((l) => /מתחילת השנה/.test(l.b) && l.t.startsWith('-10%')));
-ok('מול ממוצע: Forecast vs the 2025 monthly average (-7% on the working-day rate), named exactly — no "12 months" the engine does not hold', avg.value === '-7%' && avg.pct === 'ממוצע חודשי 2025' && /Forecast ₪953K מול ₪1\.03M/.test(avg.sub) && avg.detail.some((l) => /12 חודשים אחרונים/.test(l.b) && /לא מאומת/.test(l.t)), text(avg));
+// ── CEO COCKPIT B (David 27.10 — "תבנה את B"): the year leads; history folds into the month cards ──
+const yr = card('year');
+ok('the year leads the panel: YTD ₪8.47M of the ₪13.21M target (last year ₪12.35M × 1.07, David 27.10) · 64% · -10% vs last year', m.cards[0].key === 'year' && yr.lead === true && yr.value === '₪8.47M' && yr.target === '₪13.21M' && yr.pct === '64% מהיעד · -10% מאשתקד', text(yr) + ' ' + yr.target);
+ok('year: the engine\'s own year-end projection (the chat\'s number) and the gap to the target', yr.sub === 'תחזית לסוף השנה ₪11.12M' && yr.gapText === 'פער ₪2.09M' && yr.detail.some((l) => l.b === 'תחזית לסוף השנה' && /תחזית המנוע/.test(l.t)), yr.sub + ' | ' + yr.gapText);
+ok('year: red — measured against where last year\'s own seasonality says we should be today, not a straight line', yr.state === 'bad' && yr.detail.some((l) => /העונתיות של אשתקד/.test(l.t)) && yr.detail.some((l) => l.b === 'יעד שנתי' && /× 1\.07 · הוראת דוד 27\.10/.test(l.t)));
+ok('year: the bar is to scale — actual 64%, forecast 84% of the target', Math.round(yr.bar.actual * 100) === 64 && Math.round(yr.bar.forecast * 100) === 84, JSON.stringify(yr.bar));
+{ const noEng = M.kpiModel(Object.assign({}, k, { verdict: { score: 90, status: { word: 'טוב' } } })).cards[0];
+  ok('year without the engine\'s projection: ytd ÷ elapsed days × days in the year, and the detail says it ignores seasonality', noEng.sub === 'תחזית לסוף השנה ₪11.12M' && noEng.detail.some((l) => /בלי עונתיות/.test(l.t)), noEng.sub); }
+ok('the month vs last year (+380%, 25 vs 4 invoices) moved into the sales detail — once, not a card', sales.detail.some((l) => /אוקטובר 2025/.test(l.b) && /^\+380%/.test(l.t) && /25 מול 4 חשבוניות/.test(l.t)) && !card('vs_ly'));
+ok('the monthly averages moved into the Forecast detail (-7% vs the 2025 average)', fc.detail.some((l) => /ממוצע חודשי 2025/.test(l.b) && /^-7%/.test(l.t)) && !card('vs_avg'));
+const cash = card('cash');
+ok('cash: bank balances are NOT connected — said so, no number, and any connection is read-only with David\'s approval', cash.value === null && cash.nv === 'לא מחובר' && cash.state === 'na' && cash.detail.some((l) => /קריאה בלבד/.test(l.t) && /אישור דוד/.test(l.t)));
+const rec = card('receivables');
+ok('receivables: no verified KPI → "לא מאומת" with the reason, never 0', rec.value === null && /אין KPI מאומת/.test(rec.pct));
+{ const withOrg = M.kpiModel(Object.assign({}, k, { org: { receivables_open: { key: 'receivables_open', value: 1713251, display: '₪1,713,251', verification: 'STALE', as_of: '2026-09-25T20:43:34Z', source: 'kpi_cache:receivables' }, receivables_over_90: { value: 212000, display: '₪212,000', verification: 'STALE' } } })).cards.find((c) => c.key === 'receivables');
+  ok('receivables from the organizer\'s KPI: the value with its age said in the open (קריאה ישנה · date)', withOrg.value === '₪1.71M' && withOrg.pct === 'קריאה ישנה · 2026-09-25' && withOrg.sub === 'מעל 90 יום: ₪212K', text(withOrg));
+  const nc = M.kpiModel(Object.assign({}, k, { org: { receivables_open: { value: null, display: 'לא מחובר', verification: 'NOT_CONNECTED' } } })).cards.find((c) => c.key === 'receivables');
+  ok('a NOT_CONNECTED organizer KPI never becomes a number', nc.value === null); }
+const q = card('quotes');
+ok('quotes → orders is a card in the sales→orders→billing row: 32% · 16 of 50 · 60 days; SharePoint estimates stay outside the forecast', q.value === '32%' && q.pct === 'המרה תוך 60 יום' && q.sub === '16 מתוך 50 הצעות' && q.detail.some((l) => /שרפוינט/.test(l.b) && /מחוץ לתחזית/.test(l.t)), text(q));
 
 // ── colour expresses state, not the kind of number ──
-ok('only pace/forecast/coverage carry a state colour; the rest are neutral', m.cards.filter((c) => c.state !== 'none').map((c) => c.key).join(',') === 'sales,forecast,cover', m.cards.map((c) => c.key + ':' + c.state).join(' '));
+ok('only the year, pace, forecast and coverage carry a state colour; the rest are neutral (cash grey: not connected)', m.cards.filter((c) => c.state !== 'none' && c.state !== 'na').map((c) => c.key).join(',') === 'year,sales,forecast,cover' && cash.state === 'na', m.cards.map((c) => c.key + ':' + c.state).join(' '));
 ok('the page has no per-KPI tints any more', !/c-salesToday|c-salesMonth|c-openOrders|c-grossProfit|c-receivables|c-unbilled/.test(html));
 
 // ── removed from the main screen, kept in "נתונים נוספים" ──
 ok('the 90/100 score is on no card', !m.cards.some((c) => /\/100/.test(text(c))));
-ok('"נתונים נוספים" (wide, neutral) holds the score, receivables and gross profit — unverified said so', m.more && m.more.wide && m.more.state === 'none' && /ציון כולל 90\/100/.test(m.more.sub) && /חייבים: לא מאומת/.test(m.more.sub) && /רווח גולמי: לא מאומת/.test(m.more.sub) && m.more.detail.some((l) => /רווח גולמי/.test(l.b) && /לא מאומת/.test(l.t)));
+ok('"נתונים נוספים" (wide, neutral) holds the score and gross profit — receivables and quotes have their own cards now, so they are not repeated', m.more && m.more.wide && m.more.state === 'none' && /ציון כולל 90\/100/.test(m.more.sub) && !/חייבים/.test(m.more.sub) && /רווח גולמי: לא מאומת/.test(m.more.sub) && !m.more.detail.some((l) => /הצעות מחיר|חייבים/.test(l.b)));
 
 // ── the screen test (David): without opening a card ──
 ok('screen test: ₪136K | 18% | 4 above the working-day pace — Forecast ₪953K | 124% — missing ₪633K | 137% covered', sales.value === '₪136K' && sales.pct.startsWith('18%') && sales.dot.startsWith('4 ') && fc.value === '₪953K' && fc.pct.startsWith('124%') && gap.value === '₪633K' && cover.value.startsWith('137%'));
-ok('nine cards (eight approved 5.10 + רווח לפני מס, David 11.10), four rows, in the approved order', m.cards.map((c) => c.key).join(',') === 'sales,forecast,gap,cover,unbilled_due,backlog,vs_ly,vs_avg,pbt' && m.rows.length === 4, m.cards.map((c) => c.key).join(','));
+ok('CEO Cockpit B order (David 27.10): the year, then the month · profitability · cash · sales→orders→billing — each card in its named row', m.cards.map((c) => c.key).join(',') === 'year,sales,forecast,gap,cover,pbt,cash,receivables,quotes,backlog,unbilled_due' && m.rows.join('|') === 'החודש|רווחיות|מזומנים|מכירות, הזמנות וחיובים' && m.cards.filter((c) => !c.lead).every((c) => m.rows.some((r) => c.row.startsWith(r))) && card('sales').row === 'החודש · אוקטובר', m.cards.map((c) => c.key + '@' + c.row).join(','));
 { // PROFIT BEFORE TAX (David 11.10): the engine's pbt_kpi row or the exact blocker — never operating profit, never a number from this screen
   const none = card('pbt');
   ok('pbt: no row in the engine → "לא מאומת" with the reason, and the definition says it is not operating profit', none.value === null && /להריץ pbt_kpi/.test(none.detail[0].t) && /לא רווח תפעולי/.test(none.detail[1].t), JSON.stringify(none));
@@ -90,12 +105,15 @@ ok('nine cards (eight approved 5.10 + רווח לפני מס, David 11.10), four
 
 // ── when the engine does not answer ──
 const e = M.kpiModel({});
-ok('no engine row → the header says so and every card is grey "לא מאומת" — no number invented', e.header === 'אין תמונת מצב' && e.header2 === 'מנוע תמונת המצב לא ענה' && e.cards.length === 9 && e.cards.every((c) => c.value === null && c.state === 'na'));
+ok('no engine row → the header says so and every card is "לא מאומת" or "לא מחובר" — no number invented, no state colour', e.header === 'אין תמונת מצב' && e.header2 === 'מנוע תמונת המצב לא ענה' && e.cards.length === 11 && e.cards.every((c) => c.value === null && (c.state === 'na' || c.state === 'none')) && e.cards.map((c) => c.key).join(',') === m.cards.map((c) => c.key).join(','), e.cards.map((c) => c.key + ':' + c.value + ':' + c.state).join(' '));
 const partial = M.kpiModel({ month: Object.assign({}, k.month, { ly_month: null, unbilled: null, backlog: null }) });
 ok('no Baseline → percentages are "לא מאומת", the ₪ facts stay; no pipeline → coverage grey', partial.cards.find((c) => c.key === 'sales').pct === 'לא מאומת' && partial.cards.find((c) => c.key === 'sales').value === '₪136K' && partial.cards.find((c) => c.key === 'cover').state === 'na' && partial.cards.find((c) => c.key === 'cover').value === null && partial.header === 'אוקטובר · Baseline לא מאומת', partial.header);
 
 // ── source pins: the panel, not another dashboard ──
-ok('the section is the SAME panel (id, class, change mark) and the same grid element', /<section class="railCard collapsible" id="kpiCard" data-collapsed="true" data-lia-change="d6ed8626">/.test(html) && /<div class="kpiGrid railBody" id="kpis"><\/div>/.test(html) && /\.kpiGrid\{display:grid;grid-template-columns:1fr 1fr;gap:10px\}/.test(html));
+ok('the section is the SAME panel (id, class) and the same grid element, two per row', /<section class="railCard collapsible" id="kpiCard" data-collapsed="false" data-lia-change="524a206c">/.test(html) && /<div class="kpiGrid railBody" id="kpis" data-lia-change="9d0d79f9"><\/div>/.test(html) && /\.kpiGrid\{display:grid;grid-template-columns:1fr 1fr;gap:12px\}/.test(html));
+ok('production · lab · risks is a quiet list right under the KPIs, before TODAY — and the organizer is still in the rail', html.indexOf('id="kpiCard"') < html.indexOf('id="opsCard"') && html.indexOf('id="opsCard"') < html.indexOf('<span>TODAY</span>') && /<div class="miniList railBody" id="ops"><\/div>/.test(html) && /<details class="railCard orgWrap" id="orgWrap">/.test(html));
+ok('the ops list reads only the organizer\'s KPIs and exceptions; supply chain and a missing read say "לא מחובר"', /function renderOps\(\)\{/.test(src) && /'שרשרת אספקה:','לא מחובר עדיין'/.test(src) && /x\.verification!=='NOT_CONNECTED'/.test(src) && /כמות פעילות אינה הצלחה/.test(src));
+ok('WORK 819cffba\'s forward estimate now lives as the sales→orders→billing row (marker kept); the annual target is the year lead — no duplicate line or tile', /data-lia-change="819cffba"/.test(src) && !/key:'annual_target'/.test(src) && !/הערכת צבר קדימה/.test(src));
 ok('no second dashboard: one #kpis grid, one renderKpis, one model call', (html.match(/id="kpis"/g) || []).length === 1 && (src.match(/function renderKpis\(\)/g) || []).length === 1 && /const m=kpiModel\(k,kfmt\);RAILS\.kpiModel=m;/.test(src));
 ok('the two-line head is set from the model, and keeps the height the desktop lock measured (two 19.2px lines)', /setKpiHeader\(m\.header,m\.header2\)/.test(src) && /#kpiCard \.railHeadMeta\{[^}]*line-height:19\.2px/.test(html));
 ok('accordion: opening a card folds every other open card in the grid, and remembers one', /if\(!open\)document\.querySelectorAll\('#kpis \.kpiTile\[data-open="true"\]'\)\.forEach/.test(src));
@@ -105,7 +123,7 @@ ok('the phone drawer answers the new keys from the same model', /if\(KPI_CARD_KE
 ok('the month facts ride the one engine row (kpisFromSnapshot), copied not recomputed', /month:monthFactsFromSnapshot\(d,asOf,!!cachedAt\),/.test(src));
 ok('a signed value keeps its sign in front — the big number is bidi-isolated (dir=auto)', /<div class="v" dir="auto">/.test(src));
 ok('privacy mode still hides money on the cards', /function kfmt\(n\)\{return privacyOn\(\)\?'—':kfmtRaw\(n\);\}/.test(src));
-ok('the build stamp moved to 11.10 (PBT card)', /const LIA_BUILD='2026-10-11\.\d+';/.test(src));
+ok('the build stamp moved to 27.10 (CEO Cockpit B)', /const LIA_BUILD='2026-10-27\.\d+';/.test(src));
 ok('the fixture is the engine\'s real row of 5.10 14:28Z', F.at === '2026-10-05T14:28:09.797Z' && F.row.invoices.mtd.net === 136174 && F.row.rate.projected_month === 953218 && F.row.rate.day_kind === 'working' && F.row.windows.working_days.total === 21 && /decision 164/.test(F.note_164));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} KPI panel asserts passed`);

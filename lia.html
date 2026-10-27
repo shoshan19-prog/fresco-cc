@@ -112,18 +112,18 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 /* ── FRESCO EXECUTIVE (David, 31.8) — the right rail becomes a real business
    view, not a second copy of the chat. Same card language as TODAY/PRIORITIES
    above: no new visual system, just more of the one already here. */
-.kpiGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpiGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 /* FRESCO KPIs (David, 5.10 08:42 — approved 08:55: "ככה זה צריך להראות, מינימליסטי וברור"):
    the same right panel, the same 2-per-row grid, NO second dashboard. A card at rest is
    label → number → percent → one explanation line. Colour expresses STATE, never the
    kind of number: green = on pace / above the Baseline · amber = up to 10% under pace ·
    red = more than 10% under · grey = not verified. Only the edge, the percent line and
    the dot carry colour, so the grid reads as one surface. */
-.kpiTile{position:relative;background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:10px 9px 10px 11px;
+.kpiTile{position:relative;background:var(--card2,rgba(255,255,255,.03));border-radius:12px;padding:12px 11px 12px 13px;
  border-inline-start:3px solid var(--line);cursor:pointer;transition:filter .15s ease;min-width:0}
 .kpiTile:hover{filter:brightness(.97)}
-.kpiTile .lbl{font-size:11px;color:var(--dim);margin-bottom:2px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline-end:12px}
-.kpiTile .v{font-size:19px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpiTile .lbl{font-size:11.5px;color:var(--dim);margin-bottom:2px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline-end:12px}
+.kpiTile .v{font-size:21px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
 .kpiTile .p{font-size:11px;font-weight:700;margin-top:2px;letter-spacing:-.4px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--dim)}
 .kpiTile .k{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.35}
 .kpiTile .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-inline-end:5px;vertical-align:0}
@@ -132,8 +132,25 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .kpiTile.s-warn{border-inline-start-color:#c77700}.kpiTile.s-warn .p{color:#c77700}.kpiTile.s-warn .dot{background:#c77700}
 .kpiTile.s-bad{border-inline-start-color:#e35252}.kpiTile.s-bad .p{color:#e35252}.kpiTile.s-bad .dot{background:#e35252}
 .kpiTile.wide{grid-column:1/-1}
-.kpiTile.wide .v{font-size:12.5px;font-weight:700}
-.kpiRow{grid-column:1/-1;font-size:10.5px;letter-spacing:1.2px;color:var(--dim);margin:4px 2px -4px}
+/* CEO COCKPIT B (David, 27.10 — "תבנה את B"): the same DNA — a slightly wider panel, larger numbers, more air, and the
+   year as a quiet lead above the tiles: no card, a large number, one thin bar to the target. Colour still = state. */
+.kpiTile.kpiLead{grid-column:1/-1;background:none;border-inline-start:0;padding:2px 2px 8px;border-radius:0}
+.kpiTile.kpiLead:hover{filter:none}
+.kpiLead .lbl{font-size:11.5px}
+.kpiLead .v{font-size:32px;letter-spacing:-1px;line-height:1.15}
+.kpiLead .v small{font-size:13.5px;font-weight:600;color:var(--dim);letter-spacing:0;margin-inline-start:7px}
+.kpiLead .p{font-size:12px}
+.kpiBar{position:relative;height:6px;border-radius:6px;background:var(--line);margin:11px 0 6px;overflow:hidden}
+.kpiBar i{position:absolute;inset-inline-start:0;top:0;bottom:0;border-radius:6px}
+.kpiBar .f{background:#c7d3ee}.kpiBar .a{background:var(--txt)}
+.kpiLeadFoot{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+.opsItem .lbl b{font-weight:600}
+.opsItem.nc .lbl{color:var(--dim)}
+.opsItem[role="button"]{cursor:pointer}
+.opsLia{font-size:12.5px;color:var(--dim);border-top:1px solid var(--line);margin-top:2px;padding-top:9px;line-height:1.5}
+.opsLia b{color:var(--txt);font-weight:600}
+.kpiTile[data-kpi="more"] .v{font-size:12.5px;font-weight:700}
+.kpiRow{grid-column:1/-1;font-size:10.5px;letter-spacing:1.2px;color:var(--dim);margin:10px 2px -4px}
 .kpiRef{grid-column:1/-1;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;margin:0 2px}
 /* The head is TWO lines by David's spec ("אוקטובר · יעד ₪XXXK / יום עבודה X מתוך Y") — and two 19.2px lines
    is exactly the height the collapsed card always had (qa-visual's desktop lock measures it). */
@@ -303,7 +320,7 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
     David types into sat off to one side of the answers he was reading and was
     wider than them. It shares the conversation's column now, and the rail
     simply runs the full height beside it. */
- #shell{grid-template-columns:300px minmax(0,1fr);
+ #shell{grid-template-columns:360px minmax(0,1fr);
   grid-template-areas:"l c" "l f";
   column-gap:26px;width:100%;max-width:1280px;margin:0 auto;padding:0 26px}
  #railL{grid-area:l;display:flex}
@@ -323,7 +340,7 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
   max-width:840px;margin-inline:auto}
 }
 @media(min-width:1500px){
- #shell{grid-template-columns:320px minmax(0,1fr)}
+ #shell{grid-template-columns:400px minmax(0,1fr);max-width:1440px}
 }
 .live{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
  letter-spacing:1.2px;color:var(--ok)}
@@ -644,6 +661,12 @@ button#live.wait{opacity:.6}
   </div>
   <div class="kpiGrid railBody" id="kpis" data-lia-change="9d0d79f9"></div>
  </section>
+ <section class="railCard collapsible" id="opsCard" data-collapsed="false">
+  <div class="railHead" onclick="toggleRailSection('opsCard')">
+   <span>ייצור · מעבדה · סיכונים</span><span class="railHeadMeta" id="opsSummary"></span><span class="railChev">▾</span>
+  </div>
+  <div class="miniList railBody" id="ops"></div>
+ </section>
  <section class="railCard">
   <div class="railHead"><span>TODAY</span><span id="tDate"></span></div>
   <div class="todayGrid" id="today"></div>
@@ -798,7 +821,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-11.2';
+const LIA_BUILD='2026-10-27.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1952,7 +1975,7 @@ function toggleKpiDetail(key,el){
 }
 /* The chat's card routes (CARD_ROUTES) still speak the contract names; the eight cards
    of 5.10 are keyed by what they answer. One map, no second routing table. */
-const KPI_ROUTE_ALIAS={sales_today:'sales',sales_month:'sales',sales_period:'sales',unbilled:'unbilled_due',open_orders:'backlog',status:'forecast',receivables:'more',gross_profit:'more'};
+const KPI_ROUTE_ALIAS={sales_today:'sales',sales_month:'sales',sales_period:'sales',unbilled:'unbilled_due',open_orders:'backlog',status:'forecast',gross_profit:'more'};
 function openKpiDetail(key){
  key=KPI_ROUTE_ALIAS[key]||key;
  const tile=document.querySelector('.kpiTile[data-kpi="'+key+'"]');
@@ -2121,7 +2144,7 @@ function monthFactsFromSnapshot(d,asOf,cached){
   elapsed_days:n(w.elapsed_days),days_in_month:n(w.days_in_month),
   today_sales:agg(inv.today),mtd:agg(inv.mtd),ly_same:agg(inv.ly),ly_same_label:(w.last_year_same_elapsed||{}).label||'אותם ימים אשתקד',
   ly_month:agg(d.ly_full_month),ly_month_label:(w.last_year_full_month||{}).label||'אותו חודש אשתקד',
-  ly_year:agg(d.ly_full_year),ytd:agg(d.ytd),ly_ytd:agg(d.ly_ytd),elapsed_year_days:n(w.elapsed_year_days),
+  ly_year:agg(d.ly_full_year),ytd:agg(d.ytd),ly_ytd:agg(d.ly_ytd),elapsed_year_days:n(w.elapsed_year_days),days_in_year:n(w.days_in_year),
   projected_month:n(rate.projected_month),confidence:rate.confidence||null,basis:rate.basis||'',daily:n(rate.daily),
   rate_day_kind:rate.day_kind||null,rate_days_total:n(rate.days_total),
   working_days:(w.working_days&&n(w.working_days.total))?{done:n(w.working_days.done),total:n(w.working_days.total),left:n(w.working_days.left)}:null,
@@ -2158,20 +2181,46 @@ function kpiModel(k,fmt){
  const pct=(a,b)=>(a===null||a===undefined||!b)?null:Math.round(a/b*100);
  const delta=(a,b)=>(a===null||a===undefined||!b)?null:Math.round((a-b)/b*100);
  const sgn=(p)=>p===null?NA:(p>0?'+':'')+p+'%';
- const card=(o)=>Object.assign({value:null,pct:null,sub:'',dot:'',state:'na',detail:[],wide:false},o);
- const ROWS=['מצב החודש','מה חסר ומה כבר מכסה אותו','מקורות הכסף','היסטוריה'];
+ const card=(o)=>Object.assign({value:null,pct:null,sub:'',dot:'',state:'na',detail:[],wide:false,row:''},o);
+ /* CEO COCKPIT B (David, 27.10 — "תבנה את B"): the same panel and tiles, in David's order of importance — the year
+    leads, then the month, profitability, cash, the sales→orders→billing chain. Each number appears once; the
+    detail opens down inside the card. Rows are named groups now, not pairs. */
+ const ROWS=['החודש','רווחיות','מזומנים','מכירות, הזמנות וחיובים'];
+ const org=k.org||{};
+ const orgTag=(x)=>!x?NA:(x.verification==='VERIFIED'?'מאומת':x.verification==='STALE'?'קריאה ישנה':x.verification==='NOT_CONNECTED'?'לא מחובר':'חלקי')+(x.as_of?' · '+String(x.as_of).slice(0,10):'');
+ const cashCard=()=>card({key:'cash',label:'יתרות בנק',nv:'לא מחובר',row:ROWS[2],sub:'דורש חיבור לקריאה בלבד, באישורך',
+  detail:[{b:'מה חסר',t:'יתרות הבנק, התחייבויות לספקים ותשלומים צפויים אינם מחוברים. לא מוצג מספר עד שיחובר מקור מאומת.'},
+   {b:'החיבור',t:'קריאה בלבד, באישור דוד — שום חיבור פיננסי חדש לא נפתח בלי אישור (הוראת דוד, 27.10)'}]});
+ const recCard=()=>{
+  const r=k.receivables,o=org.receivables_open,o90=org.receivables_over_90;
+  const val=r&&r.sums&&r.sums.TOTPRICE!=null?fmt(r.sums.TOTPRICE):(o&&o.value!=null&&o.verification!=='NOT_CONNECTED'?fmt(o.value):null);
+  return card({key:'receivables',label:'חייבים פתוחים',value:val,row:ROWS[2],state:'none',
+   pct:r?'כולל מע"מ · '+r.headline_count+' חשבוניות':(o?orgTag(o):'אין KPI מאומת ≤24 שעות'),
+   sub:o90&&o90.value!=null&&o90.verification!=='NOT_CONNECTED'?'מעל 90 יום: '+fmt(o90.value):'',
+   detail:[{b:'מקור',t:r?(r.canonical_source||'fresco_snapshot'):(o?(o.source||'')+' · '+orgTag(o):NA+' — אין KPI חייבים מאומת ≤24 שעות (הכרעת דוד 4.9)')},
+    {b:'הגדרה',t:(r&&r.definition)||(o&&o.formula)||'חשבוניות סופיות פתוחות בפריוריטי, כולל מע"מ'},
+    {b:'גבייה צפויה לפי מועד',t:NA+' — מועדי פירעון אינם בתמונת המצב'}]});};
+ const quotesCard=()=>{
+  const txt=k.kpi_quotes_to_orders_60d||null,o=org.quote_to_order_60d;
+  const pm=txt?/(\d+(?:\.\d+)?)%/.exec(txt):null;
+  const val=pm?pm[1]+'%':(o&&o.display&&o.verification!=='NOT_CONNECTED'?String(o.display):null);
+  return card({key:'quotes',label:'הצעות מחיר → הזמנות',value:val,row:ROWS[3],wide:true,state:'none',
+   pct:'המרה תוך 60 יום',sub:txt?txt.replace(/\s*\(\d+(?:\.\d+)?%\)\s*$/,''):(o&&o.note?o.note:''),
+   detail:[{b:'הגדרה',t:(o&&o.formula)||'הצעות (CPROF) מ-60 הימים האחרונים שהוכרעו → הומרו ÷ הוכרעו'},
+    {b:'מקור',t:o?(o.source||'kpi_cache:fresco_forecast')+' · '+orgTag(o):'kpi_read · quotes_to_orders_60d'},
+    {b:'ערך הצעות פתוחות',t:NA+' על המסך — תחזית ההצעות (fresco_forecast) נענית בשיחה: "תחזית מכירות"'},
+    {b:'אומדני פרויקטים בשרפוינט',t:'לא מקושרים להצעות בפריוריטי — מחוץ לתחזית עד שיקושרו'}]});};
  const v=k.verdict||null,score=v&&v.score!=null?v.score+'/100'+(v.status&&v.status.word?' · '+v.status.word:''):NA;
  const more=card({key:'more',label:'נתונים נוספים',wide:true,state:'none',value:'נתונים נוספים',
-  sub:'ציון כולל '+score+' · חייבים: '+(k.receivables?'יש KPI':NA)+' · רווח גולמי: '+NA,
+  sub:'ציון כולל '+score+' · רווח גולמי: '+NA,
   detail:[
    {b:'ציון כולל של המנוע',t:score+(v&&v.action?' · הפעולה החשובה ביותר: '+v.action:'')+' — הוסר מהמסך הראשי (דוד, 5.10): הוא מסתיר את השאלה העסקית'},
-   {b:'חייבים / בפיגור',t:k.receivables&&k.receivables.sums&&k.receivables.sums.TOTPRICE!=null?fmt(k.receivables.sums.TOTPRICE)+' כולל מע"מ · '+k.receivables.headline_count+' חשבוניות פתוחות':NA+' — אין KPI חייבים מאומת ≤24 שעות (הכרעת דוד 4.9)'},
-   {b:'רווח גולמי',t:NA+' — עד מקור עלות אמין (הכרעת דוד 1.9)'},
-   {b:'הצעות מחיר → הזמנות · 60 יום',t:k.kpi_quotes_to_orders_60d||NA}]});
+   {b:'רווח גולמי',t:NA+' — עד מקור עלות אמין (הכרעת דוד 1.9)'}]});
  if(!m){
   const na=(key,label)=>card({key:key,label:label,sub:'מנוע תמונת המצב לא ענה — רענן',detail:[{t:'מנוע תמונת המצב (fresco_snapshot) לא ענה; כל מספר בכרטיסים מגיע רק ממנו.',dim:true}]});
   return {ok:false,header:'אין תמונת מצב',header2:'מנוע תמונת המצב לא ענה',ref:null,rows:ROWS,more:more,
-   cards:[na('sales','מכירות'),na('forecast','Forecast'),na('gap','פער ל-Baseline'),na('cover','כיסוי הפער'),na('unbilled_due','תעודות לחיוב'),na('backlog','הזמנות פתוחות'),na('vs_ly','מול אשתקד'),na('vs_avg','מול ממוצע'),na('pbt','רווח לפני מס')]};
+   cards:[Object.assign(na('year','מכירות מתחילת השנה'),{lead:true}),Object.assign(na('sales','מכירות'),{row:ROWS[0]}),Object.assign(na('forecast','Forecast'),{row:ROWS[0]}),Object.assign(na('gap','פער ל-Baseline'),{row:ROWS[0]}),Object.assign(na('cover','כיסוי הפער'),{row:ROWS[0]}),
+    Object.assign(na('pbt','רווח לפני מס'),{row:ROWS[1],wide:true}),cashCard(),recCard(),quotesCard(),Object.assign(na('backlog','הזמנות פתוחות'),{row:ROWS[3]}),Object.assign(na('unbilled_due','תעודות לחיוב'),{row:ROWS[3]})]};
  }
  /* Baseline (David, 5.10): no official target exists; until one is set the historical
     run rate is the Baseline — the same month last year, the engine's own verified field —
@@ -2194,25 +2243,54 @@ function kpiModel(k,fmt){
  const avg2025=m.ly_year&&m.ly_year.net?m.ly_year.net/12:null;
  const avg2026=(m.ytd&&m.ytd.net&&m.elapsed_year_days)?m.ytd.net/(m.elapsed_year_days/(365/12)):null;
  const confHe={HIGH:'גבוה',MEDIUM:'בינוני',LOW:'נמוך'}[m.confidence]||NA;
+
+ /* THE YEAR LEADS (David, 27.10). Target = full sales last year × 1.07 (his instruction, WORK a4ca1a4b) — a management
+    target he set, named so. The year-end forecast is the ENGINE's own projected_year when the verdict carries it (the
+    chat states the same number); otherwise ytd ÷ elapsed days × days in the year, said so. "Where we should be by now"
+    follows last year's own seasonality: target × (last year's YTD ÷ last year's full year). */
+ const ly=m.ly_year&&m.ly_year.net>0?m.ly_year.net:null,target=ly?ly*1.07:null;
+ const ytd=m.ytd?m.ytd.net:null,lyYtd=m.ly_ytd?m.ly_ytd.net:null;
+ const ydays=m.days_in_year||365,yd=m.elapsed_year_days;
+ const eng=v&&v.year&&v.year.projected_year!=null?Number(v.year.projected_year):null;
+ const fcYear=eng!=null?eng:((ytd!==null&&yd)?ytd/yd*ydays:null);
+ const shareLy=(lyYtd&&ly)?lyYtd/ly:null,expectedNow=(target&&shareLy)?target*shareLy:null;
+ const yGap=(target&&fcYear!==null)?Math.max(0,target-fcYear):null;
+ const monthsLeft=yd?(ydays-yd)/(ydays/12):null;
+ const needPerMonth=(target&&ytd!==null&&monthsLeft>0.25)?Math.max(0,target-ytd)/monthsLeft:null;
+ const clamp=(x)=>x===null||!isFinite(x)?null:Math.max(0,Math.min(1,x));
+ const year=card({key:'year',label:'מכירות מתחילת השנה',lead:true,value:fmt(ytd),target:target!==null?fmt(target):null,
+  pct:(target?pct(ytd,target)+'% מהיעד':NA)+' · '+sgn(delta(ytd,lyYtd))+' מאשתקד',
+  sub:'תחזית לסוף השנה '+fmt(fcYear),gapText:yGap!==null?(yGap>0?'פער '+fmt(yGap):'התחזית מעל היעד'):'',
+  bar:{actual:clamp(target&&ytd!==null?ytd/target:null),forecast:clamp(target&&fcYear!==null?fcYear/target:null)},
+  state:kpiState(ytd!==null&&expectedNow?ytd/expectedNow:null),
+  detail:[
+   {b:'מתחילת השנה',t:fmt(ytd)+' נטו'+(m.ytd&&m.ytd.count!=null?' · '+m.ytd.count+' חשבוניות':'')},
+   {b:'יעד שנתי',t:target!==null?fmt(target)+' — מכירות '+(m.year?m.year-1:'אשתקד')+' ('+fmt(ly)+') × 1.07 · הוראת דוד 27.10':NA},
+   {b:'איפה היינו צריכים להיות היום',t:expectedNow!==null?fmt(expectedNow)+' — לפי העונתיות של אשתקד ('+Math.round(shareLy*100)+'% מהשנה נמכר עד היום)':NA},
+   {b:'תחזית לסוף השנה',t:fmt(fcYear)+(eng!=null?' — תחזית המנוע (אותו מספר כמו בשיחה)':' — קצב מתחילת השנה × ימי השנה; בלי עונתיות')},
+   {b:'נדרש לחודש עד סוף השנה',t:needPerMonth!==null?fmt(needPerMonth)+' לחודש כדי להגיע ליעד':NA},
+   {b:'מול אשתקד',t:(lyYtd!==null?sgn(delta(ytd,lyYtd))+' ('+fmt(ytd)+' מול '+fmt(lyYtd)+')':NA)}]});
+ const monthRow=ROWS[0]+(m.name?' · '+m.name:'');
  const paceLine='הקצב הרשמי — ימי עבודה א׳–ה׳ '+(wd?wd.done+'/'+wd.total+' ('+expected+'%)':NA)+' (הכרעת דוד 5.10) · לפי ימים קלנדריים '+(m.elapsed_days!=null?m.elapsed_days+'/'+m.days_in_month+' ('+calPct+'%)':NA)+' — לייחוס בלבד';
- const cards=[
+ const cards=[year,
   /* David, 5.10 evening: the Baseline is a comparison, not a target — the card says how far
      along the Baseline we are and, on one line, where the pace says we should have been. */
   card({key:'sales',label:'מכירות',value:fmt(mtd),pct:actual!==null?actual+'% מה-Baseline':NA,
    sub:expected!==null?'היינו צריכים להיות ב־'+expected+'%':'',
    dot:pts!==null?Math.abs(pts)+' נק׳ '+(pts>=0?'מעל הקצב':'מתחת לקצב'):'',
-   state:kpiState(paceRatio),
+   state:kpiState(paceRatio),row:monthRow,
    detail:[
     {b:'חויב מתחילת החודש',t:fmt(mtd)+' נטו · '+(mtdN!=null?mtdN+' חשבוניות':'')+' (לפני מע"מ)'},
     {b:'היום',t:m.today_sales?fmt(m.today_sales.net)+' · '+m.today_sales.count+' חשבוניות':NA},
     {b:'Baseline',t:fmt(base)+' — '+baseLabel+' · להשוואה בלבד, לא יעד הנהלה; כשיוגדר יעד הנהלה הוא יחליף את ה-Baseline במדד הראשי'},
     {b:'נקודות ייחוס נוספות',t:'ממוצע חודשי 2025 '+fmt(avg2025)+' · ממוצע חודשי 2026 עד היום '+fmt(avg2026)},
-    {b:'קצב',t:paceLine}]}),
+    {b:'קצב',t:paceLine},
+    {b:'מול '+m.ly_same_label,t:sgn(delta(mtd,m.ly_same?m.ly_same.net:null))+(m.ly_same?' ('+fmt(mtd)+' מול '+fmt(m.ly_same.net)+(mtdN!=null&&m.ly_same.count!=null?' · '+mtdN+' מול '+m.ly_same.count+' חשבוניות':'')+')':'')}]}),
   /* David, 5.10 evening: the engine's number stays, marked in the open as a pace forecast —
      not the Forecast engine (actual + expected deliveries + backlog conversion + expected new
      business, no double counting), which does not exist yet. */
   card({key:'forecast',label:'Forecast',value:fmt(fc),pct:fcPct!==null?fcPct+'% מה-Baseline':NA,
-   sub:'תחזית קצב בלבד · ביטחון '+confHe,state:kpiState(fc!==null&&base?fc/base:null),
+   sub:'תחזית קצב בלבד · ביטחון '+confHe,state:kpiState(fc!==null&&base?fc/base:null),row:monthRow,
    detail:[
     {b:'חויב בפועל',t:fmt(mtd)},
     {b:'+ תעודות שיצאו ולא חויבו',t:ubNet!==null?fmt(ubNet)+' נטו ('+m.unbilled.count+' תעודות)':NA},
@@ -2221,8 +2299,10 @@ function kpiModel(k,fmt){
     {b:'Forecast',t:fmt(fc)+' — נוסחה: '+(m.rate_day_kind==='working'?'קצב ליום עבודה '+fmt(m.daily)+' × '+(m.rate_days_total!=null?m.rate_days_total:'?')+' ימי עבודה':'קצב יומי '+fmt(m.daily)+' × '+(m.days_in_month!=null?m.days_in_month:'?')+' ימים')+' ('+(m.basis||NA)+'); לא גשר רכיבים'},
     {b:'מנוע Forecast אמיתי',t:'טרם נבנה — בפועל + אספקות צפויות + המרת צבר + עסקים חדשים צפויים, בלי ספירה כפולה (דוד, 5.10)'},
     {b:'מול '+baseLabel,t:sgn(delta(fc,base))},
-    {b:'טווח',t:NA+' — המנוע נותן נקודה אחת ורמת ביטחון ('+confHe+'), לא טווח'}]}),
-  card({key:'gap',label:'פער ל-Baseline',value:fmt(gap),pct:gapPct!==null?gapPct+'% חסר':NA,state:'none',
+    {b:'טווח',t:NA+' — המנוע נותן נקודה אחת ורמת ביטחון ('+confHe+'), לא טווח'},
+    {b:'מול ממוצע חודשי 2025',t:avg2025!==null?sgn(delta(fc,avg2025))+' ('+fmt(fc)+' מול '+fmt(avg2025)+' לחודש)':NA},
+    {b:'מול ממוצע חודשי 2026',t:avg2026!==null?sgn(delta(fc,avg2026))+' ('+fmt(avg2026)+' לחודש)':NA}]}),
+  card({key:'gap',label:'פער ל-Baseline',value:fmt(gap),pct:gapPct!==null?gapPct+'% חסר':NA,state:'none',row:monthRow,
    sub:(gap!==null&&wd&&wd.left>0)?'נדרש '+fmt(gap/wd.left)+' ליום עבודה ('+wd.left+' נותרו)':(gap===0?'ה-Baseline הושג':''),
    detail:[
     {b:'Baseline',t:fmt(base)+' — '+baseLabel},
@@ -2233,19 +2313,19 @@ function kpiModel(k,fmt){
   /* David, 5.10 evening: the management meaning leads (137% coverage), the raw number follows
      (₪870K available vs the ₪633K gap) — the raw sum is larger than the gap and confused him. */
   card({key:'cover',label:'כיסוי הפער',value:gap===0?'אין פער':(coverPct!==null?coverPct+'% כיסוי':null),
-   pct:'',sub:(pipe!==null?fmt(pipe)+' זמינים':NA)+' מול פער '+fmt(gap),state:kpiState(pipe!==null&&gap?pipe/gap:null),
+   pct:'',sub:(pipe!==null?fmt(pipe)+' זמינים':NA)+' מול פער '+fmt(gap),state:kpiState(pipe!==null&&gap?pipe/gap:null),row:monthRow,
    detail:[
     {b:'תעודות שיצאו ולא חויבו',t:ubNet!==null?fmt(ubNet)+' נטו — ודאי לחיוב':NA},
     {b:'יתרת הזמנות פתוחות',t:bkRem!==null?fmt(bkRem)+' — '+m.backlog.count+' הזמנות, מועד האספקה לא מאומת':NA+(m.backlog&&m.backlog.unverified_lines?' — '+m.backlog.unverified_lines+' שורות ללא יתרה מאומתת':'')},
     {b:'פיצול הצבר לפי מועד',t:NA+' — החודש / חודש הבא / חסום / לא ידוע אינם בתמונת המצב'},
     {b:'מה זה אומר',t:(pipe!==null&&gap!==null)?(pipe>=gap?'הצינור הקיים גדול מהפער; כמה ממנו יסופק החודש — לא מאומת':'גם אם כל הצינור יסופק החודש חסרים '+fmt(gap-pipe)):NA}]}),
-  card({key:'unbilled_due',label:'תעודות לחיוב',value:ubNet!==null?fmt(ubNet):null,pct:'נטו · '+((ubNet!==null&&gap)?pct(ubNet,gap)+'% מהפער':NA),state:'none',
-   sub:m.unbilled?m.unbilled.count+' תעודות'+(m.unbilled.oldest_days!=null?' · הוותיקה '+m.unbilled.oldest_days+' יום':''):'',
-   detail:[
-    {b:'כולל מע"מ',t:m.unbilled&&m.unbilled.gross!=null?fmt(m.unbilled.gross):NA},
-    {b:'מהחודש',t:m.unbilled&&m.unbilled.current_month_count!=null?m.unbilled.current_month_count+' תעודות':NA},
-    {b:'הגדרה',t:(k.unbilled&&k.unbilled.definition)||'תעודות משלוח סופיות לחיוב ללא חשבונית, מה-1 של החודש הקודם (הכרעת דוד 4.9)'}]}),
-  card({key:'backlog',label:'הזמנות פתוחות',value:bkRem!==null?fmt(bkRem):null,pct:'יתרה לספק',state:'none',
+  /* PROFIT BEFORE TAX (David, 11.10): from the books — FNCTRANS by Priority's own account classes, month by month,
+     reconciled to ACCOUNTS.BALANCE1. The value is the pbt_kpi contract's number or "לא מאומת" with the exact blocker;
+     never the operating figure, never derived on this screen. */
+  Object.assign(pbtCard(k.pbt,fmt,NA),{row:ROWS[1],wide:true}),
+  cashCard(),recCard(),
+  quotesCard(),
+  card({key:'backlog',label:'הזמנות פתוחות',value:bkRem!==null?fmt(bkRem):null,pct:'יתרה לספק',state:'none',row:ROWS[3],
    sub:'צפוי החודש: '+NA+(m.backlog?' · '+m.backlog.count+' הזמנות'+(m.backlog.original!=null?' · מקורית '+fmt(m.backlog.original):''):''),
    detail:[
     {b:'יתרה לספק (צבר אמיתי)',t:bkRem!==null?fmt(bkRem):NA+(m.backlog&&m.backlog.unverified_lines?' — '+m.backlog.unverified_lines+' שורות ללא יתרה מאומתת':'')},
@@ -2253,29 +2333,19 @@ function kpiModel(k,fmt){
     {b:'הזמנות מסגרת',t:k.open_orders&&k.open_orders.framework&&k.open_orders.framework.count?k.open_orders.framework.count+(k.open_orders.framework.unverified===0?' · נותר '+fmt(k.open_orders.framework.remaining):' · סכום לא מאומת'):'0'},
     {b:'הצעות מחיר → הזמנות · 60 יום',t:k.kpi_quotes_to_orders_60d||NA},
     {b:'הגדרה',t:(k.open_orders&&k.open_orders.open_definition)||'פתוחה = BOOLCLOSED ריק (הכרעת דוד 1.9) · יתרה לספק = TBALANCE × DISPRICE'}]}),
-  card({key:'vs_ly',label:'מול אשתקד',value:sgn(delta(mtd,m.ly_same?m.ly_same.net:null)),pct:'אותם ימים אשתקד',state:'none',
-   sub:(mtdN!=null&&m.ly_same&&m.ly_same.count!=null)?mtdN+' מול '+m.ly_same.count+' חשבוניות':'',
+  card({key:'unbilled_due',label:'תעודות לחיוב',value:ubNet!==null?fmt(ubNet):null,pct:'נטו · '+((ubNet!==null&&gap)?pct(ubNet,gap)+'% מהפער':NA),state:'none',row:ROWS[3],
+   sub:m.unbilled?m.unbilled.count+' תעודות'+(m.unbilled.oldest_days!=null?' · הוותיקה '+m.unbilled.oldest_days+' יום':''):'',
    detail:[
-    {b:m.ly_same_label,t:m.ly_same?fmt(m.ly_same.net)+' נטו · '+m.ly_same.count+' חשבוניות':NA},
-    {b:'Forecast מול '+baseLabel,t:sgn(delta(fc,base))+' ('+fmt(fc)+' מול '+fmt(base)+')'},
-    {b:'מתחילת השנה מול אשתקד',t:(m.ytd&&m.ly_ytd)?sgn(delta(m.ytd.net,m.ly_ytd.net))+' ('+fmt(m.ytd.net)+' מול '+fmt(m.ly_ytd.net)+')':NA}]}),
-  card({key:'vs_avg',label:'מול ממוצע',value:sgn(delta(fc,avg2025)),pct:'ממוצע חודשי 2025',state:'none',
-   sub:avg2025!==null?'Forecast '+fmt(fc)+' מול '+fmt(avg2025)+' לחודש':'',
-   detail:[
-    {b:'ממוצע חודשי 2025',t:avg2025!==null?fmt(avg2025)+' ('+fmt(m.ly_year.net)+' / 12)':NA},
-    {b:'ממוצע חודשי 2026 עד היום',t:avg2026!==null?fmt(avg2026)+' · Forecast מולו '+sgn(delta(fc,avg2026)):NA},
-    {b:'ממוצע 12 חודשים אחרונים',t:NA+' — המנוע מחזיק שנה קודמת מלאה ומתחילת השנה, לא חלון נע'}]}),
-  /* PROFIT BEFORE TAX (David, 11.10): from the books — FNCTRANS by Priority's own account classes, month by month,
-     reconciled to ACCOUNTS.BALANCE1. The value is the pbt_kpi contract's number or "לא מאומת" with the exact blocker;
-     never the operating figure, never derived on this screen. */
-  pbtCard(k.pbt,fmt,NA)];
+    {b:'כולל מע"מ',t:m.unbilled&&m.unbilled.gross!=null?fmt(m.unbilled.gross):NA},
+    {b:'מהחודש',t:m.unbilled&&m.unbilled.current_month_count!=null?m.unbilled.current_month_count+' תעודות':NA},
+    {b:'הגדרה',t:(k.unbilled&&k.unbilled.definition)||'תעודות משלוח סופיות לחיוב ללא חשבונית, מה-1 של החודש הקודם (הכרעת דוד 4.9)'}]})];
  return {ok:true,
   header:m.name+' · Baseline '+fmt(base),
   header2:wd?'יום עבודה '+wd.done+' מתוך '+wd.total:'',
   ref:(wd?'ימי עבודה '+wd.done+'/'+wd.total:'')+(m.elapsed_days!=null?(wd?' · ':'')+'קלנדרי '+m.elapsed_days+'/'+m.days_in_month:''),
   rows:ROWS,cards:cards,more:more};
 }
-const KPI_CARD_KEYS=['sales','forecast','gap','cover','unbilled_due','backlog','vs_ly','vs_avg','pbt','more'];
+const KPI_CARD_KEYS=['year','sales','forecast','gap','cover','pbt','cash','receivables','quotes','backlog','unbilled_due','more'];
 /* KPI_MODEL_END */
 function kfmt(n){return privacyOn()?'—':kfmtRaw(n);}
 function kpiAgeText(r){
@@ -2292,8 +2362,8 @@ function kpiTile(c,open){
  return '<div class="kpiTile'+st+(nv?' nv':'')+(c.wide?' wide':'')+'" data-kpi="'+esc(c.key)+'" data-open="'+(open?'true':'false')+'"'
    +' onclick="toggleKpiDetail(\''+esc(c.key)+'\',this)" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'">'
    +'<span class="kpiChev">▾</span>'
-   +(c.wide?'':'<div class="lbl">'+esc(c.label)+'</div>')
-   +'<div class="v" dir="auto">'+(nv?'לא מאומת':esc(c.value))+'</div>'
+   +(c.key==='more'?'':'<div class="lbl">'+esc(c.label)+'</div>')
+   +'<div class="v" dir="auto">'+(nv?esc(c.nv||'לא מאומת'):esc(c.value))+'</div>'
    +(c.pct?'<div class="p">'+esc(c.pct)+'</div>':'')
    +(c.sub?'<div class="k">'+esc(c.sub)+'</div>':'')
    +(c.dot?'<div class="k"><i class="dot"></i>'+esc(c.dot)+'</div>':'')
@@ -2369,6 +2439,8 @@ function salesKpiText(r){
 }
 function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
+ /* the organizer's department KPIs ride along by key (tower) — the cash and receivables cards read them, never recompute */
+ RAILS.kpis=Object.assign(RAILS.kpis||{},{org:orgKpiMap()});
  const k=RAILS.kpis||{};
  /* Eight cards, ONE engine row (fresco_snapshot) — kpiModel() is the only derivation,
     pure and tested; a fact the engine does not carry stays "לא מאומת" (David, 5.10). */
@@ -2379,41 +2451,69 @@ function renderKpis(){
  let html='';
  const ref=[m.ref,k.month&&k.month.as_of?kpiAgeText(k.month):''].filter(Boolean).join(' · ');
  if(ref)html+='<div class="kpiRef">'+esc(ref)+'</div>';
- /* דוד (WORK 819cffba): תמונת צבר פשוטה כבר בכרטיסי המדדים — פרויקטים
-    בעבודה, מה שכבר בתהליך חיוב, והצעות המחיר. סכום שלא אומת נשאר מפורש כך. */
- const backlog=k.open_orders||{},billing=k.unbilled||{};
- const projectValue=backlog.remaining!=null?kfmt(backlog.remaining):'לא מאומת';
- const billingValue=billing.sums&&billing.sums.TOTPRICE!=null?kfmt(billing.sums.TOTPRICE):'לא מאומת';
- const quotes=k.kpi_quotes_to_orders_60d||'לא מאומת';
- html+='<div class="kpiRef" data-lia-change="819cffba"><b>הערכת צבר קדימה</b><br>'
-  +'פרויקטים בעבודה: '+esc(String(backlog.headline_count!=null?backlog.headline_count:'לא מאומת'))+' · '+esc(projectValue)
-  +' · בתהליך חיוב: '+esc(String(billing.headline_count!=null?billing.headline_count:'לא מאומת'))+' · '+esc(billingValue)
-  +' · הצעות מחיר: '+esc(quotes)+'</div>';
- m.cards.forEach((c,i)=>{
-  if(i%2===0&&m.rows[i/2])html+='<div class="kpiRow">'+esc(m.rows[i/2])+'</div>';
+ /* CEO COCKPIT B (David, 27.10): the year leads; the rows are David's order of importance, each named once. The
+    sales→orders→billing row is where WORK 819cffba's forward estimate (projects, billing, quotes) now lives, as cards;
+    the annual target (WORK a4ca1a4b) is the year lead — one place for each number. */
+ let row='';
+ m.cards.forEach((c)=>{
+  if(c.lead){html+=kpiLeadHtml(c,c.key===openKey);return;}
+  if(c.row&&c.row!==row){row=c.row;html+='<div class="kpiRow"'+(c.row===m.rows[3]?' data-lia-change="819cffba"':'')+'>'+esc(c.row)+'</div>';}
   html+=kpiTile(c,c.key===openKey);
  });
  if(m.more)html+=kpiTile(m.more,m.more.key===openKey);
- /* יעד שנתי: סך המכירות של השנה שעברה בתוספת 7%. הפער מחושב מול תחזית
-    סוף השנה בקצב המכירות מתחילת השנה, בלי להמציא נתון כשחסר מקור מאומת. */
- const annualFacts=k.month||{};
- const annualTarget=annualFacts.ly_year&&annualFacts.ly_year.net!=null?annualFacts.ly_year.net*1.07:null;
- const annualYtd=annualFacts.ytd&&annualFacts.ytd.net!=null?annualFacts.ytd.net:null;
- const annualAsOf=new Date(annualFacts.as_of||Date.now());
- const annualYear=annualAsOf.getFullYear();
- const annualStart=new Date(annualYear,0,1);
- const annualDays=Math.max(1,Math.floor((annualAsOf-annualStart)/86400000)+1);
- const annualTotalDays=new Date(annualYear+1,0,1).getTime()-annualStart.getTime();
- const annualForecast=annualYtd!=null&&isFinite(annualAsOf.getTime())?annualYtd/annualDays*(annualTotalDays/86400000):null;
- const annualGap=annualTarget!=null&&annualForecast!=null?(annualTarget-annualForecast)/annualTarget*100:null;
- const annualGapText=annualGap==null?'פער לא מאומת':annualGap>0?'רחוקים '+annualGap.toFixed(1)+'% מהיעד':annualGap<0?'מעל היעד ב-'+Math.abs(annualGap).toFixed(1)+'%':'בדיוק ביעד';
- html+=kpiTile({key:'annual_target',label:'יעד שנתי',value:annualTarget==null?null:kfmt(annualTarget),pct:'אשתקד +7%',state:annualGap==null?'na':annualGap>0?'warn':'good',sub:annualGapText,
-  detail:[{b:'מכירות שנתיות אשתקד',t:annualFacts.ly_year&&annualFacts.ly_year.net!=null?kfmt(annualFacts.ly_year.net):'לא מאומת'},
-   {b:'יעד סוף שנה',t:annualTarget!=null?kfmt(annualTarget)+' (אשתקד +7%)':'לא מאומת'},
-   {b:'תחזית סוף שנה לפי קצב מתחילת השנה',t:annualForecast!=null?kfmt(annualForecast):'לא מאומת'},
-   {b:'פער מהיעד',t:annualGapText}]},false);
  el.innerHTML=html;
  setKpiHeader(m.header,m.header2);
+ renderOps();
+}
+/* the organizer's department KPIs (tower), by key — read, never recomputed here */
+function orgKpiMap(){
+ const out={};
+ (RAILS.org||[]).forEach(d=>(d&&d.kpis||[]).forEach(x=>{if(x&&x.key&&!out[x.key])out[x.key]=x;}));
+ return out;
+}
+/* THE YEAR LEAD (CEO Cockpit B): the same tile mechanics — one open at a time, detail opens down — drawn quieter and larger */
+function kpiLeadHtml(c,open){
+ const nv=(c.value===null||c.value===undefined);
+ const st=c.state==='none'?'':' s-'+(c.state||'na');
+ const w=(x)=>Math.round(x*1000)/10;
+ return '<div class="kpiTile kpiLead'+st+'" data-kpi="'+esc(c.key)+'" data-open="'+(open?'true':'false')+'"'
+   +' onclick="toggleKpiDetail(\''+esc(c.key)+'\',this)" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'">'
+   +'<span class="kpiChev">▾</span>'
+   +'<div class="lbl">'+esc(c.label)+'</div>'
+   +'<div class="v"><bdi>'+(nv?'לא מאומת':esc(c.value))+'</bdi>'+(c.target?'<small>מתוך <bdi>'+esc(c.target)+'</bdi></small>':'')+'</div>'
+   +(c.pct?'<div class="p">'+esc(c.pct)+'</div>':'')
+   +(c.bar&&c.bar.actual!==null?'<div class="kpiBar" aria-hidden="true">'+(c.bar.forecast!==null?'<i class="f" style="width:'+w(c.bar.forecast)+'%"></i>':'')+'<i class="a" style="width:'+w(c.bar.actual)+'%"></i></div>':'')
+   +'<div class="k kpiLeadFoot"><span>'+esc(c.sub||'')+'</span><span>'+esc(c.gapText||'')+'</span></div>'
+   +'<div class="kpiDetail">'+kpiDetailHtml(c).join('')+'</div>'
+   +'</div>';
+}
+/* PRODUCTION · LAB · RISKS (CEO Cockpit B): a quiet list, not tiles. Every line is a read the tower already made
+   (the organizer's department KPIs and exceptions) or says it is not connected — a count is never shown as success. */
+function renderOps(){
+ const el=document.getElementById('ops');if(!el)return;
+ const o=orgKpiMap();
+ const shown=(x)=>x&&x.verification!=='NOT_CONNECTED'&&x.display!=null&&x.display!=='';
+ const tag=(x)=>!x?'':(x.verification==='VERIFIED'?'מאומת':x.verification==='STALE'?'קריאה ישנה':'חלקי')+(x.as_of?' · '+String(x.as_of).slice(0,10):'');
+ const item=(lbl,val,sub,cls,attr)=>'<div class="miniItem opsItem'+(cls?' '+cls:'')+'"'+(attr||'')+'><span class="lbl"><b>'+esc(lbl)+'</b> '+esc(val)+'</span>'+(sub?'<span class="sub">'+esc(sub)+'</span>':'')+'</div>';
+ let html='';
+ const p=o.rnd_projects,e=o.rnd_experiments;
+ html+=item('מעבדה (MATRIYA):',(shown(p)?p.display+' פרויקטים':'לא מחובר')+(shown(e)?' · ניסויים עם תוצאה '+e.display:''),
+  'נספר רק ניסוי שהתוצאה שלו נקבעה — כמות פעילות אינה הצלחה'+(shown(p)?' · '+tag(p):''));
+ const inv=o.inventory_value;
+ html+=item('מלאי:',shown(inv)?inv.display:'לא מחובר',shown(inv)?tag(inv):((inv&&(inv.note||inv.source))||'יתרות מלאי לא נקראות מפריוריטי'),shown(inv)?'':'nc');
+ html+=item('שרשרת אספקה:','לא מחובר עדיין','הזמנות רכש פתוחות וזמני אספקה — קריאה בלבד מפריוריטי','nc');
+ const ov=RAILS.organizer&&RAILS.organizer.overview,ex=(ov&&ov.exceptions)||[];
+ const hi=ex.filter(x=>x&&x.severity==='HIGH').length;
+ html+=item('סיכונים:',!ov?'הארגון עדיין לא נטען':(ex.length?(hi?hi+' חמורים · ':'')+ex.length+' חריגים בארגון':'אין חריגים בארגון'),
+  ex[0]?(ex[0].dept_name||ex[0].dept||'')+': '+ex[0].text+' ▸':'',ex.length?'warn':'',ex.length?' role="button" tabindex="0" onclick="openOrgFromOps()"':'');
+ const v=RAILS.kpis&&RAILS.kpis.verdict;
+ if(v&&v.action)html+='<div class="opsLia"><b>LIA:</b> '+esc(v.action)+'</div>';
+ el.innerHTML=html;
+ setRailSummary('opsSummary',ex.length?ex.length+' חריגים':'');
+}
+function openOrgFromOps(){
+ const w=document.getElementById('orgWrap');if(!w)return;
+ w.open=true;try{w.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){w.scrollIntoView();}
 }
 /* two lines in the head: month · Baseline / working day X of Y (David's spec); each line stays one line */
 function setKpiHeader(l1,l2){
@@ -2794,6 +2894,7 @@ function renderOrg(){
  const list=RAILS.org;
  if(!list||!list.length){el.innerHTML='<p class="railEmpty">מצב הארגון עדיין לא נטען.</p>';return;}
  el.innerHTML=orgOverviewHtml()+list.map(orgRowHtml).join('');
+ renderOps();
  /* the rail re-renders every refresh — what the URL says is open stays open */
  const k=orgHashKey();
  if(k&&ORGANIZATION_ROUTES[k]&&ORGANIZATION_ROUTES[k].kind==='org')showOrgInline(k,false);
