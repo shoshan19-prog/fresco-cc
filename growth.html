@@ -35,6 +35,12 @@ main{max-width:1180px;margin:0 auto;padding:8px 16px 40px;display:grid;gap:16px;
 #mapwrap{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 #map{height:46vh;min-height:300px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--dim);padding:10px 12px;border-top:1px solid var(--line)}
+.hp{border-top:1px solid var(--line);padding:12px;font-size:14px}
+.hp h3{font-size:16px;line-height:1.35}
+.hp .row{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--card2)}
+.hp .row span:last-child{color:var(--dim);white-space:nowrap}
+.hp .chips{margin:8px 0}
+.hp .x{float:left;background:none;border:0;color:var(--dim);font-size:20px;min-width:44px;min-height:44px;cursor:pointer}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#98a2b3;margin-inline-end:6px;vertical-align:middle}
 .pinlg{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--acc);color:#fff;font-size:11px;align-items:center;justify-content:center;margin-inline-end:6px}
 .cards{display:grid;gap:12px}
@@ -85,7 +91,8 @@ li{margin:2px 0}
 </header>
 <main>
 <section id="mapwrap" aria-label="מפה"><div id="map"></div>
-<div class="legend"><span><span class="pinlg">1</span>הזדמנות</span><span><span class="dot"></span>פרויקט פרסקו קודם (הקשר בלבד)</span><span>קרבה במפה אינה קשר מקצועי</span></div></section>
+<div class="legend"><span><span class="pinlg">1</span>הזדמנות</span><span><span class="dot"></span>פרויקט פרסקו קודם (הקשר בלבד)</span><span>קרבה במפה אינה קשר מקצועי</span><span>לחיצה על נקודה אפורה: מה פרסקו סיפקה לשם</span></div>
+<div id="hp" class="hp" hidden="hidden" aria-live="polite"></div></section>
 <section class="cards" id="cards" aria-live="polite"><p class="empty">טוען…</p></section>
 </main>
 </div>
@@ -151,7 +158,7 @@ function drawMap(){
   if(!window.L){B('#map').innerHTML='<p class="empty" style="padding:16px">המפה לא נטענה</p>';return;}
   if(!map){map=L.map('map',{zoomControl:true,attributionControl:true}).setView([32.066,34.772],14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);}
-  (D.fresco||[]).forEach(function(p){L.circleMarker([p.lat,p.lon],{radius:4,color:'#98a2b3',weight:1,fillColor:'#98a2b3',fillOpacity:.7}).bindTooltip(esc(p.name)+(p.last?' · '+day(p.last):''),{direction:'top'}).addTo(map);});
+  (D.fresco||[]).forEach(function(p){L.circleMarker([p.lat,p.lon],{radius:5,color:'#98a2b3',weight:14,opacity:0,fillColor:'#98a2b3',fillOpacity:.75}).bindTooltip(esc(p.name)+(p.last?' · '+day(p.last):''),{direction:'top'}).on("click",function(){showHistory(p);}).addTo(map);});
   var pts=[];
   D.opportunities.forEach(function(o,i){if(!o.location)return;
     var icon=L.divIcon({className:'',html:'<div class="num" style="width:30px;height:30px;box-shadow:0 2px 6px rgba(0,0,0,.25)">'+(i+1)+'</div>',iconSize:[30,30],iconAnchor:[15,15]});
@@ -159,12 +166,28 @@ function drawMap(){
     m.on('click',function(){select(o.key,false);});pins[o.key]=m;pts.push([o.location.lat,o.location.lon]);});
   if(pts.length)map.fitBounds(pts,{padding:[40,40],maxZoom:16});
 }
+/* What Fresco supplied to one past project — products and shades from its own delivery notes in
+   Priority. Context for a reference call, never evidence of a link to an opportunity. */
+function showHistory(p){
+  var hp=B('#hp');hp.hidden=false;hp.innerHTML='<h3>'+esc(p.name)+'</h3><p class="msg">טוען…</p>';
+  api({action:'project_history',project_id:p.id}).then(function(h){
+    var pr=h.products||[],sh=h.shades||[];
+    var x='<button type="button" class="x" aria-label="סגירה" data-close="1">×</button><h3>'+esc(p.name)+'</h3>'
+     +'<p class="msg">'+h.notes_linked+' תעודות משלוח מקושרות'+(h.notes_linked?' · '+h.notes_with_lines+' עם שורות מוצרים':'')+' · מקור: פריוריטי</p>';
+    if(sh.length)x+='<div class="chips">'+sh.map(function(s){return '<span class="chip" title="'+esc(s.products.join(' · '))+'">גוון '+esc(s.shade)+(s.last?' · '+day(s.last):'')+'</span>';}).join('')+'</div>';
+    x+=pr.length?pr.slice(0,12).map(function(e){return '<div class="row"><span>'+esc(e.name)+'</span><span>'+e.notes+' תעודות'+(e.last?' · עד '+day(e.last):'')+'</span></div>';}).join('')
+       +(pr.length>12?'<p class="msg">ועוד '+(pr.length-12)+' מוצרים</p>':'')
+      :'<p class="msg">'+(h.notes_linked?'שורות המוצרים של התעודות עוד לא נטענו':'אין תעודות משלוח מקושרות לפרויקט')+'</p>';
+    hp.innerHTML=x;
+  }).catch(function(e){if(String(e.message)!=='401')hp.innerHTML='<p class="msg">שגיאה: '+esc(e.message)+'</p>';});
+}
 function select(k,fly){
   [].forEach.call(document.querySelectorAll('.card'),function(c){c.classList.remove('sel');});
   var el=B('#c-'+k);if(el){el.classList.add('sel');if(!fly)el.scrollIntoView({behavior:'smooth',block:'start'});}
   if(fly&&pins[k]&&map){map.flyTo(pins[k].getLatLng(),17);B('#mapwrap').scrollIntoView({behavior:'smooth',block:'start'});}
 }
 document.addEventListener('click',function(e){
+  if(e.target.closest('[data-close]')){B('#hp').hidden=true;return;}
   var f=e.target.closest('[data-fly]');if(f){select(f.getAttribute('data-fly'),true);return;}
   var s=e.target.closest('[data-save]');if(!s)return;
   var box=s.parentNode,msg=box.querySelector('.msg');
