@@ -174,10 +174,17 @@ function showHistory(p){
     var pr=h.products||[],sh=h.shades||[];
     var x='<button type="button" class="x" aria-label="סגירה" data-close="1">×</button><h3>'+esc(p.name)+'</h3>'
      +'<p class="msg">'+h.notes_linked+' תעודות משלוח מקושרות'+(h.notes_linked?' · '+h.notes_with_lines+' עם שורות מוצרים':'')+' · מקור: פריוריטי</p>';
-    if(sh.length)x+='<div class="chips">'+sh.map(function(s){return '<span class="chip" title="'+esc(s.products.join(' · '))+'">גוון '+esc(s.shade)+(s.last?' · '+day(s.last):'')+'</span>';}).join('')+'</div>';
+    /* A shade is shown with the strongest evidence on record, never more: supplied on a named
+       material · ordered on a general line (the material is not on record) · tried in a sample. */
+    var ST={supplied:['סופק','ok'],ordered_generic:['הוזמן בשורה כללית',''],sample:['נבחן בדוגמה','']};
+    ['supplied','ordered_generic','sample'].forEach(function(k){
+      var g=sh.filter(function(s){return s.status===k;});if(!g.length)return;
+      x+='<p class="msg">גוונים · '+ST[k][0]+' ('+g.length+')</p><div class="chips">'+g.slice(0,14).map(function(s){return '<span class="chip '+ST[k][1]+'" title="'+esc(s.products.join(' · '))+'">'+esc(s.shade)+(s.last?' · '+day(s.last):'')+'</span>';}).join('')+(g.length>14?'<span class="chip">+'+(g.length-14)+'</span>':'')+'</div>';
+    });
+    pr=pr.filter(function(e){return e.kind==='material';});
     x+=pr.length?pr.slice(0,12).map(function(e){return '<div class="row"><span>'+esc(e.name)+'</span><span>'+e.notes+' תעודות'+(e.last?' · עד '+day(e.last):'')+'</span></div>';}).join('')
        +(pr.length>12?'<p class="msg">ועוד '+(pr.length-12)+' מוצרים</p>':'')
-      :'<p class="msg">'+(h.notes_linked?'שורות המוצרים של התעודות עוד לא נטענו':'אין תעודות משלוח מקושרות לפרויקט')+'</p>';
+      :'<p class="msg">'+(h.notes_linked?'אין מוצר מזוהה בשם בתעודות — רק שורות כלליות או דוגמאות':'אין תעודות משלוח מקושרות לפרויקט')+'</p>';
     hp.innerHTML=x;
   }).catch(function(e){if(String(e.message)!=='401')hp.innerHTML='<p class="msg">שגיאה: '+esc(e.message)+'</p>';});
 }
