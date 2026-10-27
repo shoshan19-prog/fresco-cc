@@ -51,29 +51,36 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   ok(`${tag}: the header is the reference point`, /FRESCO KPIs אוקטובר · Baseline ₪770K/.test(head), head);
   ok(`${tag}: the body opens on the official pace — working days first, calendar as reference (decision 164)`, await page.$eval('#kpiCard', (x) => /ימי עבודה 3\/21 · קלנדרי 5\/31/.test(x.innerText.replace(/\s+/g, ' '))));
   let tiles = await tileText(page);
-  ok(`${tag}: ten cards drawn (eight + רווח לפני מס + נתונים נוספים), all folded`, tiles.length === 10 && tiles.every((t) => t.open === 'false'), JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
-  ok(`${tag}: screen test (David 5.10 evening) — the five numbers without opening a card: 18% מה-Baseline + the pace line · Forecast marked pace-only · 137% כיסוי leads, the raw ₪870K follows`, /₪136K 18% מה-Baseline היינו צריכים להיות ב־14% 4 נק׳ מעל הקצב/.test(tiles[0].text) && /₪953K 124% מה-Baseline תחזית קצב בלבד · ביטחון נמוך/.test(tiles[1].text) && /₪633K 82% חסר/.test(tiles[2].text) && /137% כיסוי ₪870K זמינים מול פער ₪633K/.test(tiles[3].text), tiles.slice(0, 4).map((t) => t.text).join(' || '));
+  const T = (key) => tiles.find((t) => t.key === key) || { text: '', cls: '', open: '' };
+  ok(`${tag}: CEO Cockpit B — the year leads, then eleven cards and נתונים נוספים, all folded`, tiles.map((t) => t.key).join(',') === 'year,sales,forecast,gap,cover,pbt,cash,receivables,quotes,backlog,unbilled_due,more' && tiles.every((t) => t.open === 'false'), JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
+  ok(`${tag}: the year lead reads in one line — ₪8.47M of ₪13.21M · 64% · -10% · forecast ₪11.12M · gap ₪2.09M — drawn red, with the bar`, /₪8\.47M\s*מתוך ₪13\.21M 64% מהיעד · -10% מאשתקד תחזית לסוף השנה ₪11\.12M פער ₪2\.09M/.test(T('year').text) && /s-bad/.test(T('year').cls) && await page.$('#kpis .kpiLead .kpiBar .a') !== null, T('year').text);
+  const rows = await page.$$eval('#kpis .kpiRow', (xs) => xs.map((x) => x.textContent.trim()));
+  ok(`${tag}: the rows are David's order — החודש · רווחיות · מזומנים · מכירות, הזמנות וחיובים`, rows.join('|') === 'החודש · אוקטובר|רווחיות|מזומנים|מכירות, הזמנות וחיובים', rows.join('|'));
+  ok(`${tag}: cash says "לא מחובר", never a number`, /יתרות בנק לא מחובר/.test(T('cash').text), T('cash').text);
+  const ops = await page.$eval('#ops', (x) => x.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
+  ok(`${tag}: production · lab · risks sits under the KPIs as a quiet list; supply chain says not connected; the organizer is still in the rail`, /מעבדה \(MATRIYA\):/.test(ops) && /שרשרת אספקה: לא מחובר עדיין/.test(ops) && /LIA: לחייב את 12 התעודות/.test(ops) && await page.$('#orgWrap') !== null, ops.slice(0, 200));
+  ok(`${tag}: screen test (David 5.10 evening) — the five numbers without opening a card: 18% מה-Baseline + the pace line · Forecast marked pace-only · 137% כיסוי leads, the raw ₪870K follows`, /₪136K 18% מה-Baseline היינו צריכים להיות ב־14% 4 נק׳ מעל הקצב/.test(T('sales').text) && /₪953K 124% מה-Baseline תחזית קצב בלבד · ביטחון נמוך/.test(T('forecast').text) && /₪633K 82% חסר/.test(T('gap').text) && /137% כיסוי ₪870K זמינים מול פער ₪633K/.test(T('cover').text), ['sales', 'forecast', 'gap', 'cover'].map((k) => T(k).text).join(' || '));
   const over = await page.$$eval('#kpis .kpiTile .p, #kpis .kpiTile .v, #kpis .kpiTile .lbl', (xs) => xs.filter((x) => x.scrollWidth > x.clientWidth + 1).map((x) => x.textContent));
   ok(`${tag}: no single-line text overflows its card (the new wording fits the tile)`, over.length === 0, over.join(' | '));
-  ok(`${tag}: colour = state — sales/forecast/cover green, the rest neutral`, tiles[0].cls.includes('s-ok') && tiles[1].cls.includes('s-ok') && tiles[3].cls.includes('s-ok') && !/s-ok|s-warn|s-bad/.test(tiles[2].cls) && !/s-ok|s-warn|s-bad/.test(tiles[4].cls));
-  ok(`${tag}: the 90/100 score is not on the main cards`, !tiles.slice(0, 8).some((t) => /\/100/.test(t.text)) && /90\/100/.test(tiles[8].text));
+  ok(`${tag}: colour = state — sales/forecast/cover green, the rest neutral`, T('sales').cls.includes('s-ok') && T('forecast').cls.includes('s-ok') && T('cover').cls.includes('s-ok') && !/s-ok|s-warn|s-bad/.test(T('gap').cls) && !/s-ok|s-warn|s-bad/.test(T('unbilled_due').cls));
+  ok(`${tag}: the 90/100 score is not on the main cards`, !tiles.filter((t) => t.key !== 'more').some((t) => /\/100/.test(t.text)) && /90\/100/.test(T('more').text));
   // open Forecast → it opens DOWN inside the panel, the bridge shows, the others stay folded
   await page.click('#kpis .kpiTile[data-kpi="forecast"]'); await page.waitForTimeout(150);
   tiles = await tileText(page);
-  ok(`${tag}: Forecast opened in place, with the bridge`, tiles[1].open === 'true' && /חויב בפועל ₪136K/.test(tiles[1].text) && /לא מאומת/.test(tiles[1].text) && /נוסחה/.test(tiles[1].text), tiles[1].text.slice(0, 200));
+  ok(`${tag}: Forecast opened in place, with the bridge`, T('forecast').open === 'true' && /חויב בפועל ₪136K/.test(T('forecast').text) && /לא מאומת/.test(T('forecast').text) && /נוסחה/.test(T('forecast').text), T('forecast').text.slice(0, 200));
   await card.screenshot({ path: OUT + tag + '-3-forecast-open.png' });
   // open Sales → Forecast folds (accordion), one open at a time, remembered
   await page.click('#kpis .kpiTile[data-kpi="sales"]'); await page.waitForTimeout(150);
   tiles = await tileText(page);
-  ok(`${tag}: opening מכירות folds Forecast — one card open at a time`, tiles[0].open === 'true' && tiles.filter((t) => t.open === 'true').length === 1, JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
+  ok(`${tag}: opening מכירות folds Forecast — one card open at a time`, T('sales').open === 'true' && tiles.filter((t) => t.open === 'true').length === 1, JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   await card.screenshot({ path: OUT + tag + '-4-sales-open.png' });
   const remembered = await page.evaluate(() => ({ sales: localStorage.getItem('rail:kpi_sales'), forecast: localStorage.getItem('rail:kpi_forecast') }));
   ok(`${tag}: the open card is remembered, the folded one is not`, remembered.sales === '0' && remembered.forecast === '1', JSON.stringify(remembered));
-  await page.reload(); await page.waitForFunction(() => document.querySelectorAll('#kpis .kpiTile').length >= 8, null, { timeout: 8000 }); await page.waitForTimeout(300);
+  await page.reload(); await page.waitForFunction(() => { const v = document.querySelector('#kpis .kpiLead .v'); return v && /₪/.test(v.textContent); }, null, { timeout: 8000 }); await page.waitForTimeout(300);
   tiles = await tileText(page);
   ok(`${tag}: after a reload the same one card is open`, tiles.filter((t) => t.open === 'true').map((t) => t.key).join(',') === 'sales', JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   // the panel did not grow sideways; the grid is still two per row
-  const geo = await page.evaluate(() => { const g = document.getElementById('kpis').getBoundingClientRect(); const t = [...document.querySelectorAll('#kpis .kpiTile:not(.wide)')].map((x) => x.getBoundingClientRect()); return { gridW: Math.round(g.width), cols: new Set(t.map((r) => Math.round(r.left))).size, spill: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
+  const geo = await page.evaluate(() => { const g = document.getElementById('kpis').getBoundingClientRect(); const t = [...document.querySelectorAll('#kpis .kpiTile:not(.wide):not(.kpiLead)')].map((x) => x.getBoundingClientRect()); return { gridW: Math.round(g.width), cols: new Set(t.map((r) => Math.round(r.left))).size, spill: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
   ok(`${tag}: two cards per row, inside the same panel, no horizontal spill`, geo.cols === 2 && geo.spill <= 0, JSON.stringify(geo));
   await ctx.close();
 }
