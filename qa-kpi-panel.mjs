@@ -24,6 +24,7 @@ async function open(viewport, tag) {
     if (body.action === 'cap' && body.name === 'fresco_snapshot')
       return j({ rows: [{ answer: '', snapshot: F.row, verdict: F.verdict, engine: 'fresco_snapshot', evidence: ['מהמטמון — חושב ב-' + F.at] }], source: 'fresco_snapshot · מהמטמון' });
     if (body.action === 'cap' && body.name === 'kpi_read') return j({ rows: [{ text: F.quotes_to_orders_60d }] });
+    if (body.action === 'cap' && body.name === 'supply_chain') return j({ rows: [{ cached: true, at: '2026-10-28T08:00:00Z', error: null, agg: SUPPLY }] });
     if (body.action === 'cap' && body.name === 'next_decision') return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
     if (body.action === 'cap') return j({ rows: [], source: '' });
     if (body.action === 'sales') return j({ today_orders: 15, today_amount: 85850, today_amount_incl_vat: 101303, biggest_order: { customer: 'רשות העתיקות', amount: 42373 }, top_customers: [], source: 'ORDERS' });
@@ -39,6 +40,10 @@ async function open(viewport, tag) {
   await page.waitForTimeout(300);
   return { page, ctx };
 }
+const SUPPLY = { as_of: '2026-10-28', open: { count: 6, by_currency: [{ currency: 'ILS', value: 8785, count: 1 }, { currency: 'EUR', value: 17125, count: 5 }], overdue: 1, due_14d: 1, no_estimate: 0,
+  oldest: [{ order: 'PO190', supplier: 'WEBER', date: '2026-09-20', expected: '2026-10-15' }], next: [{ order: 'PO204', supplier: 'מיקרוגיל', date: '2026-10-26', expected: '2026-10-29' }] },
+  partial: 1, drafts: 1, lead: { import: { median_days: 25, n: 3 }, local: { median_days: 4, n: 3 } },
+  concentration: { supplier: 'WEBER', count: 4, share: 67, expected_from: '2026-10-15', expected_to: '2026-11-16' } };
 const tileText = (page) => page.$$eval('#kpis .kpiTile', (xs) => xs.map((x) => ({ key: x.getAttribute('data-kpi'), open: x.getAttribute('data-open'), cls: x.className, text: x.innerText.replace(/\s+/g, ' ').trim() })));
 
 for (const [w, h] of [[1440, 900], [1600, 900]]) {
@@ -58,7 +63,7 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   ok(`${tag}: the rows are David's order — החודש · רווחיות · מזומנים · מכירות, הזמנות וחיובים`, rows.join('|') === 'החודש · אוקטובר|רווחיות|מזומנים|מכירות, הזמנות וחיובים', rows.join('|'));
   ok(`${tag}: cash says "לא מחובר", never a number`, /יתרות בנק לא מחובר/.test(T('cash').text), T('cash').text);
   const ops = await page.$eval('#ops', (x) => x.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
-  ok(`${tag}: production · lab · risks sits under the KPIs as a quiet list; supply chain says not connected; the organizer is still in the rail`, /מעבדה \(MATRIYA\):/.test(ops) && /שרשרת אספקה: לא מחובר עדיין/.test(ops) && /LIA: לחייב את 12 התעודות/.test(ops) && await page.$('#orgWrap') !== null, ops.slice(0, 200));
+  ok(`${tag}: production · lab · risks sits under the KPIs as a quiet list; supply chain reads its own capability (money per currency, lead times, the WEBER dependency); the organizer is still in the rail`, /מעבדה \(MATRIYA\):/.test(ops) && /שרשרת אספקה: 6 הזמנות רכש פתוחות · ₪8\.8K \+ €17\.1K/.test(ops) && /יבוא ~25 יום · מקומי ~4 יום/.test(ops) && /WEBER: 4 מתוך 6 ההזמנות, צפויות 15\.10–16\.11/.test(ops) && /LIA: לחייב את 12 התעודות/.test(ops) && await page.$('#orgWrap') !== null, ops.slice(0, 200));
   ok(`${tag}: screen test (David 5.10 evening) — the five numbers without opening a card: 18% מה-Baseline + the pace line · Forecast marked pace-only · 137% כיסוי leads, the raw ₪870K follows`, /₪136K 18% מה-Baseline היינו צריכים להיות ב־14% 4 נק׳ מעל הקצב/.test(T('sales').text) && /₪953K 124% מה-Baseline תחזית קצב בלבד · ביטחון נמוך/.test(T('forecast').text) && /₪633K 82% חסר/.test(T('gap').text) && /137% כיסוי ₪870K זמינים מול פער ₪633K/.test(T('cover').text), ['sales', 'forecast', 'gap', 'cover'].map((k) => T(k).text).join(' || '));
   const over = await page.$$eval('#kpis .kpiTile .p, #kpis .kpiTile .v, #kpis .kpiTile .lbl', (xs) => xs.filter((x) => x.scrollWidth > x.clientWidth + 1).map((x) => x.textContent));
   ok(`${tag}: no single-line text overflows its card (the new wording fits the tile)`, over.length === 0, over.join(' | '));

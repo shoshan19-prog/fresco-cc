@@ -147,6 +147,7 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .opsItem .lbl b{font-weight:600}
 .opsItem.nc .lbl{color:var(--dim)}
 .opsItem[role="button"]{cursor:pointer}
+.opsItem .opsMore{display:none;margin-top:4px}.opsItem.open .opsMore{display:block}
 .opsLia{font-size:12.5px;color:var(--dim);border-top:1px solid var(--line);margin-top:2px;padding-top:9px;line-height:1.5}
 .opsLia b{color:var(--txt);font-weight:600}
 .kpiTile[data-kpi="more"] .v{font-size:12.5px;font-weight:700}
@@ -821,7 +822,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-27.1';
+const LIA_BUILD='2026-10-28.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1389,7 +1390,7 @@ function greet(){const hh=new Date().getHours();
    ones capFocus and capImportant have always used. No new endpoint, no new
    table, nothing invented: if a number is not in a response, the row is not
    drawn. The rails are desktop-only; the phone stays one column. */
-let RAILS={sales:null,decisions:[],queue:[],kpis:{},org:null,organizer:null};
+let RAILS={sales:null,decisions:[],queue:[],kpis:{},org:null,organizer:null,supply:null};
 function railsOn(){return window.matchMedia('(min-width:1100px)').matches;}
 function pad2(n){return (n<10?'0':'')+n;}
 function tickClock(){const el=document.getElementById('clock');if(!el)return;
@@ -1908,7 +1909,11 @@ async function loadRails(){
  RAILS.kpis=kpisFromSnapshot(s);
  RAILS.kpis.kpi_quotes_to_orders_60d=(kq&&kq.rows&&kq.rows[0]&&kq.rows[0].text)||null;
  RAILS.org=(tw&&tw.departments)||null;RAILS.organizer=(tw&&tw.organizer)||null;
- renderRails();renderKpis();renderOrg();}
+ renderRails();renderKpis();renderOrg();
+ /* SUPPLY CHAIN (David, 28.10): its own read-only capability (PORDERS + DOCUMENTS_P, cached 60 min) — fetched after the
+    panel is drawn, so a cold Priority read never holds the KPIs back */
+ cap('supply_chain',{}).then(r=>{RAILS.supply=(r&&r.rows&&r.rows[0])||{error:'לא נענה'};renderOps();})
+  .catch(e=>{RAILS.supply={error:String((e&&e.message)||e).slice(0,80)};renderOps();});}
 /* The snapshot row → the tile rows the existing helpers already render.
    Every number below is the engine's own field, copied — never recomputed,
    never a second definition. A field the engine did not verify stays null
@@ -2501,7 +2506,7 @@ function renderOps(){
   'נספר רק ניסוי שהתוצאה שלו נקבעה — כמות פעילות אינה הצלחה'+(shown(p)?' · '+tag(p):''));
  const inv=o.inventory_value;
  html+=item('מלאי:',shown(inv)?inv.display:'לא מחובר',shown(inv)?tag(inv):((inv&&(inv.note||inv.source))||'יתרות מלאי לא נקראות מפריוריטי'),shown(inv)?'':'nc');
- html+=item('שרשרת אספקה:','לא מחובר עדיין','הזמנות רכש פתוחות וזמני אספקה — קריאה בלבד מפריוריטי','nc');
+ html+=supplyItemHtml(RAILS.supply,item);
  const ov=RAILS.organizer&&RAILS.organizer.overview,ex=(ov&&ov.exceptions)||[];
  const hi=ex.filter(x=>x&&x.severity==='HIGH').length;
  html+=item('סיכונים:',!ov?'הארגון עדיין לא נטען':(ex.length?(hi?hi+' חמורים · ':'')+ex.length+' חריגים בארגון':'אין חריגים בארגון'),
@@ -2510,6 +2515,30 @@ function renderOps(){
  if(v&&v.action)html+='<div class="opsLia"><b>LIA:</b> '+esc(v.action)+'</div>';
  el.innerHTML=html;
  setRailSummary('opsSummary',ex.length?ex.length+' חריגים':'');
+}
+/* the supply-chain line: open POs not yet received (money per currency, never added), import/local lead time measured on
+   Fresco's own receipts, the single-supplier dependency; a tap opens the oldest and the next expected arrivals */
+function supplyMoneyText(agg){
+ if(privacyOn())return '—';
+ return ((agg.open&&agg.open.by_currency)||[]).map(c=>{const t=kfmtRaw(c.value);return c.currency==='ILS'?t:t.replace('₪',c.currency==='EUR'?'€':c.currency==='USD'?'$':c.currency+' ');}).join(' + ')||'—';
+}
+function supplyItemHtml(r,item){
+ if(!r)return item('שרשרת אספקה:','נקראת מפריוריטי…','','nc');
+ if(r.error||!r.agg)return item('שרשרת אספקה:','לא נקראה',String(r.error||'אין תשובה')+' — קריאה בלבד מפריוריטי','nc');
+ const a=r.agg,o=a.open||{},L=a.lead||{},c=a.concentration;
+ const d=(iso)=>{if(!iso)return '—';const p=String(iso).split('-');return Number(p[2])+'.'+Number(p[1]);};
+ const lead=(x)=>x&&x.median_days!=null?'~'+x.median_days+' יום':'לא מאומת';
+ const subs=['זמן אספקה: יבוא '+lead(L.import)+' · מקומי '+lead(L.local)];
+ if(c)subs.push(c.supplier+': '+c.count+' מתוך '+o.count+' ההזמנות, צפויות '+d(c.expected_from)+'–'+d(c.expected_to));
+ if(o.overdue)subs.push(o.overdue+' עברו את הזמן הצפוי');
+ const row=(x)=>esc(x.order)+' · '+esc(x.supplier)+' · הוזמנה '+d(x.date)+(x.expected?' · צפויה '+d(x.expected):' · אין הערכה');
+ const more=(o.oldest||[]).length||(o.next||[]).length
+  ?'<span class="sub opsMore">'+((o.next||[]).length?'<b>הבאות להגיע:</b><br>'+o.next.map(row).join('<br>')+'<br>':'')
+   +((o.oldest||[]).length?'<b>הוותיקות:</b><br>'+o.oldest.map(row).join('<br>')+'<br>':'')
+   +'מועד ההגעה הוא הערכה מזמני האספקה בפועל, לא התחייבות של הספק · '+esc((r.cached?'מהמטמון':'נקרא עכשיו')+(r.at?' '+String(r.at).slice(11,16):''))+'</span>':'';
+ return '<div class="miniItem opsItem'+(o.overdue||c?' warn':'')+'" role="button" tabindex="0" onclick="this.classList.toggle(\'open\')">'
+  +'<span class="lbl"><b>שרשרת אספקה:</b> '+esc((o.count||0)+' הזמנות רכש פתוחות · '+supplyMoneyText(a))+' ▾</span>'
+  +'<span class="sub">'+esc(subs.join(' · '))+'</span>'+more+'</div>';
 }
 function openOrgFromOps(){
  const w=document.getElementById('orgWrap');if(!w)return;
