@@ -179,7 +179,10 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .appr .why{font-size:13px;color:var(--dim);margin-top:4px}
 .appr .letter{white-space:pre-wrap;font-size:14px;line-height:1.55;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px;max-height:340px;overflow:auto}
 .btns{display:flex;gap:7px;margin-top:10px}
-.btns button{flex:1;border-radius:10px;padding:10px 6px;font-size:14px;font-weight:600;min-height:42px}
+.btns button,.btns a{flex:1;border-radius:10px;padding:10px 6px;font-size:14px;font-weight:600;min-height:42px}
+.btns a{display:flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box}
+/* 28.10 — an expired approval and a reply that could not go out inside its thread */
+.appr .draftImpact{color:var(--txt);background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.5}
 .b-ok{background:var(--acc);color:#fff}.b-ed{background:var(--card2);color:var(--txt);border:1px solid var(--line)}.b-no{background:var(--card2);color:var(--dim);border:1px solid var(--line)}
 .btns button:disabled{opacity:.5}
 /* 22.10 — David edits a queued mail before he approves it: recipients, subject, the whole letter */
@@ -320,7 +323,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-22.1';
+var CC_BUILD='2026-10-28.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -928,10 +931,7 @@ function render(){
           ? draftEditForm(d)
             +'<div class="btns"><button class="b-ok draftSave" data-id="'+esc(d.draft_id)+'">שמור טיוטה</button>'
             +'<button class="b-no draftEditX" data-id="'+esc(d.draft_id)+'">ביטול עריכה</button></div>'
-          : '<div class="letter">'+esc(d.body||'')+'</div>'
-            +'<div class="btns"><button class="b-ok draftDec" data-id="'+esc(d.draft_id)+'" data-d="approve">אשר ושלח</button>'
-            +'<button class="b-ed draftEdit" data-id="'+esc(d.draft_id)+'">ערוך</button>'
-            +'<button class="b-no draftDec" data-id="'+esc(d.draft_id)+'" data-d="reject">בטל</button></div>')
+          : draftActions(d))
         +'<div class="why draftRes"></div></div>';
     }).join('');
     h+=alerts.map(function(al){
@@ -968,6 +968,11 @@ function render(){
   Array.prototype.forEach.call(B('#m').querySelectorAll('.draftEdit'),function(b){b.onclick=function(){startDraftEdit(b.getAttribute('data-id'));};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.draftEditX'),function(b){b.onclick=function(){X.editing=null;X.editBuf=null;renderExec();render();};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.draftSave'),function(b){b.onclick=function(){saveDraft(b.getAttribute('data-id'),b);};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftReview'),function(b){b.onclick=function(){X.reviewing=b.getAttribute('data-id');X.asNew=null;renderExec();render();};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftRenew'),function(b){b.onclick=function(){renewDraft(b.getAttribute('data-id'),b);};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftAsNew'),function(b){b.onclick=function(){X.asNew=b.getAttribute('data-id');renderExec();render();};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftAsNewX'),function(b){b.onclick=function(){X.asNew=null;renderExec();render();};});
+  Array.prototype.forEach.call(B('#m').querySelectorAll('.draftSendNew'),function(b){b.onclick=function(){decideDraft(b.getAttribute('data-id'),'approve',b,{as_new:true});};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.dedit [data-f]'),function(el){el.oninput=function(){if(X.editBuf)X.editBuf[el.getAttribute('data-f')]=el.value;};});
   Array.prototype.forEach.call(B('#m').querySelectorAll('.sum button'),function(b){b.onclick=function(){var t=document.getElementById(b.getAttribute('data-to'));if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};});
 }
@@ -1291,10 +1296,68 @@ function saveDraft(id,btn){var b=X.editBuf||{};
       var c=B('#dr'+String(id).slice(0,8)),rr=c?c.querySelector('.draftRes'):null;if(rr)rr.textContent='נשמר · לא נשלח דבר · זו הגרסה שתישלח אם תאשר';});
   }).catch(function(e){if(res)res.textContent='לא נשמר: '+String(e.message||e).slice(0,160);for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;});
 }
-function decideDraft(id,dec,btn){
+/* 28.10 — THE CARD SAYS WHAT CAN ACTUALLY HAPPEN (David: "בטיוטות שפג תוקפן, החלף את כפתור השליחה במצב פג תוקף").
+   An approval lives 24 hours. Past that the server refuses the send, so the card offers no send button: it offers to open
+   the letter, re-read recipients and text, and renew the approval for another 24 hours — renewing SENDS NOTHING
+   (outbound_renew). A reply that could not go out inside its thread (the original sits in another mailbox, or Graph
+   refused) shows two explicit choices: finish it in Outlook, or send it as a NEW letter — the second only after a panel
+   that names the recipients, the subject and what it does to the thread, and only on his click for this draft. */
+var REPLY_BLOCK_CODES={REPLY_OTHER_MAILBOX:1,REPLY_ORIGIN_UNKNOWN:1,NEW_NOT_CONFIRMED:1};
+function draftFailure(d){var f=(X.failures||{})[d.draft_id]||d.last_failure||null;return f&&(f.code||f.reason)?f:null;}
+function draftActions(d){var id=esc(d.draft_id),f=draftFailure(d),isReply=!!d.in_reply_to,h='';
+  if(d.expired){
+    h+='<div class="why"><span class="tag warn">פג תוקף</span> האישור פג'+(d.expires_at?' ב-'+esc(new Date(d.expires_at).toLocaleString('he-IL',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})):'')+' · אי אפשר לשלוח עד שתבדוק ותחדש</div>';
+    if(X.reviewing!==d.draft_id)return h+'<div class="btns"><button class="b-ed draftReview" data-id="'+id+'">פתח ובדוק מחדש</button>'
+      +'<button class="b-no draftDec" data-id="'+id+'" data-d="reject">בטל</button></div>';
+    return h+draftReviewBlock(d)
+      +'<div class="btns"><button class="b-ok draftRenew" data-id="'+id+'">חדש אישור ל-24 שעות</button>'
+      +'<button class="b-ed draftEdit" data-id="'+id+'">ערוך</button>'
+      +'<button class="b-no draftDec" data-id="'+id+'" data-d="reject">בטל</button></div>'
+      +'<div class="why dim">חידוש האישור לא שולח את המכתב. השליחה — רק בלחיצה נפרדת שלך אחר כך.</div>';
+  }
+  if(f&&isReply){
+    h+='<div class="why"><span class="tag warn">התשובה לא נשלחה</span> '+esc(String(f.reason||f.code||''))+'</div>';
+    if(X.asNew===d.draft_id)return h+draftReviewBlock(d)
+      +'<div class="why draftImpact">אם תאשר: המכתב ייצא כהודעה <b>חדשה</b> מהתיבה '+esc(d.mailbox||'')+', <b>מחוץ לשרשור המקורי</b>. '
+      +'ההתכתבות הקודמת לא תצורף ולא תצוטט, ואצל הנמען הוא יופיע כשיחה נפרדת.</div>'
+      +'<div class="btns"><button class="b-ok draftSendNew" data-id="'+id+'">אשר — שלח כמכתב חדש</button>'
+      +'<button class="b-no draftAsNewX" data-id="'+id+'">חזרה</button></div>';
+    return h+'<div class="letter">'+esc(d.body||'')+'</div>'
+      +'<div class="btns">'+(d.outlook_link?'<a class="b-ed draftOutlook" href="'+esc(d.outlook_link)+'" target="_blank" rel="noopener">פתח תשובה באאוטלוק</a>':'')
+      +'<button class="b-ed draftAsNew" data-id="'+id+'">שלח כמכתב חדש…</button>'
+      +'<button class="b-no draftDec" data-id="'+id+'" data-d="reject">בטל</button></div>'
+      +(d.outlook_link?'':'<div class="why dim">אין קישור לאאוטלוק להודעה המקורית — אפשר לענות לה ידנית מהתיבה '+esc(d.original_mailbox||'שבה היא נמצאת')+'.</div>');
+  }
+  if(f)h+='<div class="why"><span class="tag warn">הניסיון הקודם לא הושלם</span> '+esc(String(f.reason||f.code||''))+' · לפני שליחה חוזרת השרת בודק בפריטים שנשלחו</div>';
+  return h+'<div class="letter">'+esc(d.body||'')+'</div>'
+    +'<div class="btns"><button class="b-ok draftDec" data-id="'+id+'" data-d="approve">אשר ושלח</button>'
+    +'<button class="b-ed draftEdit" data-id="'+id+'">ערוך</button>'
+    +'<button class="b-no draftDec" data-id="'+id+'" data-d="reject">בטל</button></div>';
+}
+function draftReviewBlock(d){
+  return '<div class="dreview"><div class="why">אל: <span dir="ltr">'+esc(d.to||'')+'</span>'+(d.cc?' · עותק: <span dir="ltr">'+esc(d.cc)+'</span>':'')+'</div>'
+    +'<div class="why">נושא: '+esc(d.subject||'ללא נושא')+'</div><div class="letter">'+esc(d.body||'')+'</div></div>';
+}
+function renewDraft(id,btn){
   var d=(X.drafts||[]).filter(function(x){return String(x.draft_id)===String(id);})[0];if(!d)return;
-  var cm=(d.commitments||[]).length>0;
-  if(dec==='approve'&&!confirm('לשלוח עכשיו את המייל אל '+(d.to||'')+'?'+(cm?' המייל כולל התחייבות — האישור חל גם עליה.':'')))return;
+  if(!d.payload_hash){var r0=btn.closest('.appr').querySelector('.draftRes');if(r0)r0.textContent='אין טביעת גרסה לטיוטה — אי אפשר לחדש';return;}
+  if(!confirm('לחדש את האישור ל-24 שעות למכתב אל '+(d.to||'')+'? שום דבר לא יישלח עכשיו.'))return;
+  var card=btn.closest('.appr'),all=card?card.querySelectorAll('button'):[],res=card?card.querySelector('.draftRes'):null;
+  for(var i=0;i<all.length;i++)all[i].disabled=true;var was=btn.textContent;btn.textContent='מחדש…';
+  cap('outbound_renew',{draft_id:id,expect_payload_hash:d.payload_hash,
+      david_quote:'פתח ובדוק מחדש ← חדש אישור ל-24 שעות — מרכז הבקרה, טיוטה '+String(id).slice(0,8)}).then(function(x){
+    var r=rowsOf(x)[0]||{};
+    if(!r.renewed){if(res)res.textContent=String((x&&x.source)||r.reason||'לא חודש');for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;return;}
+    X.reviewing=null;
+    return cap('outbound_pending').then(function(y){X.drafts=pendingDrafts(rowsOf(y));renderExec();render();
+      var c=B('#dr'+String(id).slice(0,8)),rr=c?c.querySelector('.draftRes'):null;if(rr)rr.textContent='האישור חודש ל-24 שעות · לא נשלח דבר';});
+  }).catch(function(e){if(res)res.textContent='לא חודש: '+String(e.message||e).slice(0,160);for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;});
+}
+function decideDraft(id,dec,btn,opt){
+  var d=(X.drafts||[]).filter(function(x){return String(x.draft_id)===String(id);})[0];if(!d)return;
+  var cm=(d.commitments||[]).length>0,asNew=!!(opt&&opt.as_new);
+  if(dec==='approve'&&d.expired){var r1=btn.closest('.appr').querySelector('.draftRes');if(r1)r1.textContent='פג תוקף — יש לבדוק ולחדש את האישור לפני שליחה';return;}
+  if(dec==='approve'&&!confirm((asNew?'לשלוח כמכתב חדש, מחוץ לשרשור, אל ':'לשלוח עכשיו את המייל אל ')+(d.to||'')+'?'+(cm?' המייל כולל התחייבות — האישור חל גם עליה.':'')))return;
   if(dec==='reject'&&!confirm('לבטל את הטיוטה? שום דבר לא יישלח.'))return;
   var card=btn.closest('.appr'),all=card?card.querySelectorAll('button'):[];
   for(var i=0;i<all.length;i++)all[i].disabled=true;
@@ -1303,11 +1366,17 @@ function decideDraft(id,dec,btn){
   if(dec==='approve'&&cm)args.confirm_commitment=true;
   /* the fingerprint of the version on this card — if the stored letter differs, the server sends nothing */
   if(dec==='approve'&&d.payload_hash)args.expect_payload_hash=d.payload_hash;
+  /* a new letter outside the thread — only from the panel that showed recipients, subject and the thread impact */
+  if(asNew){args.send_as_new=true;args.confirm_new_thread=true;args.david_quote='שלח כמכתב חדש ← אשר — מרכז הבקרה, טיוטה '+String(id).slice(0,8);}
   var res=card?card.querySelector('.draftRes'):null;
   cap('outbound_decide',args).then(function(x){
-    var r=rowsOf(x)[0]||{};
-    if(res)res.textContent=String((x&&x.source)||r.result||r.status||'בוצע');
-    return cap('outbound_pending').then(function(y){X.drafts=pendingDrafts(rowsOf(y));renderExec();});
+    var r=rowsOf(x)[0]||{},msg=String((x&&x.source)||r.result||r.status||'בוצע');
+    if(r.refused&&r.code){X.failures=X.failures||{};X.failures[id]={code:r.code,reason:r.reason||msg};
+      if(r.outlook_link)d.outlook_link=r.outlook_link;}
+    if(r.sent)X.asNew=null;
+    if(res)res.textContent=msg;
+    return cap('outbound_pending').then(function(y){X.drafts=pendingDrafts(rowsOf(y));renderExec();render();
+      var c=B('#dr'+String(id).slice(0,8)),rr=c?c.querySelector('.draftRes'):null;if(rr)rr.textContent=msg;});
   }).catch(function(e){if(res)res.textContent='לא הושלם: '+String(e.message||e).slice(0,160);for(var j=0;j<all.length;j++)all[j].disabled=false;btn.textContent=was;});
 }
 function decide(action,idx,btn){
