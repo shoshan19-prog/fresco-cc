@@ -112,7 +112,7 @@ ok('no Baseline → percentages are "לא מאומת", the ₪ facts stay; no pi
 // ── source pins: the panel, not another dashboard ──
 ok('the section is the SAME panel (id, class) and the same grid element, two per row', /<section class="railCard collapsible" id="kpiCard" data-collapsed="false" data-lia-change="524a206c">/.test(html) && /<div class="kpiGrid railBody" id="kpis" data-lia-change="9d0d79f9"><\/div>/.test(html) && /\.kpiGrid\{display:grid;grid-template-columns:1fr 1fr;gap:12px\}/.test(html));
 ok('production · lab · risks is a quiet list right under the KPIs, before TODAY — and the organizer is still in the rail', html.indexOf('id="kpiCard"') < html.indexOf('id="opsCard"') && html.indexOf('id="opsCard"') < html.indexOf('<span>TODAY</span>') && /<div class="miniList railBody" id="ops"><\/div>/.test(html) && /<details class="railCard orgWrap" id="orgWrap">/.test(html));
-ok('the ops list reads only the organizer\'s KPIs and exceptions; supply chain and a missing read say "לא מחובר"', /function renderOps\(\)\{/.test(src) && /'שרשרת אספקה:','לא מחובר עדיין'/.test(src) && /x\.verification!=='NOT_CONNECTED'/.test(src) && /כמות פעילות אינה הצלחה/.test(src));
+ok('the ops list reads only the organizer\'s KPIs and exceptions; supply chain and a missing read say "לא מחובר"', /function renderOps\(\)\{/.test(src) && /html\+=supplyItemHtml\(RAILS\.supply,item\);/.test(src) && /cap\('supply_chain',\{\}\)\.then/.test(src) && /function supplyMoneyText\(agg\)/.test(src) && /x\.verification!=='NOT_CONNECTED'/.test(src) && /כמות פעילות אינה הצלחה/.test(src));
 ok('WORK 819cffba\'s forward estimate now lives as the sales→orders→billing row (marker kept); the annual target is the year lead — no duplicate line or tile', /data-lia-change="819cffba"/.test(src) && !/key:'annual_target'/.test(src) && !/הערכת צבר קדימה/.test(src));
 ok('no second dashboard: one #kpis grid, one renderKpis, one model call', (html.match(/id="kpis"/g) || []).length === 1 && (src.match(/function renderKpis\(\)/g) || []).length === 1 && /const m=kpiModel\(k,kfmt\);RAILS\.kpiModel=m;/.test(src));
 ok('the two-line head is set from the model, and keeps the height the desktop lock measured (two 19.2px lines)', /setKpiHeader\(m\.header,m\.header2\)/.test(src) && /#kpiCard \.railHeadMeta\{[^}]*line-height:19\.2px/.test(html));
@@ -123,7 +123,7 @@ ok('the phone drawer answers the new keys from the same model', /if\(KPI_CARD_KE
 ok('the month facts ride the one engine row (kpisFromSnapshot), copied not recomputed', /month:monthFactsFromSnapshot\(d,asOf,!!cachedAt\),/.test(src));
 ok('a signed value keeps its sign in front — the big number is bidi-isolated (dir=auto)', /<div class="v" dir="auto">/.test(src));
 ok('privacy mode still hides money on the cards', /function kfmt\(n\)\{return privacyOn\(\)\?'—':kfmtRaw\(n\);\}/.test(src));
-ok('the build stamp moved to 27.10 (CEO Cockpit B)', /const LIA_BUILD='2026-10-27\.\d+';/.test(src));
+ok('the build stamp moved to 28.10 (supply chain line)', /const LIA_BUILD='2026-10-28\.\d+';/.test(src));
 ok('the fixture is the engine\'s real row of 5.10 14:28Z', F.at === '2026-10-05T14:28:09.797Z' && F.row.invoices.mtd.net === 136174 && F.row.rate.projected_month === 953218 && F.row.rate.day_kind === 'working' && F.row.windows.working_days.total === 21 && /decision 164/.test(F.note_164));
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} KPI panel asserts passed`);
