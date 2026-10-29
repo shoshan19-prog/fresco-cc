@@ -1,0 +1,24 @@
+# Live probe (29.10): the files GitHub Pages serves must be byte-identical to main (index.html after #159, lia.html after #158).
+name: live-probe-158
+on:
+  push:
+    branches: [claude/live-probe-158]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - run: |
+          for f in index.html lia.html; do
+            ok=0
+            for i in 1 2 3 4 5 6 7 8; do
+              curl -sS "https://shoshan19-prog.github.io/fresco-cc/$f?probe=$(date +%s)" -o live.html
+              a=$(sha256sum $f | cut -c1-64); b=$(sha256sum live.html | cut -c1-64)
+              if [ "$a" = "$b" ]; then echo "$f LIVE == main ($(git rev-parse --short HEAD)) sha=$a"; ok=1; break; fi
+              echo "$f not yet ($b)"; sleep 20
+            done
+            [ $ok = 1 ] || { echo "::error::$f live differs from main"; exit 1; }
+          done
+          curl -sS "https://shoshan19-prog.github.io/fresco-cc/index.html?p=$(date +%s)" -o i.html
+          grep -o "CC_BUILD='[^']*'" i.html; grep -c "outbound_renew" i.html; grep -c "draftSendNew" i.html
