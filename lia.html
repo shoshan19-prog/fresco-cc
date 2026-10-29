@@ -152,6 +152,8 @@ h1{font-size:26px;line-height:1.25;margin-bottom:4px;letter-spacing:-.4px;color:
 .opsLia b{color:var(--txt);font-weight:600}
 .kpiTile[data-kpi="more"] .v{font-size:12.5px;font-weight:700}
 .kpiRow{grid-column:1/-1;font-size:10.5px;letter-spacing:1.2px;color:var(--dim);margin:10px 2px -4px}
+.planLink{flex:0 0 auto;font-size:12px;color:var(--dim);text-decoration:none;white-space:nowrap;margin-inline:8px}
+.planLink:hover,.planLink:focus-visible{color:inherit;text-decoration:underline}
 .kpiRef{grid-column:1/-1;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;margin:0 2px}
 /* The head is TWO lines by David's spec ("אוקטובר · יעד ₪XXXK / יום עבודה X מתוך Y") — and two 19.2px lines
    is exactly the height the collapsed card always had (qa-visual's desktop lock measures it). */
@@ -658,7 +660,12 @@ button#live.wait{opacity:.6}
       TODAY/PRIORITIES): the headline business numbers, not the day log. -->
  <section class="railCard collapsible" id="kpiCard" data-collapsed="false" data-lia-change="524a206c">
   <div class="railHead" onclick="toggleRailSection('kpiCard')">
-   <span>FRESCO KPIs</span><span class="railHeadMeta" id="kpiSummary"></span><span class="railChev">▾</span>
+   <span>FRESCO KPIs</span><span class="railHeadMeta" id="kpiSummary"></span>
+   <!-- THE 2027 PLAN, ONE CLICK AWAY (David, 29.10: "תשים לי קיצור דרך מתוך הדשבורד שלי"). In the head, so it is there whether
+        the card is open or folded; the click does not fold the card. It opens the consolidated plan page — a private claude.ai
+        page in David's account, not a file on this public site, because the plan carries sales figures. -->
+   <a class="planLink" id="plan2027Link" href="https://claude.ai/artifact/QTZb67Y8skEYpGLiTtHTFz" target="_blank" rel="noopener" onclick="event.stopPropagation()" data-lia-change="plan2027">תוכנית 2027 ↗</a>
+   <span class="railChev">▾</span>
   </div>
   <div class="kpiGrid railBody" id="kpis" data-lia-change="9d0d79f9"></div>
  </section>
