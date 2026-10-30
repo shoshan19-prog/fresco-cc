@@ -70,7 +70,19 @@ ok('year: the bar is to scale — actual 64%, forecast 84% of the target', Math.
 ok('the month vs last year (+380%, 25 vs 4 invoices) moved into the sales detail — once, not a card', sales.detail.some((l) => /אוקטובר 2025/.test(l.b) && /^\+380%/.test(l.t) && /25 מול 4 חשבוניות/.test(l.t)) && !card('vs_ly'));
 ok('the monthly averages moved into the Forecast detail (-7% vs the 2025 average)', fc.detail.some((l) => /ממוצע חודשי 2025/.test(l.b) && /^-7%/.test(l.t)) && !card('vs_avg'));
 const cash = card('cash');
-ok('cash: bank balances are NOT connected — said so, no number, and any connection is read-only with David\'s approval', cash.value === null && cash.nv === 'לא מחובר' && cash.state === 'na' && cash.detail.some((l) => /קריאה בלבד/.test(l.t) && /אישור דוד/.test(l.t)));
+ok('cash: not read yet — no number, said so, and the source is read-only Priority books', cash.value === null && cash.nv === 'נטען מפריוריטי…' && cash.state === 'na' && cash.detail.some((l) => /קריאה בלבד/.test(l.t)));
+{ // 30.10 — Priority's book balances (cash_position): the number, PARTIAL, banks first, pledged apart
+  const pos = { available_now: 994345.22, available_with_deposits: 5065930.84, net_after_written_checks: 769742.3,
+    totals: { banks: 994345.22, deposits: 4071585.62, pledged: 50000, incoming: 1105539.06, outgoing: 184448.39, cards: 40154.53 },
+    banks: [{ name: 'בנק לאומי שקלי', amount: 788773.47 }], deposits: [{ name: 'פקדון מזרחי 231', amount: 3969864.62 }], pledged: [{ name: 'פקדון משועבד', amount: 50000 }],
+    incoming: [{ name: 'קופת כרטיסי אשראי', amount: 535189.17 }], definition: 'יתרות ספרים מפריוריטי — לא דף בנק', caveats: ['לא דף בנק'] };
+  const mc = M.kpiModel(Object.assign({}, k, { cash: { position: pos, at: '2026-10-30T07:45:00Z', cached: false } }));
+  const cc = mc.cards.find((c) => c.key === 'cash');
+  ok('cash read: the banks\' book balance is the number, marked partial, with deposits and the net after written checks', cc.value === M.kfmtRaw(994345.22) && /חלקי/.test(cc.pct) && /עם פיקדונות/.test(cc.sub) && /נטו אחרי שיקים/.test(cc.dot), JSON.stringify(cc));
+  ok('cash read: the detail lists each bank, says pledged is not available, and the definition', cc.detail.some((l) => /בנק לאומי שקלי/.test(l.t || '')) && cc.detail.some((l) => /משועבד — לא זמין/.test(l.b || '')) && cc.detail.some((l) => /לא דף בנק/.test(l.t || '')));
+  const err = M.kpiModel(Object.assign({}, k, { cash: { error: 'ACCOUNTS: HTTP 500' } })).cards.find((c) => c.key === 'cash');
+  ok('cash refused: "לא נקרא" with the reason, never a number', err.value === null && err.nv === 'לא נקרא' && /HTTP 500/.test(err.sub));
+}
 const rec = card('receivables');
 ok('receivables: no verified KPI → "לא מאומת" with the reason, never 0', rec.value === null && /אין KPI מאומת/.test(rec.pct));
 { const withOrg = M.kpiModel(Object.assign({}, k, { org: { receivables_open: { key: 'receivables_open', value: 1713251, display: '₪1,713,251', verification: 'STALE', as_of: '2026-09-25T20:43:34Z', source: 'kpi_cache:receivables' }, receivables_over_90: { value: 212000, display: '₪212,000', verification: 'STALE' } } })).cards.find((c) => c.key === 'receivables');

@@ -24,6 +24,13 @@ async function open(viewport, tag) {
     if (body.action === 'cap' && body.name === 'fresco_snapshot')
       return j({ rows: [{ answer: '', snapshot: F.row, verdict: F.verdict, engine: 'fresco_snapshot', evidence: ['מהמטמון — חושב ב-' + F.at] }], source: 'fresco_snapshot · מהמטמון' });
     if (body.action === 'cap' && body.name === 'kpi_read') return j({ rows: [{ text: F.quotes_to_orders_60d }] });
+    if (body.action === 'cap' && body.name === 'cash_position') return j({ rows: [{ cached: false, at: '2026-10-30T07:45:00Z', error: null, position: {
+      available_now: 994345.22, available_with_deposits: 5065930.84, net_after_written_checks: 769742.3,
+      totals: { banks: 994345.22, deposits: 4071585.62, pledged: 0, incoming: 1105539.06, outgoing: 184448.39, cards: 40154.53 },
+      banks: [{ name: 'בנק לאומי שקלי', amount: 788773.47 }, { name: 'בנק לאומי דולר', amount: 197851.75 }, { name: 'בנק מזרחי טפחות שקלי 120231', amount: 7720 }],
+      deposits: [{ name: 'פקדון מזרחי 231', amount: 3969864.62 }, { name: 'פקדון ני"ע לאומי', amount: 101721 }], pledged: [],
+      incoming: [{ name: 'קופת כרטיסי אשראי', amount: 535189.17 }, { name: 'קופת שיקים', amount: 385367 }, { name: 'המחאות לגביה בנק לאומי', amount: 186917.98 }],
+      outgoing: [], cards: [], definition: 'יתרות ספרים מפריוריטי — לא דף בנק', caveats: ['יתרת ספרים — לא דף בנק'] } }] });
     if (body.action === 'cap' && body.name === 'supply_chain') return j({ rows: [{ cached: true, at: '2026-10-28T08:00:00Z', error: null, agg: SUPPLY }] });
     if (body.action === 'cap' && body.name === 'next_decision') return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
     if (body.action === 'cap') return j({ rows: [], source: '' });
@@ -61,7 +68,7 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   ok(`${tag}: the year lead reads in one line — ₪8.47M of ₪13.21M · 64% · -10% · forecast ₪11.12M · gap ₪2.09M — drawn red, with the bar`, /₪8\.47M\s*מתוך ₪13\.21M 64% מהיעד · -10% מאשתקד תחזית לסוף השנה ₪11\.12M פער ₪2\.09M/.test(T('year').text) && /s-bad/.test(T('year').cls) && await page.$('#kpis .kpiLead .kpiBar .a') !== null, T('year').text);
   const rows = await page.$$eval('#kpis .kpiRow', (xs) => xs.map((x) => x.textContent.trim()));
   ok(`${tag}: the rows are David's order — החודש · רווחיות · מזומנים · מכירות, הזמנות וחיובים`, rows.join('|') === 'החודש · אוקטובר|רווחיות|מזומנים|מכירות, הזמנות וחיובים', rows.join('|'));
-  ok(`${tag}: cash says "לא מחובר", never a number`, /יתרות בנק לא מחובר/.test(T('cash').text), T('cash').text);
+  ok(`${tag}: cash = Priority's book balance of the banks, marked partial (30.10)`, /מזומנים בבנק\s*₪994K/.test(T('cash').text) && /חלקי/.test(T('cash').text), T('cash').text);
   const ops = await page.$eval('#ops', (x) => x.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
   ok(`${tag}: production · lab · risks sits under the KPIs as a quiet list; supply chain reads its own capability (money per currency, lead times, the WEBER dependency); the organizer is still in the rail`, /מעבדה \(MATRIYA\):/.test(ops) && /שרשרת אספקה: 6 הזמנות רכש פתוחות · ₪8\.8K \+ €17\.1K/.test(ops) && /יבוא ~25 יום · מקומי ~4 יום/.test(ops) && /WEBER: 4 מתוך 6 ההזמנות, צפויות 15\.10–16\.11/.test(ops) && /LIA: לחייב את 12 התעודות/.test(ops) && await page.$('#orgWrap') !== null, ops.slice(0, 200));
   ok(`${tag}: screen test (David 5.10 evening) — the five numbers without opening a card: 18% מה-Baseline + the pace line · Forecast marked pace-only · 137% כיסוי leads, the raw ₪870K follows`, /₪136K 18% מה-Baseline היינו צריכים להיות ב־14% 4 נק׳ מעל הקצב/.test(T('sales').text) && /₪953K 124% מה-Baseline תחזית קצב בלבד · ביטחון נמוך/.test(T('forecast').text) && /₪633K 82% חסר/.test(T('gap').text) && /137% כיסוי ₪870K זמינים מול פער ₪633K/.test(T('cover').text), ['sales', 'forecast', 'gap', 'cover'].map((k) => T(k).text).join(' || '));
