@@ -31,6 +31,12 @@ async function open(viewport, tag) {
       deposits: [{ name: 'פקדון מזרחי 231', amount: 3969864.62 }, { name: 'פקדון ני"ע לאומי', amount: 101721 }], pledged: [],
       incoming: [{ name: 'קופת כרטיסי אשראי', amount: 535189.17 }, { name: 'קופת שיקים', amount: 385367 }, { name: 'המחאות לגביה בנק לאומי', amount: 186917.98 }],
       outgoing: [], cards: [], definition: 'יתרות ספרים מפריוריטי — לא דף בנק', caveats: ['יתרת ספרים — לא דף בנק'] } }] });
+    if (body.action === 'cap' && body.name === 'value_compass') return j({ rows: [{ at: '2026-10-30T14:30:00Z', sources: ['pbt_kpi 2026-10-30T14:19Z', 'priority:ACCOUNTS'], errors: [], reading: {
+      value: { low: 16141567, mid: 17554620, high: 20380726 }, annual: { revenue: 11142392, ebitda: 2826106, margin: 25.36, days: 273 }, growth: { revenue: -9.89, pbt: 10.07 },
+      multiple: { base: 5, value: 4.5, low: 4, high: 5.5, adjustments: [{ he: 'ירידה במכירות', delta: -0.5, evidence: '-9.89% מול אשתקד באותה תקופה' }] }, net_cash: 4837143, concentration: null,
+      levers: [{ he: 'הסמכה (EN 1504 · אישורי אש)', delta_value: 1413053, step: 'הסמכה אחת שמזיזה את המכפיל ב-0.5', state: 'מועמדות זוהתה, לא הותחלה', domain: 'מטריה', grade: 'assumption' },
+               { he: 'צמיחת מכירות ברווחיות הנוכחית', delta_value: 1141360, step: '₪1M מכירות נוספות בשנה', state: 'מכירות שנתיות ₪11,142,392', domain: 'שיווק', grade: 'measured' }],
+      since_last: null, definition: 'שווי = EBITDA שנתי × מכפיל + מזומן נטו (הכרעה 128)', caveats: ['הספרים חלקיים'] } }] });
     if (body.action === 'cap' && body.name === 'supply_chain') return j({ rows: [{ cached: true, at: '2026-10-28T08:00:00Z', error: null, agg: SUPPLY }] });
     if (body.action === 'cap' && body.name === 'next_decision') return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
     if (body.action === 'cap') return j({ rows: [], source: '' });
@@ -64,10 +70,10 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   ok(`${tag}: the body opens on the official pace — working days first, calendar as reference (decision 164)`, await page.$eval('#kpiCard', (x) => /ימי עבודה 3\/21 · קלנדרי 5\/31/.test(x.innerText.replace(/\s+/g, ' '))));
   let tiles = await tileText(page);
   const T = (key) => tiles.find((t) => t.key === key) || { text: '', cls: '', open: '' };
-  ok(`${tag}: CEO Cockpit B — the year leads, then eleven cards and נתונים נוספים, all folded`, tiles.map((t) => t.key).join(',') === 'year,sales,forecast,gap,cover,pbt,cash,receivables,quotes,backlog,unbilled_due,more' && tiles.every((t) => t.open === 'false'), JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
+  ok(`${tag}: CEO Cockpit B — the year leads, then twelve cards and נתונים נוספים, all folded`, tiles.map((t) => t.key).join(',') === 'year,sales,forecast,gap,cover,pbt,cash,receivables,quotes,backlog,unbilled_due,value,more' && tiles.every((t) => t.open === 'false'), JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   ok(`${tag}: the year lead reads in one line — ₪8.47M of ₪13.21M · 64% · -10% · forecast ₪11.12M · gap ₪2.09M — drawn red, with the bar`, /₪8\.47M\s*מתוך ₪13\.21M 64% מהיעד · -10% מאשתקד תחזית לסוף השנה ₪11\.12M פער ₪2\.09M/.test(T('year').text) && /s-bad/.test(T('year').cls) && await page.$('#kpis .kpiLead .kpiBar .a') !== null, T('year').text);
   const rows = await page.$$eval('#kpis .kpiRow', (xs) => xs.map((x) => x.textContent.trim()));
-  ok(`${tag}: the rows are David's order — החודש · רווחיות · מזומנים · מכירות, הזמנות וחיובים`, rows.join('|') === 'החודש · אוקטובר|רווחיות|מזומנים|מכירות, הזמנות וחיובים', rows.join('|'));
+  ok(`${tag}: the rows are David's order — החודש · רווחיות · מזומנים · מכירות, הזמנות וחיובים · מצפן השווי`, rows.join('|') === 'החודש · אוקטובר|רווחיות|מזומנים|מכירות, הזמנות וחיובים|מצפן השווי', rows.join('|'));
   ok(`${tag}: cash = Priority's book balance of the banks, marked partial (30.10)`, /מזומנים בבנק\s*₪994K/.test(T('cash').text) && /חלקי/.test(T('cash').text), T('cash').text);
   const ops = await page.$eval('#ops', (x) => x.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
   ok(`${tag}: production · lab · risks sits under the KPIs as a quiet list; supply chain reads its own capability (money per currency, lead times, the WEBER dependency); the organizer is still in the rail`, /מעבדה \(MATRIYA\):/.test(ops) && /שרשרת אספקה: 6 הזמנות רכש פתוחות · ₪8\.8K \+ €17\.1K/.test(ops) && /יבוא ~25 יום · מקומי ~4 יום/.test(ops) && /WEBER: 4 מתוך 6 ההזמנות, צפויות 15\.10–16\.11/.test(ops) && /LIA: לחייב את 12 התעודות/.test(ops) && await page.$('#orgWrap') !== null, ops.slice(0, 200));
@@ -86,11 +92,16 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   tiles = await tileText(page);
   ok(`${tag}: opening מכירות folds Forecast — one card open at a time`, T('sales').open === 'true' && tiles.filter((t) => t.open === 'true').length === 1, JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   await card.screenshot({ path: OUT + tag + '-4-sales-open.png' });
-  const remembered = await page.evaluate(() => ({ sales: localStorage.getItem('rail:kpi_sales'), forecast: localStorage.getItem('rail:kpi_forecast') }));
-  ok(`${tag}: the open card is remembered, the folded one is not`, remembered.sales === '0' && remembered.forecast === '1', JSON.stringify(remembered));
+  // the value compass card: the range, PARTIAL, the strongest lever — and it opens with its levers
+  await page.click('#kpis .kpiTile[data-kpi="value"]'); await page.waitForTimeout(150);
+  tiles = await tileText(page);
+  ok(`${tag}: מצפן השווי opens with the range, the lever and its ₪ per step`, T('value').open === 'true' && /₪17\.55M/.test(T('value').text) && /טווח ₪16\.14M – ₪20\.38M/.test(T('value').text) && /המנוף החזק/.test(T('value').text) && /איפה השווי עולה/.test(T('value').text), T('value').text.slice(0, 300));
+  await card.screenshot({ path: OUT + tag + '-5-value-open.png' });
+  const remembered = await page.evaluate(() => ({ sales: localStorage.getItem('rail:kpi_sales'), value: localStorage.getItem('rail:kpi_value') }));
+  ok(`${tag}: the open card is remembered, the folded one is not`, remembered.value === '0' && remembered.sales === '1', JSON.stringify(remembered));
   await page.reload(); await page.waitForFunction(() => { const v = document.querySelector('#kpis .kpiLead .v'); return v && /₪/.test(v.textContent); }, null, { timeout: 8000 }); await page.waitForTimeout(300);
   tiles = await tileText(page);
-  ok(`${tag}: after a reload the same one card is open`, tiles.filter((t) => t.open === 'true').map((t) => t.key).join(',') === 'sales', JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
+  ok(`${tag}: after a reload the same one card is open`, tiles.filter((t) => t.open === 'true').map((t) => t.key).join(',') === 'value', JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   // the panel did not grow sideways; the grid is still two per row
   const geo = await page.evaluate(() => { const g = document.getElementById('kpis').getBoundingClientRect(); const t = [...document.querySelectorAll('#kpis .kpiTile:not(.wide):not(.kpiLead)')].map((x) => x.getBoundingClientRect()); return { gridW: Math.round(g.width), cols: new Set(t.map((r) => Math.round(r.left))).size, spill: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
   ok(`${tag}: two cards per row, inside the same panel, no horizontal spill`, geo.cols === 2 && geo.spill <= 0, JSON.stringify(geo));

@@ -102,7 +102,7 @@ ok('"נתונים נוספים" (wide, neutral) holds the score and gross profit
 
 // ── the screen test (David): without opening a card ──
 ok('screen test: ₪136K | 18% | 4 above the working-day pace — Forecast ₪953K | 124% — missing ₪633K | 137% covered', sales.value === '₪136K' && sales.pct.startsWith('18%') && sales.dot.startsWith('4 ') && fc.value === '₪953K' && fc.pct.startsWith('124%') && gap.value === '₪633K' && cover.value.startsWith('137%'));
-ok('CEO Cockpit B order (David 27.10): the year, then the month · profitability · cash · sales→orders→billing — each card in its named row', m.cards.map((c) => c.key).join(',') === 'year,sales,forecast,gap,cover,pbt,cash,receivables,quotes,backlog,unbilled_due' && m.rows.join('|') === 'החודש|רווחיות|מזומנים|מכירות, הזמנות וחיובים' && m.cards.filter((c) => !c.lead).every((c) => m.rows.some((r) => c.row.startsWith(r))) && card('sales').row === 'החודש · אוקטובר', m.cards.map((c) => c.key + '@' + c.row).join(','));
+ok('CEO Cockpit B order (David 27.10): the year, then the month · profitability · cash · sales→orders→billing — each card in its named row', m.cards.map((c) => c.key).join(',') === 'year,sales,forecast,gap,cover,pbt,cash,receivables,quotes,backlog,unbilled_due,value' && m.rows.join('|') === 'החודש|רווחיות|מזומנים|מכירות, הזמנות וחיובים|מצפן השווי' && m.cards.filter((c) => !c.lead).every((c) => m.rows.some((r) => c.row.startsWith(r))) && card('sales').row === 'החודש · אוקטובר', m.cards.map((c) => c.key + '@' + c.row).join(','));
 { // PROFIT BEFORE TAX (David 11.10): the engine's pbt_kpi row or the exact blocker — never operating profit, never a number from this screen
   const none = card('pbt');
   ok('pbt: no row in the engine → "לא מאומת" with the reason, and the definition says it is not operating profit', none.value === null && /להריץ pbt_kpi/.test(none.detail[0].t) && /לא רווח תפעולי/.test(none.detail[1].t), JSON.stringify(none));
@@ -115,9 +115,25 @@ ok('CEO Cockpit B order (David 27.10): the year, then the month · profitability
   ok('pbt: a blocker is shown as the reason, no number', blocked.value === null && /2026-03/.test(blocked.detail[0].t), JSON.stringify(blocked));
 }
 
+
+{ // THE VALUE COMPASS (David 30.10): decision 128 live — a range from the books, the strongest lever, what moved; nothing invented
+  const none = M.kpiModel(k).cards.find((c) => c.key === 'value');
+  ok('value: not read yet → no number, the model named', none.value === null && none.row === 'מצפן השווי' && /EBITDA × מכפיל/.test(none.sub), JSON.stringify(none));
+  const err = M.kpiModel(Object.assign({}, k, { value: { reading: { value: null }, errors: ['אין רווח לפני מס במטמון — להריץ pbt_kpi'] } })).cards.find((c) => c.key === 'value');
+  ok('value: no books → "לא חושב" and the reason', err.value === null && /להריץ pbt_kpi/.test(err.sub), JSON.stringify(err));
+  const reading = { value: { low: 16141567, mid: 17554620, high: 20380726 }, annual: { revenue: 11142392, ebitda: 2826106, margin: 25.36 }, growth: { revenue: -9.89, pbt: 10.07 },
+    multiple: { base: 5, value: 4.5, low: 4, high: 5.5, adjustments: [{ he: 'ירידה במכירות', delta: -0.5, evidence: '-9.89% מול אשתקד' }] }, net_cash: 4837143, concentration: null,
+    levers: [{ he: 'הסמכה (EN 1504 · אישורי אש)', delta_value: 1413053, step: 'הסמכה אחת', state: 'לא הותחלה', domain: 'מטריה', grade: 'assumption' }],
+    since_last: null, definition: 'שווי = EBITDA × מכפיל + מזומן נטו', caveats: ['הספרים חלקיים'] };
+  const v = M.kpiModel(Object.assign({}, k, { value: { reading, sources: ['pbt_kpi'], errors: [] } })).cards.find((c) => c.key === 'value');
+  ok('value: the mid in David\'s notation, the range, PARTIAL, the strongest lever with its ₪ per step', v.value === '₪17.55M' && /טווח ₪16\.14M – ₪20\.38M · חלקי/.test(v.pct) && /המנוף החזק: הסמכה.*\+₪1\.41M להסמכה אחת/.test(v.sub) && /קריאה ראשונה/.test(v.dot), JSON.stringify(v));
+  ok('value: the detail shows EBITDA, the multiple and its evidence, net cash, the levers marked (הנחה), and the caveats', v.detail.some((d) => /EBITDA.*₪2\.83M/.test(d.b)) && v.detail.some((d) => /ירידה במכירות \(-0\.5\)/.test(d.t)) && v.detail.some((d) => /מזומן נטו · ₪4\.84M/.test(d.b)) && v.detail.some((d) => /מטריה · הסמכה.*\(הנחה\)/.test(d.t)) && v.detail.some((d) => /הסתייגות: הספרים חלקיים/.test(d.t)), JSON.stringify(v.detail));
+  ok('value: its own read-only capability, fetched after the panel is drawn', /cap\('value_compass',\{\}\)\.then\(r=>\{RAILS\.value=/.test(src) && /value:RAILS\.value\|\|null/.test(src));
+}
+
 // ── when the engine does not answer ──
 const e = M.kpiModel({});
-ok('no engine row → the header says so and every card is "לא מאומת" or "לא מחובר" — no number invented, no state colour', e.header === 'אין תמונת מצב' && e.header2 === 'מנוע תמונת המצב לא ענה' && e.cards.length === 11 && e.cards.every((c) => c.value === null && (c.state === 'na' || c.state === 'none')) && e.cards.map((c) => c.key).join(',') === m.cards.map((c) => c.key).join(','), e.cards.map((c) => c.key + ':' + c.value + ':' + c.state).join(' '));
+ok('no engine row → the header says so and every card is "לא מאומת" or "לא מחובר" — no number invented, no state colour', e.header === 'אין תמונת מצב' && e.header2 === 'מנוע תמונת המצב לא ענה' && e.cards.length === 12 && e.cards.every((c) => c.value === null && (c.state === 'na' || c.state === 'none')) && e.cards.map((c) => c.key).join(',') === m.cards.map((c) => c.key).join(','), e.cards.map((c) => c.key + ':' + c.value + ':' + c.state).join(' '));
 const partial = M.kpiModel({ month: Object.assign({}, k.month, { ly_month: null, unbilled: null, backlog: null }) });
 ok('no Baseline → percentages are "לא מאומת", the ₪ facts stay; no pipeline → coverage grey', partial.cards.find((c) => c.key === 'sales').pct === 'לא מאומת' && partial.cards.find((c) => c.key === 'sales').value === '₪136K' && partial.cards.find((c) => c.key === 'cover').state === 'na' && partial.cards.find((c) => c.key === 'cover').value === null && partial.header === 'אוקטובר · Baseline לא מאומת', partial.header);
 
