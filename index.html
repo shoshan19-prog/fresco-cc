@@ -257,6 +257,8 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .workMeter h2{font-size:14px;margin:0 0 8px}.workMeter .wm{padding:8px 0;border-top:1px solid var(--line)}.workMeter .wm:first-of-type{border-top:0;padding-top:0}
 .workMeter .top{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600}.workMeter .top b{margin-inline-start:auto;font-variant-numeric:tabular-nums;color:var(--acc)}
 .workMeter .bar{height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin:6px 0}.workMeter .bar span{display:block;height:100%;background:var(--acc);border-radius:inherit}.workMeter .meta{font-size:12px;color:var(--dim);line-height:1.4}.workMeter .blocked .bar span,.workMeter .needs .bar span{background:var(--warn)}.workMeter .done .bar span{background:var(--ok)}.workMeter .moving .bar span{background:var(--ok)}.workMeter .top b.stage{font-size:12px;font-weight:500;color:var(--dim)}.workMeter .top b small{font-weight:500;color:var(--dim)}.workMeter .needs .tag{color:var(--warn)}.workMeter .done .tag{color:var(--ok)}.workMeter .failed{opacity:.75}
+.workMeter .light{flex:none;width:11px;height:11px;border-radius:50%;display:inline-block;background:var(--line)}.workMeter .light.green{background:#1f9d55;box-shadow:0 0 6px #1f9d55aa}.workMeter .light.amber{background:#d69e2e}.workMeter .light.red{background:#e53e3e}.workMeter .light.blue{background:#3182ce}
+.workMeter .why{font-size:12px;line-height:1.4;margin-top:3px}.workMeter .why.off{color:#c53030}.workMeter .why.david{color:var(--warn)}
 @media(max-height:740px){#exec{gap:5px}.xi{padding:7px 11px}.xi .xv{font-size:15px}.xi .xs{font-size:12.5px;line-height:1.35}
  main{padding-top:8px}#drillBtn,#projBtn{min-height:36px}}
 @media(max-height:700px){#topbar{padding-top:calc(4px + env(safe-area-inset-top));padding-bottom:4px}
@@ -608,7 +610,17 @@ function meterRowOf(r,now){
   var submitted=(!done&&!failed&&r.product_review&&r.product_review.submitted_at)?(r.product_review.result||r.product_review.outcome||'התוצר הוגש'):null;
   var next=(done||failed)?null:(blocked?(d.note||r.blocker||waitText(r)||'החסם לא פורט'):selfWait?selfWait.text:(r.next_step||r.current_step||'הצעד הבא לא דווח'));
   if(failed&&!next)next=r.outcome||r.blocker||null;
-  return {work_id:r.work_id,title:String(r.objective||r.goal||r.work_id),label:label,pct:pct,gauge:gauge,stage:stageOf(r),tone:tone,order:METER_ORDER[tone],next:next,product:product,ref:ref,submitted:submitted,verified:done?!!d.verified:null};
+  /* THE TRACK (David, 30.10 — "למה החבילות לא נכנסות למסלול עבודה"): the server's own dispatcher verdict, said in words;
+     the light is green when the work finished, amber when only David moves it, red when nothing will */
+  var tk=(r.track&&typeof r.track==='object')?r.track:null;
+  var track=done?'DONE':failed?'CLOSED':(tk&&tk.state)||null;
+  var why=(tk&&!done&&!failed&&(tk.state==='OFF'||tk.state==='DAVID'))?String(tk.why||''):null;
+  var light=done?'green':failed?'gray':track==='OFF'?'red':track==='DAVID'?'amber':track==='ON'?'blue':'gray';
+  return {work_id:r.work_id,title:String(r.objective||r.goal||r.work_id),label:label,pct:pct,gauge:gauge,stage:stageOf(r),tone:tone,order:METER_ORDER[tone],next:next,product:product,ref:ref,submitted:submitted,verified:done?!!d.verified:null,track:track,why:why,light:light};
+}
+function recentDone(rows,now){
+  var t=now-864e5;
+  return (rows||[]).filter(function(r){return stateOf(r)==='DONE'&&tms(r.completed_at)>=t&&!(r&&r.synthetic);});
 }
 function meterRows(alive,now){
   return (alive||[]).map(function(r){return meterRowOf(r,now);}).filter(Boolean).sort(function(a,b){return a.order-b.order;});
@@ -724,6 +736,8 @@ function loadExec(){
     if(stale)return cap('fresco_snapshot',{}).then(takeSnap);
   }).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   cap('work_status').then(function(x){X.alive=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
+  /* 30.10 — what FINISHED in the last day stays on the meter with a green light, so a completion is seen, not inferred from absence */
+  cap('work_status',{closed_since:isoDaysAgo(1)}).then(function(x){X.done=rowsOf(x);renderExec();}).catch(function(){X.done=[];renderExec();});
   api({action:'state'}).then(function(st){X.appr=(st&&Array.isArray(st.approvals))?st.approvals:[];renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   cap('alerts').then(function(x){X.alerts=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   /* 19.10 — mail waiting for David's approval (outbound_pending): it was in the queue and on no screen */
@@ -748,7 +762,7 @@ function renderExec(){
   if(VIEW!=='overview'){el.hidden=true;return;}
   el.hidden=false;
   var m=execModel(X,Date.now());
-  var work=meterRows(X.alive);
+  var work=meterRows((X.alive||[]).concat(recentDone(X.done,Date.now())));
   var all=m.every(function(x){return x.ready;});
   if(all&&X.readyMs==null){X.readyMs=Date.now()-X.t0;el.setAttribute('data-ready-ms',String(X.readyMs));}
   el.setAttribute('data-ready',all?'1':'0');
@@ -768,7 +782,12 @@ function renderExec(){
     var meta=w.product!=null?'התוצר: '+esc(w.product)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':'')
       :w.submitted?'הוגש לבדיקתך: '+esc(w.submitted)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':'')
       :w.tone==='needs'?'מחכה לך: '+esc(w.next):w.tone==='blocked'?'חסם: '+esc(w.next):w.tone==='failed'?esc(w.next||''):'השלב הבא: '+esc(w.next);
-    return '<div class="wm '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'"><div class="top"><span>'+esc(cleanTitle(w.title))+'</span><span class="tag">'+esc(w.label)+'</span>'+num+'</div>'+bar+'<div class="meta">'+meta+'</div></div>';}).join('')+'</section>':'')
+    var LIGHT_HE={green:'הושלמה',amber:'מחכה להכרעתך',red:'לא במסלול עבודה',blue:'במסלול עבודה',gray:''};
+    var lt='<i class="light '+w.light+'" role="img" aria-label="'+esc(LIGHT_HE[w.light]||'')+'" title="'+esc(LIGHT_HE[w.light]||'')+'"></i>';
+    /* the reason REPLACES the generic block/needs line — one sentence, not two saying the same */
+    if(w.why&&(w.tone==='blocked'||w.tone==='needs'))meta=w.submitted?'הוגש לבדיקתך: '+esc(w.submitted)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':''):'';
+    var whyLine=w.why?'<div class="why '+(w.track==='OFF'?'off':'david')+'">'+(w.track==='OFF'?'למה לא במסלול: ':'למה מחכה לך: ')+esc(w.why)+'</div>':'';
+    return '<div class="wm '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'" data-track="'+esc(w.track||'')+'"><div class="top">'+lt+'<span>'+esc(cleanTitle(w.title))+'</span><span class="tag">'+esc(w.label)+'</span>'+num+'</div>'+bar+(meta?'<div class="meta">'+meta+'</div>':'')+whyLine+'</div>';}).join('')+'</section>':'')
   +teamHtml(X.team)
   +(X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
   /* the projects screen (David, 4.10 — WORK 27d03f59) is its own page: the five answers stay five */

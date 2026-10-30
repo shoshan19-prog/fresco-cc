@@ -16,7 +16,7 @@ function slice(from, to) {
   return src.slice(a, b);
 }
 const S = new Function(slice('var DOMAINS=', '/* CC_STATE_END */')
-  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS,meterRowOf,meterRows};')();
+  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS,meterRowOf,meterRows,recentDone};')();
 
 let bad = 0, total = 0;
 function eq(label, got, want) { total++; if (got !== want) { console.log(`FAIL  ${label}\n      got:  ${JSON.stringify(got)}\n      want: ${JSON.stringify(want)}`); bad++; } }
@@ -363,6 +363,25 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('team: an idle person says so, without a fake need', /לא השתמש\/ה בעוזרת/.test(h) && !/צריך\/ה: לא השתמשה/.test(h));
   ok('team: nothing rendered when the report did not load', T(null) === '' && T([]) === '');
   ok('team: loaded on the overview and placed in the exec view', /cap\('team_activity',\{days:7\}\)/.test(src) && /\+teamHtml\(X\.team\)/.test(src));
+}
+
+{ // 30.10 — the work track and the green light (David: "למה החבילות לא נכנסות למסלול עבודה … אור ירוק")
+  const off = S.meterRowOf({ work_id: 'd18a8b2c00', kind: 'engineering', objective: 'תשובה מחקרית', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL',
+    track: { state: 'OFF', code: 'WAIT_UNDEFINED', why: 'מסומנת ממתינה אבל לא נאמר על מה' } });
+  ok('OFF: red light and the judge\'s reason', off.light === 'red' && off.track === 'OFF' && /לא נאמר על מה/.test(off.why), JSON.stringify(off));
+  const dav = S.meterRowOf({ work_id: 'fcb11c5900', kind: 'other', objective: 'אורגנייזר', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', disposition: 'PRODUCT_REVIEW',
+    track: { state: 'DAVID', code: 'PARKED_FOR_DAVID', why: 'התוצר מוכן לאישורך' } });
+  ok('DAVID: amber light and why it waits for him', dav.light === 'amber' && /מוכן לאישורך/.test(dav.why), JSON.stringify(dav));
+  const on = S.meterRowOf({ work_id: 'b98c88f800', kind: 'research', objective: 'סיכום', status: 'WAITING_EXTERNAL', state: 'WAITING_EXTERNAL', next_wake_at: '2099-01-01T00:00:00Z',
+    track: { state: 'ON', code: 'FUTURE_WAKE', why: '' } });
+  ok('ON: blue light, no "why" line', on.light === 'blue' && on.why === null, JSON.stringify(on));
+  const done = S.meterRowOf({ work_id: '24fee36d00', kind: 'audit', objective: 'סיכום', status: 'DONE', state: 'DONE', outcome: 'נמסר', completed_at: new Date().toISOString() });
+  ok('DONE: green light', done.light === 'green' && done.track === 'DONE', JSON.stringify(done));
+  const recent = S.recentDone([{ work_id: 'x', status: 'DONE', state: 'DONE', completed_at: new Date().toISOString() },
+                               { work_id: 'y', status: 'DONE', state: 'DONE', completed_at: '2020-01-01T00:00:00Z' },
+                               { work_id: 'z', status: 'DONE', state: 'DONE', completed_at: new Date().toISOString(), synthetic: { run: 'ia' } }], Date.now());
+  ok('the last day\'s completions stay on the meter (no test packages)', recent.length === 1 && recent[0].work_id === 'x');
+  ok('rendered: the light, the reason, the day\'s completions loaded', /<i class="light '\+w\.light\+'"/.test(src) && /למה לא במסלול: /.test(src) && /cap\('work_status',\{closed_since:isoDaysAgo\(1\)\}\)/.test(src));
 }
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
