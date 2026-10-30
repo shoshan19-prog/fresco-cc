@@ -1919,6 +1919,9 @@ async function loadRails(){
  renderRails();renderKpis();renderOrg();
  /* SUPPLY CHAIN (David, 28.10): its own read-only capability (PORDERS + DOCUMENTS_P, cached 60 min) — fetched after the
     panel is drawn, so a cold Priority read never holds the KPIs back */
+ /* CASH (David, 30.10): Priority's book balances of the cash accounts — its own read-only capability, after the panel is drawn */
+ cap('cash_position',{}).then(r=>{RAILS.cash=(r&&r.rows&&r.rows[0])||{error:'לא נענה'};renderKpis();})
+  .catch(e=>{RAILS.cash={error:String((e&&e.message)||e).slice(0,80)};renderKpis();});
  cap('supply_chain',{}).then(r=>{RAILS.supply=(r&&r.rows&&r.rows[0])||{error:'לא נענה'};renderOps();})
   .catch(e=>{RAILS.supply={error:String((e&&e.message)||e).slice(0,80)};renderOps();});}
 /* The snapshot row → the tile rows the existing helpers already render.
@@ -2200,9 +2203,29 @@ function kpiModel(k,fmt){
  const ROWS=['החודש','רווחיות','מזומנים','מכירות, הזמנות וחיובים'];
  const org=k.org||{};
  const orgTag=(x)=>!x?NA:(x.verification==='VERIFIED'?'מאומת':x.verification==='STALE'?'קריאה ישנה':x.verification==='NOT_CONNECTED'?'לא מחובר':'חלקי')+(x.as_of?' · '+String(x.as_of).slice(0,10):'');
- const cashCard=()=>card({key:'cash',label:'יתרות בנק',nv:'לא מחובר',row:ROWS[2],sub:'דורש חיבור לקריאה בלבד, באישורך',
-  detail:[{b:'מה חסר',t:'יתרות הבנק, התחייבויות לספקים ותשלומים צפויים אינם מחוברים. לא מוצג מספר עד שיחובר מקור מאומת.'},
-   {b:'החיבור',t:'קריאה בלבד, באישור דוד — שום חיבור פיננסי חדש לא נפתח בלי אישור (הוראת דוד, 27.10)'}]});
+ /* CASH FROM PRIORITY'S OWN BOOKS (David, 30.10 — "תמונת מזומנים — לברר את התזרים שיש בפריוריטי"): cash_position reads the
+    book balances of the bank, deposit and transit accounts (ACCOUNTS, read-only, no new connection). It is PARTIAL by
+    definition — book balances, not a bank statement, no projection — and the card says so. Not read yet / refused: no number. */
+ const cashCard=()=>{
+  const c=k.cash||null,p=c&&c.position;
+  const line=(a)=>({t:a.name+': '+fmt(a.amount)});
+  if(!p)return card({key:'cash',label:'מזומנים בבנק',nv:c&&c.error?'לא נקרא':'נטען מפריוריטי…',row:ROWS[2],
+   sub:c&&c.error?String(c.error).slice(0,90):'יתרות הספרים של חשבונות הבנק בפריוריטי',
+   detail:[{b:'מקור',t:'פריוריטי · יתרות ספרים של חשבונות הבנק, הפיקדונות והקופות (ACCOUNTS) — קריאה בלבד'},
+    {b:'מה לא כאן',t:'דף בנק ותחזית תשלומים אינם מחוברים — לא מוצג מספר שלא נקרא'}]});
+  const asof=c.at?new Date(c.at).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+  return card({key:'cash',label:'מזומנים בבנק',value:fmt(p.available_now),row:ROWS[2],state:'none',
+   pct:'יתרת ספרים · חלקי',
+   sub:'עם פיקדונות: '+fmt(p.available_with_deposits),
+   dot:'נטו אחרי שיקים שכתבנו וחוב כרטיסים: '+fmt(p.net_after_written_checks)+(asof?' · נכון ל-'+asof:''),
+   detail:[{b:'חשבונות בנק · '+fmt(p.totals.banks)}].concat((p.banks||[]).map(line))
+    .concat([{b:'פיקדונות וני"ע · '+fmt(p.totals.deposits)}]).concat((p.deposits||[]).map(line))
+    .concat(p.pledged&&p.pledged.length?[{b:'משועבד — לא זמין · '+fmt(p.totals.pledged)}].concat(p.pledged.map(line)):[])
+    .concat([{b:'בדרך פנימה (שיקים, המחאות לגביה, כרטיסי אשראי) · '+fmt(p.totals.incoming)}]).concat((p.incoming||[]).map(line))
+    .concat([{b:'בדרך החוצה · שיקים שכתבנו '+fmt(p.totals.outgoing)+' · חוב כרטיסי אשראי '+fmt(p.totals.cards)}])
+    .concat([{b:'הגדרה',t:p.definition},{b:'מקור ומועד',t:'פריוריטי ACCOUNTS.BALANCE1 · '+(c.cached?'מהמטמון':'קריאה חיה')+(asof?' · '+asof:'')}])
+    .concat((p.caveats||[]).map(function(x){return {t:'הסתייגות: '+x,dim:true};}))});
+ };
  const recCard=()=>{
   const r=k.receivables,o=org.receivables_open,o90=org.receivables_over_90;
   const val=r&&r.sums&&r.sums.TOTPRICE!=null?fmt(r.sums.TOTPRICE):(o&&o.value!=null&&o.verification!=='NOT_CONNECTED'?fmt(o.value):null);
@@ -2452,7 +2475,7 @@ function salesKpiText(r){
 function renderKpis(){
  const el=document.getElementById('kpis');if(!el)return;
  /* the organizer's department KPIs ride along by key (tower) — the cash and receivables cards read them, never recompute */
- RAILS.kpis=Object.assign(RAILS.kpis||{},{org:orgKpiMap()});
+ RAILS.kpis=Object.assign(RAILS.kpis||{},{org:orgKpiMap(),cash:RAILS.cash||null});
  const k=RAILS.kpis||{};
  /* Eight cards, ONE engine row (fresco_snapshot) — kpiModel() is the only derivation,
     pure and tested; a fact the engine does not carry stays "לא מאומת" (David, 5.10). */
