@@ -126,8 +126,13 @@ ok('CEO Cockpit B order (David 27.10): the year, then the month · profitability
     levers: [{ he: 'הסמכה (EN 1504 · אישורי אש)', delta_value: 1413053, step: 'הסמכה אחת', state: 'לא הותחלה', domain: 'מטריה', grade: 'assumption' }],
     since_last: null, definition: 'שווי = EBITDA × מכפיל + מזומן נטו', caveats: ['הספרים חלקיים'] };
   const v = M.kpiModel(Object.assign({}, k, { value: { reading, sources: ['pbt_kpi'], errors: [] } })).cards.find((c) => c.key === 'value');
-  ok('value: the mid in David\'s notation, the range, PARTIAL, the strongest lever with its ₪ per step', v.value === '₪17.55M' && /טווח ₪16\.14M – ₪20\.38M · חלקי/.test(v.pct) && /המנוף החזק: הסמכה.*\+₪1\.41M להסמכה אחת/.test(v.sub) && /קריאה ראשונה/.test(v.dot), JSON.stringify(v));
+  ok('value: the mid in David\'s notation, the range, PARTIAL, the strongest lever with its ₪ per step', v.value === '₪17.55M' && /טווח ₪16\.14M – ₪20\.38M · חלקי/.test(v.pct) && /המנוף החזק: הסמכה.*\+₪1\.41M להסמכה אחת/.test(v.dot) && /אטרקטיביות לא מאומת · ביטחון לא מאומת/.test(v.sub) && v.detail.some((d) => /קריאה ראשונה/.test(d.t)), JSON.stringify(v));
   ok('value: the detail shows EBITDA, the multiple and its evidence, net cash, the levers marked (הנחה), and the caveats', v.detail.some((d) => /EBITDA.*₪2\.83M/.test(d.b)) && v.detail.some((d) => /ירידה במכירות \(-0\.5\)/.test(d.t)) && v.detail.some((d) => /מזומן נטו · ₪4\.84M/.test(d.b)) && v.detail.some((d) => /מטריה · הסמכה.*\(הנחה\)/.test(d.t)) && v.detail.some((d) => /הסתייגות: הספרים חלקיים/.test(d.t)), JSON.stringify(v.detail));
+  const three = M.kpiModel(Object.assign({}, k, { value: { reading: Object.assign({}, reading, {
+    attractiveness: { score: 72, note: 'ממוצע שלוש היכולות החזקות', selling: 2, proven: 1, hypotheses: 1, capabilities: [{ name: 'אינטומסנט', score: 85, claims: 0 }, { name: 'ממשקים ושדות', score: 0, claims: 1 }],
+      next: [{ name: 'ממשקים ושדות', what: 'ניסוי מעבדה אחד', gain: 15 }] },
+    safety: { score: 89, of: 90, unmeasured: ['תלות בבעלים'], parts: [{ he: 'אין תלות בלקוח אחד', points: 25, max: 25, evidence: 'הלקוח הגדול 5.02%' }] } }), sources: [], errors: [] } })).cards.find((c) => c.key === 'value');
+  ok('value: the three answers — worth on the card, attractiveness and safety beside it, each opened with its parts', /אטרקטיביות 72\/100 · ביטחון 89\/100/.test(three.sub) && three.detail.some((d) => /אינטומסנט: 85\/100/.test(d.t)) && three.detail.some((d) => /ממשקים ושדות: 0\/100 · 1 טענות בלי ראיה/.test(d.t)) && three.detail.some((d) => /ההוכחה הבאה/.test(d.b) && /ניסוי מעבדה אחד/.test(d.t)) && three.detail.some((d) => /לא נמדד: תלות בבעלים/.test(d.t)) && three.detail.some((d) => /הלקוח הגדול 5\.02%/.test(d.t)), JSON.stringify(three));
   ok('value: its own read-only capability, fetched after the panel is drawn', /cap\('value_compass',\{\}\)\.then\(r=>\{RAILS\.value=/.test(src) && /value:RAILS\.value\|\|null/.test(src));
 }
 
