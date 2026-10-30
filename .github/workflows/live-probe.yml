@@ -1,0 +1,14 @@
+name: live-probe-163
+on: push
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          sleep 45
+          curl -sS -m 30 "https://shoshan19-prog.github.io/fresco-cc/lia.html?nc=$GITHUB_RUN_ID" -o live.html
+          curl -sS -m 30 "https://raw.githubusercontent.com/shoshan19-prog/fresco-cc/main/lia.html" -o main.html
+          echo "live: $(sha256sum live.html | cut -c1-16)"
+          echo "main: $(sha256sum main.html | cut -c1-16)"
+          grep -c "cap('cash_position'" live.html
+          cmp -s live.html main.html && echo LIVE_EQUALS_MAIN || echo LIVE_DIFFERS
