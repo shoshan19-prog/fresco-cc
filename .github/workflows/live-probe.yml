@@ -1,0 +1,14 @@
+name: live-probe-162
+on: push
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sleep 30
+          curl -sS -m 30 "https://shoshan19-prog.github.io/fresco-cc/index.html?nc=$GITHUB_RUN_ID" -o live.html
+          echo "live:  $(sha256sum live.html | cut -c1-16)"
+          echo "main:  $(sha256sum index.html | cut -c1-16)"
+          grep -c "function recentDone" live.html && grep -c "למה לא במסלול" live.html
+          cmp -s live.html index.html && echo LIVE_EQUALS_MAIN || echo LIVE_DIFFERS
