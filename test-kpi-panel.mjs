@@ -133,6 +133,17 @@ ok('CEO Cockpit B order (David 27.10): the year, then the month · profitability
       next: [{ name: 'ממשקים ושדות', what: 'ניסוי מעבדה אחד', gain: 15 }] },
     safety: { score: 89, of: 90, unmeasured: ['תלות בבעלים'], parts: [{ he: 'אין תלות בלקוח אחד', points: 25, max: 25, evidence: 'הלקוח הגדול 5.02%' }] } }), sources: [], errors: [] } })).cards.find((c) => c.key === 'value');
   ok('value: the three answers — worth on the card, attractiveness and safety beside it, each opened with its parts', /אטרקטיביות 72\/100 · ביטחון 89\/100/.test(three.sub) && three.detail.some((d) => /אינטומסנט: 85\/100/.test(d.t)) && three.detail.some((d) => /ממשקים ושדות: 0\/100 · 1 טענות בלי ראיה/.test(d.t)) && three.detail.some((d) => /ההוכחה הבאה/.test(d.b) && /ניסוי מעבדה אחד/.test(d.t)) && three.detail.some((d) => /לא נמדד: תלות בבעלים/.test(d.t)) && three.detail.some((d) => /הלקוח הגדול 5\.02%/.test(d.t)), JSON.stringify(three));
+  const v2 = M.kpiModel(Object.assign({}, k, { value: { reading: Object.assign({}, reading, {
+    annual: Object.assign({}, reading.annual, { ebitda: 1801041, other_income: 1025064 }), enterprise: { low: 7204164, mid: 9005205, high: 10806246 }, net_cash: 4837143,
+    value: { low: 12041307, mid: 13842348, high: 15643389 }, if_to_verify_real: { mid: 11342348, items: ['מס הכנסה מענקים ₪2,500,000'] },
+    facts: [{ he: 'חוב בנקאי', value: 'אין — אין חשבון הלוואה פתוח בספרים', status: 'VERIFIED', source: 'ACCOUNTS', as_of: '2026-10-31T08:37:00Z' }, { he: 'פחת והפחתות', value: 'לא נרשם במהלך השנה', status: 'MISSING', source: 'סוף שנה', as_of: null }],
+    opportunities: [{ he: 'ייצור מקומי במקום Weber', expected_value: 270000, value_if_success: 920000, probability: 0.35, months: 9, investment: 80000, grade: 'ASSUMPTION', first_step: 'לאמת עלות הובלה' }] }),
+    sources: [], errors: [], ledger: { entries: 0, lia_credit: 0, attributed: 0, unattributed: 0, due: 0 } } })).cards.find((c) => c.key === 'value');
+  ok('value v2 (David 31.10): equity = operations + cash, every figure with its status, the liability-if-real line, opportunities one by one, LIA credited only by the ledger',
+    v2.value === '₪13.84M' && /פעילות ₪9\.01M \+ מזומן ₪4\.84M/.test(v2.pct) && /ההזדמנות החזקה: ייצור מקומי.*\+₪270K/.test(v2.dot)
+    && v2.detail.some((d) => /אם ההתחייבות לבירור אמיתית · ₪11\.34M/.test(d.b)) && v2.detail.some((d) => /חוב בנקאי: אין .* — מאומת/.test(d.t)) && v2.detail.some((d) => /פחת והפחתות.* — חסר/.test(d.t) && d.dim)
+    && v2.detail.some((d) => /סיכוי 35% · 9 חודשים · השקעה ₪80K · הנחה/.test(d.t)) && v2.detail.some((d) => /שום שינוי בשווי לא נזקף לליה/.test(d.t)) && v2.detail.some((d) => /EBITDA מנורמל.*₪1\.8M/.test(d.b) && /מענקים והכנסות אחרות ₪1\.03M מחוץ למכפיל/.test(d.t)),
+    JSON.stringify({ v: v2.value, pct: v2.pct, dot: v2.dot }));
   ok('value: its own read-only capability, fetched after the panel is drawn', /cap\('value_compass',\{\}\)\.then\(r=>\{RAILS\.value=/.test(src) && /value:RAILS\.value\|\|null/.test(src));
 }
 
