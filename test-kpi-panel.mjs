@@ -140,10 +140,17 @@ ok('CEO Cockpit B order (David 27.10): the year, then the month · profitability
     opportunities: [{ he: 'ייצור מקומי במקום Weber', expected_value: 270000, value_if_success: 920000, probability: 0.35, months: 9, investment: 80000, grade: 'ASSUMPTION', first_step: 'לאמת עלות הובלה' }] }),
     sources: [], errors: [], ledger: { entries: 0, lia_credit: 0, attributed: 0, unattributed: 0, due: 0 } } })).cards.find((c) => c.key === 'value');
   ok('value v2 (David 31.10): equity = operations + cash, every figure with its status, the liability-if-real line, opportunities one by one, LIA credited only by the ledger',
-    v2.value === '₪13.84M' && /פעילות ₪9\.01M \+ מזומן ₪4\.84M/.test(v2.pct) && /ההזדמנות החזקה: ייצור מקומי.*\+₪270K/.test(v2.dot)
+    v2.value === '₪13.84M' && /פעילות ₪9\.01M \+ מזומן ₪4\.84M/.test(v2.pct) && /בראש הדירוג: ייצור מקומי.*שווי צפוי \+₪270K/.test(v2.dot)
     && v2.detail.some((d) => /אם ההתחייבות לבירור אמיתית · ₪11\.34M/.test(d.b)) && v2.detail.some((d) => /חוב בנקאי: אין .* — מאומת/.test(d.t)) && v2.detail.some((d) => /פחת והפחתות.* — חסר/.test(d.t) && d.dim)
-    && v2.detail.some((d) => /סיכוי 35% · 9 חודשים · השקעה ₪80K · הנחה/.test(d.t)) && v2.detail.some((d) => /שום שינוי בשווי לא נזקף לליה/.test(d.t)) && v2.detail.some((d) => /EBITDA מנורמל.*₪1\.8M/.test(d.b) && /מענקים והכנסות אחרות ₪1\.03M מחוץ למכפיל/.test(d.t)),
+    && v2.detail.some((d) => /סיכוי 35% · 9 חודשים · השקעה ₪80K · הנחה/.test(d.t) && /הצעד הבא: לאמת עלות הובלה/.test(d.t)) && v2.detail.some((d) => /שום שינוי בשווי לא נזקף לליה/.test(d.t)) && v2.detail.some((d) => /EBITDA מנורמל.*₪1\.8M/.test(d.b) && /מענקים והכנסות אחרות ₪1\.03M מחוץ למכפיל/.test(d.t)),
     JSON.stringify({ v: v2.value, pct: v2.pct, dot: v2.dot }));
+  const v3 = M.kpiModel(Object.assign({}, k, { value: { reading: Object.assign({}, reading, { value: { low: 1, mid: 13842348, high: 2 }, enterprise: { mid: 9005205 }, net_cash: 4837143,
+    opportunities: [{ he: 'מפת תלות בבעלים', mechanism_he: 'עצמאות מהבעלים', is_range: true, expected_range: { low: 225000, high: 900000 }, expected_value: null, probability: 0.5, months: 24, investment: 0, grade: 'ASSUMPTION',
+      evidence_now: 'עצי מוצר חלקיים', main_risk: 'מתממש רק בעסקה', next_uncertainty_step: 'מדידת התלות', lia_scope: 'מכינה את המפה', gaps: ['יכולת מאפשרת במרשם'] }],
+    grant_royalty: { nature: 'מענקי רשות החדשנות', scenarios: [{ he: 'רק מוצרי התוכנית', annual: null }, { he: 'חסם עליון 3%', annual: 334000 }], questions: ['שיעור', 'תקרה'] } }), sources: [], errors: [] } })).cards.find((c) => c.key === 'value');
+  ok('value v3 (David 31.10 evening): mechanisms ranked on one scale, a range-only opportunity shows a RANGE (no point value), what LIA can do and what is missing; grants and royalties apart',
+    /בראש הדירוג: עצמאות מהבעלים — מפת תלות בבעלים · שווי צפוי ₪225K–₪900K \(טווח\)/.test(v3.dot) && v3.detail.some((d) => /^1\. עצמאות מהבעלים · /.test(d.t) && /ליה: מכינה את המפה/.test(d.t) && /חסר: יכולת מאפשרת במרשם/.test(d.t))
+    && v3.detail.some((d) => /מענקים ותמלוגים — בנפרד, לא נוכה/.test(d.b) && /חסם עליון 3%: ₪334K בשנה/.test(d.t)), JSON.stringify({ dot: v3.dot }));
   ok('value: its own read-only capability, fetched after the panel is drawn', /cap\('value_compass',\{\}\)\.then\(r=>\{RAILS\.value=/.test(src) && /value:RAILS\.value\|\|null/.test(src));
 }
 
