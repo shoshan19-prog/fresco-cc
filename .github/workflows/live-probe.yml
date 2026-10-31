@@ -1,0 +1,15 @@
+name: live-probe
+on: push
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for i in 1 2 3 4 5 6; do
+            live=$(curl -s "https://shoshan19-prog.github.io/fresco-cc/lia.html?nc=$(date +%s)" | sha256sum | cut -c1-8)
+            main=$(curl -s "https://raw.githubusercontent.com/shoshan19-prog/fresco-cc/main/lia.html" | sha256sum | cut -c1-8)
+            echo "live=$live main=$main"
+            [ "$live" = "$main" ] && exit 0
+            sleep 30
+          done
+          exit 1
