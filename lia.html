@@ -2240,15 +2240,20 @@ function kpiModel(k,fmt){
     {b:'מה לא כאן',t:'לא מוצג שווי שלא חושב מהספרים'}]});
   const a=r.annual,mu=r.multiple,top=(r.levers||[])[0],att=r.attractiveness||null,sf=r.safety||null,op=(r.opportunities||[])[0]||null,led=c.ledger||null;
   const ST={VERIFIED:'מאומת',PARTIAL:'חלקי',ASSUMPTION:'הנחה',MISSING:'חסר'};
+  /* NO DATA, NO EXACT NUMBER (David 31.10): a range-only opportunity shows its expected range, never a point value */
+  const opVal=function(o){return o.is_range&&o.expected_range?'שווי צפוי '+fmt(o.expected_range.low)+'–'+fmt(o.expected_range.high)+' (טווח)':'שווי צפוי +'+fmt(o.expected_value);};
+  const gr=r.grant_royalty||null;
   const sg=(x)=>x===null||x===undefined?NA:(x>0?'+':'')+x+'%';
   return card({key:'value',label:'שווי החברה',value:fmt(r.value.mid),row:ROWS[4],wide:true,state:'none',
    pct:'טווח '+fmt(r.value.low)+' – '+fmt(r.value.high)+' · חלקי'+(r.enterprise?' · פעילות '+fmt(r.enterprise.mid)+' + מזומן '+fmt(r.net_cash):''),
    sub:'אטרקטיביות '+(att&&att.score!=null?att.score+'/100':NA)+' · ביטחון '+(sf&&sf.score!=null?sf.score+'/100':NA),
-   dot:op?'ההזדמנות החזקה: '+op.he+' · שווי צפוי +'+fmt(op.expected_value):(top?'המנוף החזק: '+top.he+' · +'+fmt(top.delta_value)+' ל'+top.step:''),
+   dot:op?'בראש הדירוג: '+(op.mechanism_he?op.mechanism_he+' — ':'')+op.he+' · '+opVal(op):(top?'המנוף החזק: '+top.he+' · +'+fmt(top.delta_value)+' ל'+top.step:''),
    detail:[{b:'מה זז',t:r.since_last?r.since_last.he:'קריאה ראשונה — מה זז יימדד מול קריאה בת שבוע'}]
     .concat(r.if_to_verify_real?[{b:'אם ההתחייבות לבירור אמיתית · '+fmt(r.if_to_verify_real.mid),t:r.if_to_verify_real.items.join(' · ')+' — לא נוכתה, דורשת הסבר של רואה החשבון'}]:[])
     .concat((r.facts||[]).length?[{b:'כל נתון ומעמדו'}].concat(r.facts.map(function(f){return {t:f.he+': '+f.value+' — '+(ST[f.status]||f.status)+(f.source?' · '+f.source:'')+(f.as_of?' · '+String(f.as_of).slice(0,10):''),dim:f.status==='MISSING'};})):[])
-    .concat((r.opportunities||[]).length?[{b:'הזדמנויות — כל אחת בנפרד, לא מסוכמות'}].concat(r.opportunities.map(function(o){return {t:o.he+': שווי צפוי +'+fmt(o.expected_value)+' (אם תצליח +'+fmt(o.value_if_success)+') · סיכוי '+Math.round(o.probability*100)+'% · '+o.months+' חודשים · השקעה '+fmt(o.investment)+' · '+(ST[o.grade]||o.grade)+' · צעד ראשון: '+o.first_step};})):[])
+    .concat((r.opportunities||[]).length?[{b:'מנגנוני ערך — מדורגים על סקאלה אחת (שווי צפוי מהוון לזמן, פחות השקעה), לא מסוכמים'}].concat(r.opportunities.map(function(o,i){return {t:(i+1)+'. '+(o.mechanism_he?o.mechanism_he+' · ':'')+o.he+': '+opVal(o)+' · סיכוי '+Math.round(o.probability*100)+'% · '+o.months+' חודשים · השקעה '+fmt(o.investment)+' · '+(ST[o.grade]||o.grade)
+      +(o.evidence_now?' · ראיה: '+o.evidence_now:'')+(o.main_risk?' · סיכון: '+o.main_risk:'')+' · הצעד הבא: '+(o.next_uncertainty_step||o.first_step)+(o.lia_scope?' · ליה: '+o.lia_scope:'')+((o.gaps||[]).length?' · חסר: '+o.gaps.join(', '):'')};})):[])
+    .concat(gr?[{b:'מענקים ותמלוגים — בנפרד, לא נוכה',t:gr.nature+' · '+gr.scenarios.map(function(x){return x.he+(x.annual!=null?': '+fmt(x.annual)+' בשנה':'');}).join(' · ')+' · לבירור: '+gr.questions.join(' · ')}]:[])
     .concat(led?[{b:'תרומת ליה — לפי פנקס הערך',t:led.entries?(fmt(led.lia_credit)+' מאומת · '+led.attributed+' מיוחסות · '+led.unattributed+' נמדדו בלי ייחוס · '+led.due+' ממתינות למדידה'):'עדיין אין רשומות — שום שינוי בשווי לא נזקף לליה'}]:[])
     .concat([{b:'אטרקטיביות · '+(att&&att.score!=null?att.score+'/100':NA),t:att?att.note+' · '+att.selling+' נמכרות · '+att.proven+' הוכחו · '+att.hypotheses+' השערות':'מרשם היכולות ריק'}])
     .concat(att?(att.capabilities||[]).map(function(x){return {t:x.name+': '+x.score+'/100'+(x.claims?' · '+x.claims+' טענות בלי ראיה':'')};}):[])
