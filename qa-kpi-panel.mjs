@@ -95,7 +95,7 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   // the value compass card: the range, PARTIAL, the strongest lever — and it opens with its levers
   await page.click('#kpis .kpiTile[data-kpi="value"]'); await page.waitForTimeout(150);
   tiles = await tileText(page);
-  ok(`${tag}: מצפן השווי opens with the range, the lever and its ₪ per step`, T('value').open === 'true' && /₪17\.55M/.test(T('value').text) && /טווח ₪16\.14M – ₪20\.38M/.test(T('value').text) && /המנוף החזק/.test(T('value').text) && /איפה השווי עולה/.test(T('value').text), T('value').text.slice(0, 300));
+  ok(`${tag}: מצפן השווי opens with the range, the lever and its ₪ per step`, T('value').open === 'true' && /₪17\.55M/.test(T('value').text) && /טווח ₪16\.14M – ₪20\.38M/.test(T('value').text) && /המנוף החזק/.test(T('value').text) && /רגישות/.test(T('value').text), T('value').text.slice(0, 300));
   await card.screenshot({ path: OUT + tag + '-5-value-open.png' });
   const remembered = await page.evaluate(() => ({ sales: localStorage.getItem('rail:kpi_sales'), value: localStorage.getItem('rail:kpi_value') }));
   ok(`${tag}: the open card is remembered, the folded one is not`, remembered.value === '0' && remembered.sales === '1', JSON.stringify(remembered));
