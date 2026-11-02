@@ -554,7 +554,7 @@ function topicCard(p){
     return '<div class="ln"><b>'+title+'</b></div><ul class="tl">'+arr.map(function(x){return '<li>'+esc(x.text)+src(x)+'</li>';}).join('')+'</ul>';};
   o+=list('מה הושלם',c.done);
   o+=list('מה חסר',c.missing);
-  if(c.closing)o+='<div class="ln ceo"><b>התוצר שסוגר את הנושא</b> · '+esc(c.closing.text)+src(c.closing)+(c.closing_approved?'':' <span class="tag">ממתין לאישורך</span>')+'</div>';
+  if(c.closing)o+='<div class="ln ceo"><b>התוצר שסוגר את הנושא</b> · '+esc(c.closing.text)+src(c.closing)+(c.closing_approved?' <span class="tag">אושר · ייסגר רק כשהושג ואומת</span>':' <span class="tag">ממתין לאישורך</span>')+'</div>';
   var core=(c.work||[]).filter(function(w){return w.relevance!=='mention';}),ment=(c.work||[]).filter(function(w){return w.relevance==='mention';});
   if(core.length)o+='<details><summary>חבילות עבודה · '+core.length+'</summary><ul class="tl">'+core.map(function(w){
     return '<li><span class="dim">'+esc(String(w.id).slice(0,8))+'</span> '+esc(w.label)+(w.status?' <span class="tag">'+esc(STATE_HE[w.status]||w.status)+'</span>':'')+(w.at?' <span class="dim">'+esc(w.at)+'</span>':'')+'</li>';}).join('')+'</ul>'
