@@ -897,6 +897,7 @@ function boot(st){document.getElementById('login').style.display='none';document
  openSession();setMode('idle');render(st);
  tickClock();loadRails().catch(()=>{}).then(bootOrgRoute);loadOrgMobile().catch(()=>{});probeLiveVoice().catch(()=>{});initNotifications();
  bootPanelRoute();
+ bootConvRoute();
  loadSinceLastHere().catch(()=>{});
  if(!window._liaPoll){window._liaPoll=setInterval(()=>{if(CODE)load().catch(()=>{});},8000);}
  /* The rails run on their own, slower beat: the queue rides the 8s state poll
@@ -938,6 +939,10 @@ function bootPanelRoute(){
  openPanel();
  if(k==='history'){const el=document.getElementById('sessions');if(el&&el.scrollIntoView)el.scrollIntoView({block:'start'});}
  else{document.getElementById('panel').scrollTop=0;}}
+/* 2.11 — THE TOPIC CARD's conversation link: lia.html#conv=<id> reopens that conversation where it stopped (chat_open). */
+function bootConvRoute(){const m=/^#conv=([0-9a-f]{16,64})$/i.exec(location.hash||'');if(!m||!CODE)return;
+ try{history.replaceState(null,'',location.pathname);}catch(e){}
+ chatOpenConversation(m[1]);}
 if(!window._liaPanelHash){window._liaPanelHash=1;window.addEventListener('hashchange',()=>{if(panelHashRoute()&&CODE)bootPanelRoute();});}
 
 /* ── ONE conversation session ────────────────────────────────────────────
