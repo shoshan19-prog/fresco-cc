@@ -291,6 +291,7 @@ button.xi{cursor:pointer}
  .feat{padding:12px 12px 10px;gap:10px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.001ms!important;animation-duration:.001ms!important}}
+.topic ul.tl{margin:4px 0 6px;padding-inline-start:18px}.topic ul.tl li{margin:2px 0;line-height:1.5}.topic details{margin-top:6px}.topic summary{cursor:pointer;font-weight:600}
 </style>
 </head>
 <body>
@@ -539,6 +540,30 @@ function ago(ms,now){
 }
 /* ATTRIBUTION: department keys per package (from the tower's own matching and
    the project link), then the domain buckets. */
+/* THE TOPIC CARD (David, 2.11 — "מפת העבודה והידע של פרסקו"). One card per topic: who does what, what is done, what is
+   missing, the product that closes it — each line with its source — and the packages and conversations it came from.
+   A conversation of David's opens in the chat where it stopped (lia.html#conv=…); a colleague's is named, not opened. */
+var TAB_HE={rnd:'מחקר ופיתוח',purchasing:'רכש',operations:'תפעול',marketing:'שיווק',sales:'מכירות',management:'הנהלה',finance:'כספים',branding:'מיתוג',advertising:'פרסום',customers:'לקוחות',growth:'צמיחה',capital:'הון'};
+function topicCard(p){
+  var c=p.topic||{},o='';
+  var src=function(x){return x&&x.src?' <span class="dim">· '+esc(x.src)+'</span>':'';};
+  o+='<div class="dept topic"><div class="top"><div class="nm">'+esc(p.name)+'</div><span class="tag">'+esc((c.tabs||[]).map(function(k){return TAB_HE[k]||k;}).join(' · '))+'</span></div>';
+  if(p.goal)o+='<div class="ln"><b>מטרה</b> · '+esc(p.goal)+'</div>';
+  if((c.roles||[]).length)o+='<div class="ln"><b>מי מטפל</b></div><ul class="tl">'+c.roles.map(function(r){return '<li><b>'+esc(r.who)+'</b> — '+esc(r.does)+src(r)+'</li>';}).join('')+'</ul>';
+  var list=function(title,arr){if(!arr||!arr.length)return '';
+    return '<div class="ln"><b>'+title+'</b></div><ul class="tl">'+arr.map(function(x){return '<li>'+esc(x.text)+src(x)+'</li>';}).join('')+'</ul>';};
+  o+=list('מה הושלם',c.done);
+  o+=list('מה חסר',c.missing);
+  if(c.closing)o+='<div class="ln ceo"><b>התוצר שסוגר את הנושא</b> · '+esc(c.closing.text)+src(c.closing)+(c.closing_approved?'':' <span class="tag">ממתין לאישורך</span>')+'</div>';
+  var core=(c.work||[]).filter(function(w){return w.relevance!=='mention';}),ment=(c.work||[]).filter(function(w){return w.relevance==='mention';});
+  if(core.length)o+='<details><summary>חבילות עבודה · '+core.length+'</summary><ul class="tl">'+core.map(function(w){
+    return '<li><span class="dim">'+esc(String(w.id).slice(0,8))+'</span> '+esc(w.label)+(w.status?' <span class="tag">'+esc(STATE_HE[w.status]||w.status)+'</span>':'')+(w.at?' <span class="dim">'+esc(w.at)+'</span>':'')+'</li>';}).join('')+'</ul>'
+    +(ment.length?'<p class="dim">ועוד '+ment.length+' שרק מזכירות את הנושא: '+ment.map(function(w){return esc(String(w.id).slice(0,8))+' '+esc(w.label);}).join(' · ')+'</p>':'')+'</details>';
+  if((c.conversations||[]).length)o+='<details><summary>שיחות · '+c.conversations.length+'</summary><ul class="tl">'+c.conversations.map(function(v){
+    var lbl=esc(v.label)+(v.at?' <span class="dim">'+esc(v.at)+'</span>':'');
+    return '<li>'+(v.opens?'<a href="lia.html#conv='+encodeURIComponent(v.id)+'">'+lbl+'</a>':lbl+' <span class="dim">· שיחה של עמיתה, לקריאה בלבד</span>')+'</li>';}).join('')+'</ul></details>';
+  return o+'</div>';
+}
 function attribution(tower){
   var dept={},proj={};
   ((tower&&tower.departments)||[]).forEach(function(d){
@@ -916,10 +941,14 @@ function render(){
       h+='<div class="sec"><h2>מצב התחום</h2><span class="dim">'+esc(depts.map(function(d){return d.name;}).join(' · '))+'</span></div>';
       h+=depts.map(deptCard).join('');
     }
-    var projs=(T.projects||[]).filter(function(p){return dom.depts.indexOf(String(p.domain||''))>=0;});
+    /* 2.11 — a TOPIC appears in every tab it touches (p.topic.tabs), one card, not a project per department */
+    var projs=(T.projects||[]).filter(function(p){
+      var tabs=(p&&p.topic&&p.topic.tabs)||[];
+      return dom.depts.indexOf(String(p.domain||''))>=0||tabs.some(function(k){return dom.depts.indexOf(k)>=0;});});
     if(projs.length){
       h+='<div class="sec"><h2>פרויקטים</h2><span class="dim">'+projs.length+'</span></div>';
-      h+=projs.map(function(p){return '<div class="dept"><div class="top"><div class="nm">'+esc(p.name)+'</div><span class="tag">'+esc(p.state||'—')+'</span></div>'
+      h+=projs.map(function(p){if(p.topic)return topicCard(p);
+        return '<div class="dept"><div class="top"><div class="nm">'+esc(p.name)+'</div><span class="tag">'+esc(p.state||'—')+'</span></div>'
         +(p.goal?'<div class="ln"><b>מטרה</b> · '+esc(p.goal)+'</div>':'')
         +(p.next_action?'<div class="ln"><b>הבא</b> · '+esc(p.next_action)+'</div>':'')
         +(p.waiting_on&&p.waiting_on!=='—'?'<div class="ln ceo">ממתין ל: '+esc(p.waiting_on)+'</div>':'')+'</div>';}).join('');
