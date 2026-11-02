@@ -71,7 +71,7 @@ h1{font-size:18px;margin:0}
 
 <div id="app">
  <header><span class="orb"></span><div><h1>עוזרת המעבדה</h1>
-  <div class="sub" id="sub">אלפא · מחוברת</div></div></header>
+  <div class="sub" id="sub">העוזרת · מחוברת</div></div></header>
  <main id="thread"><p class="empty">שאלי אותי על ניסויים, מדידות, חומרים והכרעות במטריאה — או ספרי לי מה לא עובד במטריאה, ונדייק יחד בקשת תיקון.</p>
  <div id="chips"><button data-q="יש בעיה במטריאה: ">דווחי על בעיה במטריאה</button><button data-q="מה הסטטוס של הבקשות שלי?">הבקשות שלי</button><button data-q="מה הניסויים האחרונים בפרויקט ">ניסויים בפרויקט</button><button data-q="מה ידוע במטריאה על החומר ">חומר במטריאה</button><button data-q="מה הוכרע בניסוי ">הכרעת ניסוי</button></div></main>
  <div id="attachBar"></div>
@@ -108,13 +108,18 @@ async function post(url,body){
  return {status:r.status,json:await r.json().catch(()=>null)};
 }
 
+/* 2.11: one page, two people — Rachel's assistant is מיכל, Meital's is אלפא; the server says whose code this is */
+function setName(j){const n=j&&typeof j.assistant_name==='string'&&j.assistant_name.trim();
+ const el=document.getElementById('sub');if(el)el.textContent=(n||'העוזרת')+' · מחוברת';
+ if(n)document.title=n+' · עוזרת המעבדה';}
 async function login(){
  CODE=document.getElementById('code').value.trim();
  const st=document.getElementById('loginStat');
  st.textContent='בודקת…';
  try{
-  const {status}=await post(API,'{"action":"state"}');
+  const {status,json}=await post(API,'{"action":"state"}');
   if(status===401){st.textContent='קוד שגוי';return;}
+  setName(json);
   if(status<200||status>=300){st.textContent='השרת לא זמין כרגע ('+status+') — נסה שוב עוד רגע';return;}
   localStorage.setItem('lab_code',CODE);
   boot();
@@ -333,7 +338,7 @@ function stopMic(){
 }
 document.getElementById('note').addEventListener('keydown',ev=>{
  if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}});
-if(CODE){post(API,'{"action":"state"}').then(({status})=>{if(status>=200&&status<300)boot();
+if(CODE){post(API,'{"action":"state"}').then(({status,json})=>{if(status>=200&&status<300){setName(json);boot();}
  else if(status===401)localStorage.removeItem('lab_code');}).catch(()=>{});}
 (function(){const fp=document.getElementById('filePick');fp.setAttribute('accept',ATT_ACCEPT);
  fp.addEventListener('change',()=>{addFiles(fp.files);fp.value='';});
