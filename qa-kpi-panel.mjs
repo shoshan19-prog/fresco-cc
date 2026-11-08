@@ -36,6 +36,9 @@ async function open(viewport, tag) {
       multiple: { base: 5, value: 4.5, low: 4, high: 5.5, adjustments: [{ he: 'ירידה במכירות', delta: -0.5, evidence: '-9.89% מול אשתקד באותה תקופה' }] }, net_cash: 4837143, concentration: null,
       levers: [{ he: 'הסמכה (EN 1504 · אישורי אש)', delta_value: 1413053, step: 'הסמכה אחת שמזיזה את המכפיל ב-0.5', state: 'מועמדות זוהתה, לא הותחלה', domain: 'מטריה', grade: 'assumption' },
                { he: 'צמיחת מכירות ברווחיות הנוכחית', delta_value: 1141360, step: '₪1M מכירות נוספות בשנה', state: 'מכירות שנתיות ₪11,142,392', domain: 'שיווק', grade: 'measured' }],
+      sensitivity: { he: 'תרחיש רגישות: צמיחה שנתית של 15% בתחום השימור במשך 3 שנים — ניתוח רגישות בלבד, לא תחזית מאושרת ולא חלק מהשווי', status: 'SENSITIVITY_ONLY', growth: 0.15, years: 3,
+        base: null, base_source: null, revenue_end: null, delta_ebitda: null, value_effect: null, assumptions: ['צמיחה 15% בשנה — הנחת הנהלה, לא תחזית'],
+        missing: ['הכנסות שנתיות מתחום השימור, עם מקור — לא נמדדו; התרחיש לא חושב'], rnd_premium: { status: 'UNVERIFIED', he: 'פרמיית מו״פ ובלעדיות בשוק השימור — לא מאומתת; לא נכללת בשווי' } },
       since_last: null, definition: 'שווי = EBITDA שנתי × מכפיל + מזומן נטו (הכרעה 128)', caveats: ['הספרים חלקיים'] } }] });
     if (body.action === 'cap' && body.name === 'supply_chain') return j({ rows: [{ cached: true, at: '2026-10-28T08:00:00Z', error: null, agg: SUPPLY }] });
     if (body.action === 'cap' && body.name === 'next_decision') return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
@@ -101,6 +104,7 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   ok(`${tag}: the open card is remembered, the folded one is not`, remembered.value === '0' && remembered.sales === '1', JSON.stringify(remembered));
   await page.reload(); await page.waitForFunction(() => { const v = document.querySelector('#kpis .kpiLead .v'); return v && /₪/.test(v.textContent); }, null, { timeout: 8000 }); await page.waitForTimeout(300);
   tiles = await tileText(page);
+  ok(`${tag}: the 15% conservation scenario is shown as sensitivity only, not computed without a base, R&D premium unverified (8.11)`, /ניתוח רגישות בלבד — לא תחזית מאושרת, לא נכלל בשווי/.test(T('value').text) && /לא חושב: הכנסות שנתיות מתחום השימור/.test(T('value').text) && /פרמיית מו״פ[^]*לא מאומת/.test(T('value').text) && /₪17\.55M/.test(T('value').text), T('value').text.slice(-600));
   ok(`${tag}: after a reload the same one card is open`, tiles.filter((t) => t.open === 'true').map((t) => t.key).join(',') === 'value', JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   // the panel did not grow sideways; the grid is still two per row
   const geo = await page.evaluate(() => { const g = document.getElementById('kpis').getBoundingClientRect(); const t = [...document.querySelectorAll('#kpis .kpiTile:not(.wide):not(.kpiLead)')].map((x) => x.getBoundingClientRect()); return { gridW: Math.round(g.width), cols: new Set(t.map((r) => Math.round(r.left))).size, spill: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
