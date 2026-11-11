@@ -2536,7 +2536,7 @@ function renderKpis(){
  const all=m.cards.concat(m.more?[m.more]:[]);
  /* one card open at a time — the first remembered key wins, the rest fold */
  const openKey=(all.find(c=>isKpiOpen(c.key))||{}).key||null;
- let html='';
+ let html='<div class="kpiTile wide" data-lia-change="14748603" role="button" tabindex="0" onclick="askLia(\'קחי אחריות על הבעיות הפתוחות: הגדירי את השלב הראשון, קבלי החלטות פשוטות שבסמכותך בלי להחזיר אליי את הגלגל, ובסיום אמתִי מול המטרה המקורית והודיעי לדוד.\')"><div class="lbl">סמכות ביצוע</div><div class="v">LIA מטפלת</div><div class="k">הגדירי את השלב הראשון וקחי החלטות פשוטות בסמכותך</div></div>';
  const ref=[m.ref,k.month&&k.month.as_of?kpiAgeText(k.month):''].filter(Boolean).join(' · ');
  if(ref)html+='<div class="kpiRef">'+esc(ref)+'</div>';
  /* CEO COCKPIT B (David, 27.10): the year leads; the rows are David's order of importance, each named once. The
