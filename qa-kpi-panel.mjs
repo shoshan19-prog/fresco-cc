@@ -39,6 +39,10 @@ async function open(viewport, tag) {
       sensitivity: { he: 'תרחיש רגישות: צמיחה שנתית של 15% בתחום השימור במשך 3 שנים — ניתוח רגישות בלבד, לא תחזית מאושרת ולא חלק מהשווי', status: 'SENSITIVITY_ONLY', growth: 0.15, years: 3,
         base: null, base_source: null, revenue_end: null, delta_ebitda: null, value_effect: null, assumptions: ['צמיחה 15% בשנה — הנחת הנהלה, לא תחזית'],
         missing: ['הכנסות שנתיות מתחום השימור, עם מקור — לא נמדדו; התרחיש לא חושב'], rnd_premium: { status: 'UNVERIFIED', he: 'פרמיית מו״פ ובלעדיות בשוק השימור — לא מאומתת; לא נכללת בשווי' } },
+      context: { value_label: 'אומדן לפי הרווחיות הנוכחית — לא שווי סופי של החברה', rule: 'הנכסים והפוטנציאל כאן לא מתווספים לאומדן ולא מתומחרים',
+        unpriced: [{ he: 'מכונות וציוד', evidence: 'עלות ₪2.73M, כמעט מופחתת', status: 'NOT_MEASURED' }, { he: 'פורמולות וידע ייצור', evidence: 'תיעוד פנימי', status: 'PARTIAL' }],
+        book_floor: { he: 'הון עצמי בספרים', value: 9781221, basis: 'יתרות פריוריטי 11.11 — לפני התאמות סוף שנה' },
+        prior: { he: '30–40 מיליון ₪', date: '25.4.2024', source: 'מיכה אבנימלך, יועץ M&A', basis: 'הערכה "מהמותן" על תוכנית 5 שנים ותקן', rows: [{ he: 'מכירות 2026', plan: '₪45.4M', actual: '≈₪11.6M' }], reading: 'הוערכה התוכנית, לא העסק הקיים' } },
       since_last: null, definition: 'שווי = EBITDA שנתי × מכפיל + מזומן נטו (הכרעה 128)', caveats: ['הספרים חלקיים'] } }] });
     if (body.action === 'cap' && body.name === 'supply_chain') return j({ rows: [{ cached: true, at: '2026-10-28T08:00:00Z', error: null, agg: SUPPLY }] });
     if (body.action === 'cap' && body.name === 'next_decision') return j({ rows: [{ claim: 'לאשר את מחיר הפרויקט במרינה', project_name: 'מרינה' }], source: 'recommendation' });
@@ -105,6 +109,7 @@ for (const [w, h] of [[1440, 900], [1600, 900]]) {
   await page.reload(); await page.waitForFunction(() => { const v = document.querySelector('#kpis .kpiLead .v'); return v && /₪/.test(v.textContent); }, null, { timeout: 8000 }); await page.waitForTimeout(300);
   tiles = await tileText(page);
   ok(`${tag}: the 15% conservation scenario is shown as sensitivity only, not computed without a base, R&D premium unverified (8.11)`, /ניתוח רגישות בלבד — לא תחזית מאושרת, לא נכלל בשווי/.test(T('value').text) && /לא חושב: הכנסות שנתיות מתחום השימור/.test(T('value').text) && /פרמיית מו״פ[^]*לא מאומת/.test(T('value').text) && /₪17\.55M/.test(T('value').text), T('value').text.slice(-600));
+  ok(`${tag}: the range reads as an estimate, assets apart and unpriced, the 2024 30–40M with plan vs actual (11.11)`, /אומדן שווי לפי רווחיות/.test(T('value').text) && /לא שווי סופי/.test(T('value').text) && /שטרם הוערכו כספית — לא נוספו לאומדן/.test(T('value').text) && /מכונות וציוד[^]*לא נמדד/.test(T('value').text) && /מקור 30–40 מיליון/.test(T('value').text) && /מכירות 2026: תוכנית ₪45\.4M · בפועל ≈₪11\.6M/.test(T('value').text) && /₪17\.55M/.test(T('value').text), T('value').text.slice(-900));
   ok(`${tag}: after a reload the same one card is open`, tiles.filter((t) => t.open === 'true').map((t) => t.key).join(',') === 'value', JSON.stringify(tiles.map((t) => t.key + ':' + t.open)));
   // the panel did not grow sideways; the grid is still two per row
   const geo = await page.evaluate(() => { const g = document.getElementById('kpis').getBoundingClientRect(); const t = [...document.querySelectorAll('#kpis .kpiTile:not(.wide):not(.kpiLead)')].map((x) => x.getBoundingClientRect()); return { gridW: Math.round(g.width), cols: new Set(t.map((r) => Math.round(r.left))).size, spill: document.documentElement.scrollWidth - document.documentElement.clientWidth }; });
