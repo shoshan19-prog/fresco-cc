@@ -267,6 +267,7 @@ button.xi{cursor:pointer}
 #drillBtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:42px;border-radius:12px;background:var(--card2);
  border:1px solid var(--line);color:var(--dim);font-size:14px;font-weight:600;margin-top:2px}
 #drillBtn.on{color:var(--acc)}
+.note.scoped{padding:12px 14px;border-radius:12px;background:var(--card2);line-height:1.6}.note.scoped button{display:block;margin-top:8px;min-height:40px;padding:0 14px;border-radius:10px;border:0;background:var(--acc);color:#fff;font:inherit;font-weight:600}
 .xrow{display:flex;gap:7px;margin-top:2px}.xrow>*{flex:1 1 0;min-width:0}.xrow #drillBtn{margin-top:0}
 #projBtn{display:flex;align-items:center;justify-content:center;min-height:42px;border-radius:12px;background:var(--accSoft);border:1px solid #d6e2ff;
  color:var(--acc);font-size:14px;font-weight:600;text-align:center;line-height:1.25;padding:4px 8px}
@@ -336,12 +337,17 @@ function code(){
       var l=localStorage.getItem('lia_code');if(l){CODE_FROM='lia_code';return l;}}catch(e){}
   CODE_FROM='';return '';
 }
+var SCOPED_ERR='SCOPED_CODE';
+function scopedLogout(){try{sessionStorage.removeItem('fc');if(CODE_FROM==='lia_code')localStorage.removeItem('lia_code');}catch(e){}location.reload();}
 function api(b,auth){
   var h={'Content-Type':'application/json'};
   if(auth!==false)h['x-fresco-code']=code();
   b=Object.assign({surface:'command-center',client_build:CC_BUILD},b||{});
   return fetch(API,{method:'POST',headers:h,body:JSON.stringify(b)}).then(function(r){
     if(r.status===401){try{sessionStorage.removeItem('fc');if(CODE_FROM==='lia_code')localStorage.removeItem('lia_code');}catch(e){}location.reload();}
+    /* 12.11 (David): a limited personal code (FR-…) reaches the command center and every card hung on "טוען…" under a raw
+       server error. Said in words instead, with the way out. */
+    if(r.status===403)return r.text().then(function(t){if(/הקוד הזה פתוח לפעולות/.test(t))throw new Error(SCOPED_ERR);throw new Error(t);});
     if(!r.ok)return r.text().then(function(t){throw new Error(t)});
     return r.json();});
 }
@@ -814,11 +820,13 @@ function renderExec(){
     var whyLine=w.why?'<div class="why '+(w.track==='OFF'?'off':'david')+'">'+(w.track==='OFF'?'למה לא במסלול: ':'למה מחכה לך: ')+esc(w.why)+'</div>':'';
     return '<div class="wm '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'" data-track="'+esc(w.track||'')+'"><div class="top">'+lt+'<span>'+esc(cleanTitle(w.title))+'</span><span class="tag">'+esc(w.label)+'</span>'+num+'</div>'+bar+(meta?'<div class="meta">'+meta+'</div>':'')+whyLine+'</div>';}).join('')+'</section>':'')
   +teamHtml(X.team)
-  +(X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
+  +(X.err===SCOPED_ERR?'<div class="note scoped" role="alert"><b>נכנסת עם קוד אישי מוגבל</b> — הוא פותח רק את השיחה עם ליה. מרכז הפיקוד נפתח עם הקוד הראשי. <button type="button" id="scopedOut">התנתק והיכנס עם הקוד הראשי</button></div>'
+     :X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
   /* the projects screen (David, 4.10 — WORK 27d03f59) is its own page: the five answers stay five */
   +'<div class="xrow"><a id="projBtn" href="projects.html">הפרויקטים</a>'
   +'<button id="drillBtn" type="button" class="'+(DRILL?'on':'')+'" aria-expanded="'+DRILL+'" aria-controls="drill">'+(DRILL?'הסתר את השאר':'כל השאר · פירוט')+'</button></div>';
   B('#drillBtn').onclick=function(){setDrill(!DRILL,true);};
+  if(B('#scopedOut'))B('#scopedOut').onclick=scopedLogout;
   var xn=B('#xNeeds');if(xn)xn.onclick=function(){setDrill(true,false);var t=document.getElementById('needs');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};
 }
 function setDrill(on,scroll){
