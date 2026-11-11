@@ -793,6 +793,10 @@ button#live.wait{opacity:.6}
 <div class="card"><div class="row" style="justify-content:space-between;margin:0">
 <b id="queueTitle">מה פתוח</b>
 <button class="det" onclick="toggleAdvanced()">פרטים</button></div>
+<!-- 11.11 (David: "אני לוחץ אישור … ושום דבר לא קורה"): this list is LIA's memory of commitments, tasks and risks.
+     Its button marks a record as correct; it never approves or launches work. Work is approved in the Command Center. -->
+<p class="dim" style="margin:6px 0 0">רשומות הזיכרון של ליה — התחייבויות, משימות וסיכונים. כאן רק מסמנים שרשומה נכונה.
+ <a id="queueTower" href="index.html" target="_blank" rel="noopener">אישור והפעלה של עבודות — במרכז הפיקוד ↗</a></p>
 <div id="queue"></div>
 <div id="advanced" style="display:none">
  <div class="stats" id="stats" style="margin-top:14px"></div>
@@ -833,7 +837,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-11-11.1';
+const LIA_BUILD='2026-11-11.2';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -3788,7 +3792,7 @@ function render(st){
   h+='<div class="obj"><b>'+(TYPE_HE[o.object_type]||o.object_type)+':</b> '+esc(subject(o))
    +(d?' <span class="badge'+(d.indexOf('לא ברור')>=0?' warn':'')+'">'+esc(d)+'</span>':'')
    +'<p class="quote">„'+esc(clip(o.payload.quote,160))+'”</p>'
-   +'<div class="row"><button onclick="confirmObj(\''+o.id+'\')">אישור</button>'
+   +'<div class="row"><button onclick="confirmObj(\''+o.id+'\')" title="מסמן שהרשומה נכונה ונשמרת בזיכרון — לא מאשר ולא מפעיל עבודה">הרשומה נכונה</button>'
    +'<button class="det" onclick="showDetails(\''+o.id+'\')">פרטים</button></div>'
    +'<div id="d_'+o.id+'" style="display:none;margin-top:8px">'
    +'<span class="badge '+o.verification_state+'">'+o.verification_state+'</span> '
