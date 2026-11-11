@@ -13,19 +13,23 @@ const ok = (l, c, x) => { total++; if (!c) { console.log(`FAIL  ${l}${x ? '\n   
 const NOW = Date.now();
 const W = (id, o) => Object.assign({ work_id: id.padEnd(32, '0'), kind: 'research', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', objective: 'חבילה', items: [], closure: null,
   lease: null, lease_alive: false, updated_at: new Date(NOW - 3600e3).toISOString(), created_at: new Date(NOW - 86400e3).toISOString() }, o);
-const PART = (id, objective, missing) => W(id, { objective, disposition: 'PRODUCT_REVIEW', track: { state: 'DAVID', why: 'התוצר מוכן לאישורך' },
-  product_review: { submitted_at: new Date(NOW - 7200e3).toISOString(), result: `התוצר, חלקי — דוח ביניים, לא תוצר: ${missing}` } });
+const PR = (missing, outcome) => ({ submitted_at: new Date(NOW - 7200e3).toISOString(), outcome: outcome || '', what_works: '', result: `התוצר, חלקי — דוח ביניים, לא תוצר: ${missing}` });
+const HIS = (id, objective, missing, outcome) => W(id, { objective, disposition: 'PRODUCT_REVIEW', parked_for_david: true, product_review: PR(missing, outcome),
+  partial: { kind: 'AUTHORIZE', davids: true, missing },
+  david_decision: { question: 'העבודה מוכנה ונעצרה לפני פנייה החוצה. לאשר לליה להמשיך?', options: ['אשרי להמשיך', 'תחזירי לתיקון', 'סגרי'], because: missing, source: 'product_review' },
+  track: { state: 'DAVID', why: 'העבודה מוכנה ונעצרה לפני פנייה החוצה. לאשר לליה להמשיך?' } });
+const LIAS = (id, objective, missing, kind, outcome) => W(id, { objective, product_review: PR(missing, outcome), partial: { kind, davids: false, missing }, david_decision: null,
+  ...(kind === 'TECHNICAL' ? { disposition: 'PRODUCT_REVIEW', track: { state: 'OFF', why: 'x' } }
+    : { next_wake_at: new Date(NOW + 5400e3).toISOString(), waiting_on: { kind: 'internal', ref: 'technical_continuation', condition: 'תוצר חלקי שאינו הכרעה של דוד — חוזר לליה להמשך' }, track: { state: 'ON', why: '' } }) });
 const ALIVE = [
-  W('8eef286f', { kind: 'build', objective: 'מחוץ לתחזית עד שיקושרו , תתקני את זה לשעורי המרה של 120 יום', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION',
-    david_decision: { question: 'ההנדסה הסתיימה — האם זה מה שביקשת?', options: ['אשרי', 'תחזירי לתיקון', 'סגרי'] }, track: { state: 'DAVID', why: 'ממתינה להכרעתך (NEEDS_DAVID_DECISION)' } }),
-  W('ab592664', { kind: 'engineering', objective: 'בדקי בפועל:', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION',
-    david_decision: { question: 'משימת הנדסה שאף מבצע לא יכול להריץ — לסגור אותה או לנסות שוב?', options: ['סגרי', 'נסי שוב'] }, track: { state: 'DAVID', why: 'ממתינה להכרעתך (NEEDS_DAVID_DECISION)' } }),
-  PART('3d37c412', 'תלמי כץ רו״ח / ענבר חייפץ — הנהלת חשבונות, שכר ודוחות שנתיים: למפות ולאמת חלופות לגורם מקצועי שיטפל בהנהלת חשבונות', 'לכן גם מחיר, זמינות, זמן תחילת טיפול ודוגמאות עבודה לא ניתנים לאימות ללא פנייה מאושרת.'),
-  PART('0ee5fc1f', 'אז בסוף התוכנית היא שבעצם את מכינה דף נחיתה מכתב מעוצב שבו אנחנו מבקשים להיפגש עם הנציגים הרלוונטים ולמעשה גם בסבו וגם בצ\'אנג מאי תודיעי לי', 'המכתב באנגלית וחמש המועמדות הראשונות מוכנים, אך עדיין לא נשלחה פנייה ולא נקבעה פגישה — בהתאם להנחיה לעצור לפני שליחה.'),
-  PART('e27fc8a2', 'נסי שוב', '**טיוטת העברה לאורנה — לא נשלחה**'),
+  W('8eef286f', { kind: 'build', objective: 'מחוץ לתחזית עד שיקושרו , תתקני את זה לשעורי המרה של 120 יום', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION', current_step: 'השלב ההנדסי 910ca8f4 הסתיים: דוד אישר שהתוצר עונה',
+    david_decision: { question: 'ההנדסה הסתיימה — האם זה מה שביקשת?', options: ['אשרי', 'תחזירי לתיקון', 'סגרי'], because: 'רק הבעלים אומר שהתוצר עונה על ההוראה שלו' }, track: { state: 'DAVID', why: 'ממתינה להכרעתך (NEEDS_DAVID_DECISION)' } }),
+  HIS('0ee5fc1f', 'אז בסוף התוכנית היא שבעצם את מכינה דף נחיתה מכתב מעוצב שבו אנחנו מבקשים להיפגש עם הנציגים הרלוונטים ולמעשה גם בסבו וגם בצ\'אנג מאי תודיעי לי', 'המכתב באנגלית וחמש המועמדות הראשונות מוכנים, אך עדיין לא נשלחה פנייה ולא נקבעה פגישה — בהתאם להנחיה לעצור לפני שליחה.', 'סטטוס: דף הנחיתה המעוצב מוכן ונבדק לפתיחה בטלפון'),
+  HIS('e27fc8a2', 'נסי שוב', 'טיוטת העברה לאורנה — לא נשלחה', 'חלק 1 — ברצלונה, אוגוסט 2024'),
+  LIAS('21084205', 'הרשות להשקעות — מענקים להשקעות יצרניות בישראל: לאתר את הנוהל המלא ולבדוק את תנאי הסף', 'לא נמצאה רשימת מסמכים רשמית ומלאה של טפסים, דוחות והצעות מחיר.', 'CONTINUE', 'לאתר את הנוהל המלא ולבדוק את תנאי הסף'),
+  LIAS('f41bc352', 'כנסי למייל ששלחתי לעירית טלמי', 'קריאות יתרת המלאי והזמנות הרכש הפתוחות נכשלו בשגיאת פריוריטי.', 'TECHNICAL', 'המייל לעירית נשלח ב־1.11'),
   W('9993f950', { status: 'RUNNING', state: 'RUNNING', objective: 'In Situ Zafiropoulou & Co GP — ספטולות: למפות ולאמת חלופות לספטולות הנרכשות', track: { state: 'OFF', why: 'מסומנת RUNNING בלי lease חי — אין מבצע שמחזיק אותה' } }),
   W('762eb305', { objective: 'שקללי את זה בשווי חברה, בהמשך ל: אני מצהיר את זה', next_wake_at: new Date(NOW + 3600e3).toISOString(), waiting_on: { kind: 'timer', ref: 'background_retry', condition: '' }, track: { state: 'ON', why: '' } }),
-  W('1be96d56', { objective: 'אני לא מבין את אמורה לטפל בזה לא לדווח לי מה לא מטופל', next_wake_at: new Date(NOW + 7200e3).toISOString(), waiting_on: { kind: 'timer', ref: 'study_cycle', condition: 'ממתינה למיזוג של דוד' }, track: { state: 'ON', why: '' } }),
   W('a1a1ce0d', { kind: 'maintenance', status: 'QUEUED', state: 'QUEUED', objective: 'תחזוקה מבוקרת' }),
 ];
 const TOWER = { generated_at: new Date(NOW).toISOString(), departments: [], projects: [], approvals: [], alerts: [], work_running: [], next_action: {}, changed: [], money: {}, manifest: [], totals: {} };
@@ -57,23 +61,39 @@ for (const [vp, tag] of [[{ width: 390, height: 844 }, 'mobile'], [{ width: 1280
     const meter = document.querySelector('.workMeter');
     return { groups, asks, all: meter ? txt(meter) : '', over: document.documentElement.scrollWidth - document.documentElement.clientWidth, dir: getComputedStyle(document.body).direction };
   });
-  ok(`${tag}: four groups, in order of who moves next`, v.groups.map((g) => `${g.key}:${g.rows}`).join() === 'david:2,partial:3,stuck:1,self:2', JSON.stringify(v.groups));
-  ok(`${tag}: what needs him is open; what runs by itself is folded`, v.groups.filter((g) => g.open).map((g) => g.key).join() === 'david,partial,stuck');
-  ok(`${tag}: each group says how many`, /מחכה להכרעה שלך\s*2/.test(v.groups[0].head) && /ליה עצרה עם תוצר חלקי\s*3/.test(v.groups[1].head), v.groups.map((g) => g.head).join(' | '));
+  ok(`${tag}: exactly three groups, in his words and his order`, v.groups.map((g) => `${g.key}:${g.rows}`).join() === 'david:3,lia:2,stuck:2', JSON.stringify(v.groups));
+  ok(`${tag}: only what waits for his decision is open`, v.groups.filter((g) => g.open).map((g) => g.key).join() === 'david');
+  ok(`${tag}: each group says how many`, /מחכה להחלטה שלי\s*3/.test(v.groups[0].head) && /ליה מטפלת\s*2/.test(v.groups[1].head) && /תקוע ודורש טיפול טכני\s*2/.test(v.groups[2].head), v.groups.map((g) => g.head).join(' | '));
   const q = v.asks.find((a) => a.id === '8eef286f');
-  ok(`${tag}: a decision shows the question and its options, and a button`, q && q.kind === 'question' && /האם זה מה שביקשת\?/.test(q.text) && /אשרי/.test(q.text) && /תחזירי לתיקון/.test(q.text) && q.btn, JSON.stringify(q));
-  const p = v.asks.find((a) => a.id === '3d37c412');
-  ok(`${tag}: a partial product says what is missing`, p && p.kind === 'partial' && /מה חסר: לכן גם מחיר/.test(p.text) && /^תלמי כץ רו״ח \/ ענבר חייפץ/.test(p.text), JSON.stringify(p));
-  ok(`${tag}: no row says "ready for your approval" about a product that calls itself partial`, !/חלקי — דוח ביניים/.test(v.all) && !/NEEDS_DAVID_DECISION/.test(v.all), v.all.slice(0, 300));
-  ok(`${tag}: a row nobody holds says "stuck" and why — not "running", and promises no next step`, (() => { const m = /תקוע — אף אחד לא מחזיק.*?(?=ליה ממשיכה לבד)/.exec(v.all); return !!m && /In Situ/.test(m[0]) && /תקוע/.test(m[0].replace('תקוע — אף אחד לא מחזיק', '')) && !/השלב הבא/.test(m[0]) && /אין מבצע שמחזיק אותה/.test(m[0]); })(), v.all.slice(-400));
-  ok(`${tag}: no markdown marks reach the screen`, !/\*\*/.test(v.all));
+  ok(`${tag}: a decision shows what was done, the one question, its options and a button`, q && q.kind === 'question' && /בוצע: השלב ההנדסי/.test(q.text) && /נדרש ממך: ההנדסה הסתיימה — האם זה מה שביקשת\?/.test(q.text) && /אשרי/.test(q.text) && /תחזירי לתיקון/.test(q.text) && q.btn, JSON.stringify(q));
+  const p = v.asks.find((a) => a.id === '0ee5fc1f');
+  ok(`${tag}: a partial product that is his is a question, with what was done`, p && p.kind === 'question' && /בוצע: דף הנחיתה המעוצב מוכן/.test(p.text) && /נדרש ממך: העבודה מוכנה ונעצרה לפני פנייה החוצה/.test(p.text) && /אשרי להמשיך/.test(p.text) && p.btn, JSON.stringify(p));
+  await page.evaluate(() => { document.querySelectorAll('.workMeter details').forEach((d) => { d.open = true; }); });
+  const opened = await page.evaluate(() => [...document.querySelectorAll('.workMeter .wm.ask')].map((r) => ({ id: r.dataset.work, text: r.innerText.replace(/\s+/g, ' ').trim(), btn: !!r.querySelector('button') })));
+  const l = opened.find((a) => a.id === '21084205');
+  ok(`${tag}: what LIA handles says what remains and that she continues — and offers him nothing to press`, l && /נשאר: לא נמצאה רשימת מסמכים/.test(l.text) && /ליה ממשיכה:/.test(l.text) && !l.btn && !/נדרש ממך/.test(l.text), JSON.stringify(l));
+  const t = opened.find((a) => a.id === 'f41bc352'), ph = opened.find((a) => a.id === '9993f950');
+  ok(`${tag}: what is stuck says why, and asks nothing of him`, t && /למה תקוע: קריאות יתרת המלאי והזמנות הרכש הפתוחות נכשלו בשגיאת פריוריטי/.test(t.text) && !t.btn && ph && /אין מבצע שמחזיק אותה/.test(ph.text) && !/נדרש ממך/.test(ph.text + t.text), JSON.stringify([t, ph]));
+  ok(`${tag}: no row says a partial product is ready for his approval; no code, no markdown`, !/חלקי — דוח ביניים/.test(v.all) && !/מוכן לאישורך/.test(v.all) && !/NEEDS_DAVID_DECISION/.test(v.all) && !/\*\*/.test(v.all), v.all.slice(0, 300));
   ok(`${tag}: the machine's own housekeeping is still not on his meter`, !/תחזוקה מבוקרת/.test(v.all));
   ok(`${tag}: no horizontal overflow, RTL`, v.over <= 0 && v.dir === 'rtl', `over ${v.over} dir ${v.dir}`);
   await page.screenshot({ path: `${OUT}meter-${tag}.png`, fullPage: true });
-  await page.click('.workMeter .wm.ask[data-work="8eef286f"] button[data-open]');
+  const sent = [];
+  await page.route('**/functions/v1/**', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    if (body.action === 'work_decide') { sent.push(body); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, summary: 'אושר להמשיך לשלב הפנייה — חוזרת לליה' }) }); }
+    return route.fallback();
+  });
+  page.on('dialog', (d) => d.accept());
+  await page.click('.workMeter .wm.ask[data-work="0ee5fc1f"] button[data-open]');
   const card = await page.waitForSelector('#dec', { timeout: 5000 }).then(() => page.evaluate(() => document.getElementById('dec').innerText.replace(/\s+/g, ' ').trim())).catch(() => '');
-  ok(`${tag}: the button opens the decision card with its buttons`, /אשר/.test(card) && /סגרי/.test(card), card.slice(0, 200));
+  ok(`${tag}: the card is ONE QUESTION with what was done, why it is his, and his three options`, /^העבודה מוכנה ונעצרה לפני פנייה החוצה\. לאשר לליה להמשיך\?/.test(card) && /מה כבר בוצע:/.test(card) && /למה זה אצלך:/.test(card) && /אשרי להמשיך/.test(card) && /תחזירי לתיקון/.test(card) && /סגרי/.test(card) && !/מוכן לאישורך/.test(card), card.slice(0, 260));
   await page.screenshot({ path: `${OUT}meter-${tag}-card.png`, fullPage: false });
+  await page.fill('#fixNote', 'רק לשלושת הראשונים');
+  await page.click('#dec button[data-dec="ACCEPT"]');
+  await page.waitForFunction(() => /חזר לליה/.test((document.getElementById('decRes') || {}).textContent || ''), null, { timeout: 5000 }).catch(() => null);
+  const res = await page.evaluate(() => (document.getElementById('decRes') || {}).textContent || '');
+  ok(`${tag}: his "אשרי להמשיך" goes back to LIA — the decision, the package and his note are sent`, sent.length === 1 && sent[0].decision === 'ACCEPT' && /^0ee5fc1f/.test(sent[0].work_id) && sent[0].note === 'רק לשלושת הראשונים' && /חזר לליה/.test(res), JSON.stringify([sent, res]));
   await ctx.close();
 }
 await browser.close();
