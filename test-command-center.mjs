@@ -16,7 +16,7 @@ function slice(from, to) {
   return src.slice(a, b);
 }
 const S = new Function(slice('var DOMAINS=', '/* CC_STATE_END */')
-  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS,meterRowOf,meterRows,recentDone};')();
+  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS,meterRowOf,meterRows,recentDone,meterGroups,shortTitle,askOf};')();
 
 let bad = 0, total = 0;
 function eq(label, got, want) { total++; if (got !== want) { console.log(`FAIL  ${label}\n      got:  ${JSON.stringify(got)}\n      want: ${JSON.stringify(want)}`); bad++; } }
@@ -382,6 +382,42 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
                                { work_id: 'z', status: 'DONE', state: 'DONE', completed_at: new Date().toISOString(), synthetic: { run: 'ia' } }], Date.now());
   ok('the last day\'s completions stay on the meter (no test packages)', recent.length === 1 && recent[0].work_id === 'x');
   ok('rendered: the light, the reason, the day\'s completions loaded', /<i class="light '\+w\.light\+'"/.test(src) && /למה לא במסלול: /.test(src) && /cap\('work_status',\{closed_since:isoDaysAgo\(1\)\}\)/.test(src));
+}
+
+{ // 12.11 — THREE GROUPS (David: "מחכה להחלטה שלי · ליה מטפלת · תקוע ודורש טיפול טכני"). Rows verbatim from his screen.
+  const base = { kind: 'research', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', items: [], closure: null };
+  const q = S.meterRowOf({ ...base, work_id: '8eef286f00', kind: 'build', objective: 'מחוץ לתחזית עד שיקושרו , תתקני את זה לשעורי המרה של 120 יום', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION',
+    current_step: 'השלב ההנדסי 910ca8f4 הסתיים', david_decision: { question: 'ההנדסה הסתיימה — האם זה מה שביקשת?', options: ['אשרי', 'תחזירי לתיקון', 'סגרי'], because: 'רק הבעלים אומר שהתוצר עונה על ההוראה שלו' },
+    track: { state: 'DAVID', why: 'ממתינה להכרעתך (NEEDS_DAVID_DECISION)' } });
+  ok('a real decision shows THE QUESTION, its options and why it is his — never the code', q.group === 'david' && q.ask.kind === 'question' && q.ask.text === 'ההנדסה הסתיימה — האם זה מה שביקשת?'
+    && q.ask.options.join('|') === 'אשרי|תחזירי לתיקון|סגרי' && /רק הבעלים/.test(q.ask.because) && !/NEEDS_DAVID/.test(q.ask.text), JSON.stringify(q));
+  ok('what was already done is said, in the worker\'s words', q.done_so_far === 'השלב ההנדסי 910ca8f4 הסתיים', q.done_so_far);
+  const pr = { submitted_at: '2026-11-11T07:00:00Z', outcome: 'סטטוס: דף הנחיתה המעוצב מוכן ונבדק לפתיחה בטלפון: https://x.example/a.svg', what_works: '' };
+  const auth = S.meterRowOf({ ...base, work_id: '0ee5fc1f00', objective: 'אז בסוף התוכנית היא שבעצם את מכינה דף נחיתה מכתב מעוצב', disposition: 'PRODUCT_REVIEW', parked_for_david: true,
+    product_review: { ...pr, result: 'התוצר, חלקי — דוח ביניים, לא תוצר: המכתב מוכן, אך עדיין לא נשלחה פנייה' }, partial: { kind: 'AUTHORIZE', davids: true, missing: 'המכתב מוכן, אך עדיין לא נשלחה פנייה' },
+    david_decision: { question: 'העבודה מוכנה ונעצרה לפני פנייה החוצה. לאשר לליה להמשיך?', options: ['אשרי להמשיך', 'תחזירי לתיקון', 'סגרי'], because: 'המכתב מוכן, אך עדיין לא נשלחה פנייה' }, track: { state: 'DAVID', why: 'העבודה מוכנה ונעצרה לפני פנייה החוצה. לאשר לליה להמשיך?' } });
+  ok('a partial product the server says is HIS is one question — not "ready for your approval"', auth.group === 'david' && auth.ask.kind === 'question' && /לפני פנייה החוצה/.test(auth.ask.text) && auth.ask.options[0] === 'אשרי להמשיך', JSON.stringify(auth));
+  ok('"done so far" drops the status word and the link', auth.done_so_far === 'דף הנחיתה המעוצב מוכן ונבדק לפתיחה בטלפון:', auth.done_so_far);
+  const lia = S.meterRowOf({ ...base, work_id: '2108420500', objective: 'הרשות להשקעות — מענקים להשקעות יצרניות בישראל: לאתר את הנוהל המלא', disposition: 'PRODUCT_REVIEW', parked_for_david: false,
+    product_review: { submitted_at: '2026-11-09T07:00:00Z', outcome: 'לאתר את הנוהל המלא', result: 'התוצר, חלקי — דוח ביניים, לא תוצר: לא נמצאה רשימת מסמכים רשמית' }, partial: { kind: 'CONTINUE', davids: false, missing: 'לא נמצאה רשימת מסמכים רשמית' },
+    david_decision: null, track: { state: 'ON', why: '' } });
+  ok('a partial product that is not his is "ליה מטפלת": what remains is said, no decision is shown', lia.group === 'lia' && lia.ask.kind === 'partial' && lia.ask.text === 'לא נמצאה רשימת מסמכים רשמית' && !lia.ask.options.length, JSON.stringify(lia));
+  ok('the title is his first sentence, shortened; the full text is kept', lia.short === 'הרשות להשקעות — מענקים להשקעות יצרניות בישראל' && /לאתר את הנוהל/.test(lia.title), lia.short);
+  const tech = S.meterRowOf({ ...base, work_id: 'f41bc35200', objective: 'כנסי למייל ששלחתי לעירית טלמי', disposition: 'PRODUCT_REVIEW', parked_for_david: false,
+    product_review: { submitted_at: '2026-11-02T07:00:00Z', result: 'התוצר, חלקי — דוח ביניים, לא תוצר: קריאות המלאי נכשלו בשגיאת פריוריטי' }, partial: { kind: 'TECHNICAL', davids: false, missing: 'קריאות המלאי נכשלו בשגיאת פריוריטי' }, track: { state: 'OFF', why: 'x' } });
+  ok('a partial stopped on a technical fault is "תקוע ודורש טיפול טכני" — not his', tech.group === 'stuck', JSON.stringify(tech.group));
+  const legacy = S.meterRowOf({ ...base, work_id: '3d37c41200', objective: 'תלמי כץ רו״ח', disposition: 'PRODUCT_REVIEW',
+    product_review: { submitted_at: '2026-11-11T07:00:00Z', result: 'התוצר, חלקי — דוח ביניים, לא תוצר: לכן גם מחיר לא ניתן לאימות' }, track: { state: 'DAVID', why: 'התוצר מוכן לאישורך' } });
+  ok('a row from an older server (no `partial`) that says itself it is partial is never shown as his', legacy.group === 'lia' && legacy.ask.kind === 'partial' && /^לכן גם מחיר/.test(legacy.ask.text), JSON.stringify(legacy));
+  const stuck = S.meterRowOf({ ...base, work_id: '9993f95000', status: 'RUNNING', state: 'RUNNING', objective: 'In Situ — ספטולות', track: { state: 'OFF', why: 'מסומנת RUNNING בלי lease חי — אין מבצע שמחזיק אותה' } });
+  ok('a row nobody holds is "stuck"', stuck.group === 'stuck', JSON.stringify(stuck.group));
+  const self = S.meterRowOf({ ...base, work_id: '762eb30500', objective: 'שקללי את זה בשווי חברה', next_wake_at: '2099-01-01T00:00:00Z', waiting_on: { kind: 'timer', ref: 'background_retry' }, track: { state: 'ON', why: '' } });
+  ok('a row that continues by itself is "ליה מטפלת" and asks nothing', self.group === 'lia' && self.ask === null, JSON.stringify(self));
+  ok('a long dictated order is cut on a word, with an ellipsis', (() => { const t = S.shortTitle('אני רוצה שבכל יום חמישי בבוקר תשלח הודעה לרחל לאורנה ולמיטל בבקשה לשלוח לי את הסיכום השבועי של הפעולות שהם עשו כלומר אתה שולח'); return t.length <= 84 && /…$/.test(t); })());
+  ok('a short order is left as it is', S.shortTitle('נסי שוב') === 'נסי שוב' && S.shortTitle('> **כן** הוציאי מאשר') === 'כן הוציאי מאשר');
+  const g = S.meterGroups([self, stuck, lia, q, auth, tech]);
+  ok('exactly his three groups, in his order; empty groups are not shown', g.map((x) => x.key + ':' + x.rows.length).join() === 'david:2,lia:2,stuck:2' && g.map((x) => x.he).join('|') === 'מחכה להחלטה שלי|ליה מטפלת|תקוע ודורש טיפול טכני', g.map((x) => x.he + x.rows.length).join());
+  ok('nothing the row carried before was changed', q.tone === 'needs' && q.label === 'דורשת אותך' && stuck.light === 'red');
 }
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);

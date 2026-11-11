@@ -258,6 +258,7 @@ main{flex:1;padding:14px 16px calc(84px + env(safe-area-inset-bottom));max-width
 .workMeter .top{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600}.workMeter .top b{margin-inline-start:auto;font-variant-numeric:tabular-nums;color:var(--acc)}
 .workMeter .bar{height:5px;background:var(--line);border-radius:99px;overflow:hidden;margin:6px 0}.workMeter .bar span{display:block;height:100%;background:var(--acc);border-radius:inherit}.workMeter .meta{font-size:12px;color:var(--dim);line-height:1.4}.workMeter .blocked .bar span,.workMeter .needs .bar span{background:var(--warn)}.workMeter .done .bar span{background:var(--ok)}.workMeter .moving .bar span{background:var(--ok)}.workMeter .top b.stage{font-size:12px;font-weight:500;color:var(--dim)}.workMeter .top b small{font-weight:500;color:var(--dim)}.workMeter .needs .tag{color:var(--warn)}.workMeter .done .tag{color:var(--ok)}.workMeter .failed{opacity:.75}
 .workMeter .light{flex:none;width:11px;height:11px;border-radius:50%;display:inline-block;background:var(--line)}.workMeter .light.green{background:#1f9d55;box-shadow:0 0 6px #1f9d55aa}.workMeter .light.amber{background:#d69e2e}.workMeter .light.red{background:#e53e3e}.workMeter .light.blue{background:#3182ce}
+.workMeter .wg{border-top:1px solid var(--line);padding:6px 0}.workMeter .wg:first-of-type{border-top:0}.workMeter .wg>summary{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:700;padding:6px 0;list-style:none}.workMeter .wg>summary::-webkit-details-marker{display:none}.workMeter .wg>summary b{margin-inline-start:auto;min-width:26px;text-align:center;border-radius:99px;padding:1px 8px;background:var(--line);font-variant-numeric:tabular-nums}.workMeter .wg.david>summary b{background:var(--warn);color:#fff}.workMeter .wg.stuck>summary b{background:#c53030;color:#fff}.workMeter .wgHint{font-size:12px;margin:0 0 6px;opacity:.75}.workMeter .wm.ask .top span{white-space:normal}.workMeter .askLine{font-size:14px;line-height:1.45;margin-top:6px}.workMeter .rowLine{font-size:13px;line-height:1.45;margin-top:4px}.workMeter .rowLine.dim{opacity:.75}.workMeter .askOpts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.workMeter .wm.ask .btns{margin-top:8px}.workMeter .wm.ask .btns button{min-height:40px;padding:0 14px}
 .workMeter .why{font-size:12px;line-height:1.4;margin-top:3px}.workMeter .why.off{color:#c53030}.workMeter .why.david{color:var(--warn)}
 @media(max-height:740px){#exec{gap:5px}.xi{padding:7px 11px}.xi .xv{font-size:15px}.xi .xs{font-size:12.5px;line-height:1.35}
  main{padding-top:8px}#drillBtn,#projBtn{min-height:36px}}
@@ -327,7 +328,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-10-28.1';
+var CC_BUILD='2026-11-12.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -647,7 +648,63 @@ function meterRowOf(r,now){
   var track=done?'DONE':failed?'CLOSED':(tk&&tk.state)||null;
   var why=(tk&&!done&&!failed&&(tk.state==='OFF'||tk.state==='DAVID'))?String(tk.why||''):null;
   var light=done?'green':failed?'gray':track==='OFF'?'red':track==='DAVID'?'amber':track==='ON'?'blue':'gray';
-  return {work_id:r.work_id,title:String(r.objective||r.goal||r.work_id),label:label,pct:pct,gauge:gauge,stage:stageOf(r),tone:tone,order:METER_ORDER[tone],next:next,product:product,ref:ref,submitted:submitted,verified:done?!!d.verified:null,track:track,why:why,light:light};
+  var ask=(done||failed)?null:askOf(r,d,submitted,why,next);
+  /* THREE GROUPS (David, 12.11): his decision · LIA handles it · stuck, needs technical care. The server says whose a partial
+     product is (partial.davids, productReview.partialVerdict); a row from an older server falls back to its own words. */
+  var pt=(r.partial&&typeof r.partial==='object')?r.partial:null;
+  var group=done?'done':failed?'closed':d.needs?'david'
+    :pt?(String(pt.kind)==='TECHNICAL'?'stuck':'lia')
+    :(ask&&ask.kind==='partial')?'lia':track==='DAVID'?'david':track==='OFF'?'stuck':'lia';
+  var doneSoFar=(done||failed)?null:doneSoFarOf(r);
+  return {work_id:r.work_id,title:String(r.objective||r.goal||r.work_id),label:label,pct:pct,gauge:gauge,stage:stageOf(r),tone:tone,order:METER_ORDER[tone],next:next,product:product,ref:ref,submitted:submitted,verified:done?!!d.verified:null,track:track,why:why,light:light,
+    group:group,ask:ask,short:shortTitle(r.objective||r.goal||r.work_id),done_so_far:doneSoFar};
+}
+/* ORDER ON THE METER (David, 12.11 — "מאוד קשה לניהול, לא יודע איך לאשר או לדחות, הרבה דברים לא מובנים"). Measured on his
+   screen that day: 43 rows in one list; 20 of them read "חסומה · התוצר מוכן לאישורך" while their own text said "חלקי — דוח
+   ביניים, לא תוצר"; the three rows that carried a real question showed its code (NEEDS_DAVID_DECISION), not the question.
+   Nothing here decides anything — the same rows, grouped by WHO moves them next, each saying in one line what is asked:
+     david   — a decision only he can make: the question and its options, as the server recorded them (david_decision)
+     partial — LIA stopped with a product that says itself it is partial: what is missing, in its own words
+     stuck   — nobody holds it and nothing will wake it (the dispatcher's own verdict, track OFF)
+     self    — LIA goes on by herself: he has nothing to do
+   The title is the first sentence of his own words, shortened; the full text stays on the row's title attribute. */
+var PARTIAL_RE=/^\s*(?:התוצר,?\s*)?חלקי\s*[—–-]\s*דוח ביניים,?\s*לא תוצר:\s*/;
+var METER_GROUPS=[
+  {key:'david',he:'מחכה להחלטה שלי',hint:'שאלה אחת לכל פריט, עם האפשרויות.'},
+  {key:'lia',he:'ליה מטפלת',hint:'אין צורך בהתערבותך.'},
+  {key:'stuck',he:'תקוע ודורש טיפול טכני',hint:'לא דורש החלטה שלך. זו תקלה של המערכת.'},
+  {key:'done',he:'הושלם ב-24 השעות האחרונות',hint:''},
+  {key:'closed',he:'נסגר בלי תוצאה',hint:''}];
+function shortTitle(t){
+  var x=String(t||'').replace(/^\s*>\s*/,'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim();
+  /* the first sentence break that leaves at least a few words — "בדקי בפועל:" is not cut to nothing */
+  var re=/[.:;?!\n]|\s[—–]\s/g,m;
+  while((m=re.exec(x))){if(m.index>=24){x=x.slice(0,m.index);break;}}
+  return x.length>84?x.slice(0,82).replace(/\s+\S*$/,'')+'…':x;
+}
+/* WHAT WAS ALREADY DONE, in the worker's own words: what it says works, else the outcome it submitted, else its last step */
+function doneSoFarOf(r){
+  var p=(r&&r.product_review&&typeof r.product_review==='object')?r.product_review:null;
+  var t=(p&&(p.what_works||p.outcome))||(r&&r.current_step)||'';
+  t=String(t).replace(/\*\*/g,'').replace(/`/g,'').replace(/https?:\/\/\S+/g,'').replace(/^\s*סטטוס:\s*/,'').replace(/\s+/g,' ').trim();
+  return t.length>150?t.slice(0,148).replace(/\s+\S*$/,'')+'…':t;
+}
+function askOf(r,d,submitted,why,next){
+  var dc=(r&&r.david_decision&&typeof r.david_decision==='object')?r.david_decision:null;
+  /* a decision is shown only on a row that is his: a partial product the server says is LIA's carries none */
+  if(dc&&dc.question&&(d&&d.needs)){
+    return {kind:'question',text:String(dc.question),because:String(dc.because||'').replace(/\*\*/g,''),options:(Array.isArray(dc.options)?dc.options:[]).map(String).filter(Boolean).slice(0,4)};
+  }
+  var pt=(r&&r.partial&&typeof r.partial==='object')?r.partial:null;
+  if(pt&&pt.missing)return {kind:'partial',text:String(pt.missing),options:[]};
+  var s=String(submitted||'');
+  if(PARTIAL_RE.test(s))return {kind:'partial',text:s.replace(PARTIAL_RE,'').replace(/\*\*/g,'').trim()||'לא נכתב מה חסר',options:[]};
+  if(s)return {kind:'product',text:s.replace(/\*\*/g,''),options:[]};
+  if(d&&d.needs)return {kind:'other',text:String(why||next||'לא נכתב מה נדרש ממך'),options:[]};
+  return null;
+}
+function meterGroups(rows){
+  return METER_GROUPS.map(function(g){return {key:g.key,he:g.he,hint:g.hint,rows:(rows||[]).filter(function(w){return w.group===g.key;})};}).filter(function(g){return g.rows.length;});
 }
 function recentDone(rows,now){
   var t=now-864e5;
@@ -807,7 +864,30 @@ function renderExec(){
       +x.subs.map(function(t){return '<div class="xs">'+t+'</div>';}).join('')
       +'</'+tag+'>';
   }).join('')
-  +(work.length?'<section class="workMeter" data-lia-change="80061ef0" aria-label="מד התקדמות עבודה"><h2>מד התקדמות עבודה</h2>'+work.map(function(w){
+  +(work.length?'<section class="workMeter" data-lia-change="80061ef0" aria-label="מד התקדמות עבודה"><h2>מד התקדמות עבודה</h2>'+meterGroups(work).map(function(g){
+    var open=g.key==='david';
+    return '<details class="wg '+g.key+'" data-group="'+g.key+'"'+(open?' open':'')+'><summary><span>'+esc(g.he)+'</span><b>'+g.rows.length+'</b></summary>'
+      +(g.hint?'<p class="wgHint">'+esc(g.hint)+'</p>':'')+g.rows.map(function(w){
+    if(g.key==='david'||g.key==='lia'||g.key==='stuck'){
+      var a=w.ask||null;
+      var doneLine=w.done_so_far?'<div class="rowLine"><b>בוצע:</b> '+esc(w.done_so_far)+'</div>':'';
+      var need='';
+      if(g.key==='david'){
+        var q=a&&a.kind==='question'?a.text:a&&a.kind==='product'?'האם התוצר עונה על ההוראה?':(a&&a.text)||'נדרשת הכרעה שלך';
+        need='<div class="askLine"><b>נדרש ממך:</b> '+esc(q)+'</div>'
+          +(a&&a.because&&a.because!==q?'<div class="rowLine dim">'+esc(a.because)+'</div>':'')
+          +(a&&a.options&&a.options.length?'<div class="askOpts">'+a.options.map(function(o){return '<span class="tag">'+esc(o)+'</span>';}).join('')+'</div>':'')
+          +'<div class="btns"><button type="button" class="b-ok" data-open="'+esc(String(w.work_id))+'">פתח והכרע</button></div>';
+      }else if(g.key==='lia'){
+        need=(a&&a.kind==='partial'?'<div class="rowLine"><b>נשאר:</b> '+esc(a.text)+'</div>':'')
+          +'<div class="rowLine dim"><b>ליה ממשיכה:</b> '+esc(w.next||'בתור לביצוע')+'</div>';
+      }else{
+        /* a partial stopped on a technical fault says the fault in its own words; any other stuck row, the dispatcher's reason */
+        need='<div class="why off"><b>למה תקוע:</b> '+esc((a&&a.kind==='partial'&&a.text)||w.why||w.next||'לא דווח')+'</div>';
+      }
+      return '<div class="wm ask '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'" data-track="'+esc(w.track||'')+'" data-ask="'+(a?a.kind:'')+'">'
+        +'<div class="top"><span title="'+esc(cleanTitle(w.title))+'">'+esc(w.short)+'</span></div>'+doneLine+need+'</div>';
+    }
     var num=w.pct!=null?'<b>'+w.pct+'%'+(w.gauge?' <small>'+esc(w.gauge)+'</small>':'')+'</b>':(w.stage?'<b class="stage">'+esc(w.stage)+'</b>':'');
     var bar=w.pct!=null?'<div class="bar" aria-label="'+w.pct+'%"><span style="width:'+w.pct+'%"></span></div>':'';
     var meta=w.product!=null?'התוצר: '+esc(w.product)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':'')
@@ -818,7 +898,7 @@ function renderExec(){
     /* the reason REPLACES the generic block/needs line — one sentence, not two saying the same */
     if(w.why&&(w.tone==='blocked'||w.tone==='needs'))meta=w.submitted?'הוגש לבדיקתך: '+esc(w.submitted)+(w.ref?' · <a href="'+esc(w.ref)+'" target="_blank" rel="noopener">פתח</a>':''):'';
     var whyLine=w.why?'<div class="why '+(w.track==='OFF'?'off':'david')+'">'+(w.track==='OFF'?'למה לא במסלול: ':'למה מחכה לך: ')+esc(w.why)+'</div>':'';
-    return '<div class="wm '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'" data-track="'+esc(w.track||'')+'"><div class="top">'+lt+'<span>'+esc(cleanTitle(w.title))+'</span><span class="tag">'+esc(w.label)+'</span>'+num+'</div>'+bar+(meta?'<div class="meta">'+meta+'</div>':'')+whyLine+'</div>';}).join('')+'</section>':'')
+    return '<div class="wm '+w.tone+'" data-work="'+esc(String(w.work_id).slice(0,8))+'" data-track="'+esc(w.track||'')+'"><div class="top">'+lt+'<span title="'+esc(cleanTitle(w.title))+'">'+esc(w.short||cleanTitle(w.title))+'</span><span class="tag">'+esc(w.label)+'</span>'+num+'</div>'+bar+(meta?'<div class="meta">'+meta+'</div>':'')+whyLine+'</div>';}).join('')+'</details>';}).join('')+'</section>':'')
   +teamHtml(X.team)
   +(X.err===SCOPED_ERR?'<div class="note scoped" role="alert"><b>נכנסת עם קוד אישי מוגבל</b> — הוא פותח רק את השיחה עם ליה. מרכז הפיקוד נפתח עם הקוד הראשי. <button type="button" id="scopedOut">התנתק והיכנס עם הקוד הראשי</button></div>'
      :X.err?'<p class="note">חלק מהנתונים לא הגיעו: '+esc(X.err)+'</p>':'')
@@ -826,6 +906,7 @@ function renderExec(){
   +'<div class="xrow"><a id="projBtn" href="projects.html">הפרויקטים</a>'
   +'<button id="drillBtn" type="button" class="'+(DRILL?'on':'')+'" aria-expanded="'+DRILL+'" aria-controls="drill">'+(DRILL?'הסתר את השאר':'כל השאר · פירוט')+'</button></div>';
   B('#drillBtn').onclick=function(){setDrill(!DRILL,true);};
+  Array.prototype.forEach.call(el.querySelectorAll('.workMeter [data-open]'),function(b){b.onclick=function(){openDetail(b.getAttribute('data-open'));};});
   if(B('#scopedOut'))B('#scopedOut').onclick=scopedLogout;
   var xn=B('#xNeeds');if(xn)xn.onclick=function(){setDrill(true,false);var t=document.getElementById('needs');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});};
 }
@@ -1233,8 +1314,24 @@ function reviewCard(r){
     +'<div class="btns"><button class="b-ed" data-read="1">קרא את התוצר המלא</button></div>'
     +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
 }
+/* ONE QUESTION, ITS OPTIONS (David, 12.11): a partial product that reaches him is a decision, not a product to approve */
+function questionCard(r){
+  var dc=r.david_decision||{},p=r.product_review||{},o=(dc.options||[]);
+  var doneTxt=String(p.what_works||p.outcome||'').replace(/\*\*/g,'');
+  return '<div class="card" id="dec"><h3>'+esc(dc.question||'ההכרעה שלך')+'</h3>'
+    +(doneTxt?'<p class="dim"><b>מה כבר בוצע:</b> '+esc(doneTxt.slice(0,400))+'</p>':'')
+    +(dc.because?'<p class="dim"><b>למה זה אצלך:</b> '+esc(String(dc.because).replace(/\*\*/g,''))+'</p>':'')
+    +'<div class="fix"><label class="dim" for="fixNote">רוצה להוסיף הנחיה? (לא חובה)</label>'
+    +'<textarea id="fixNote" rows="2" placeholder="למשל: רק לשלושת הראשונים"></textarea></div>'
+    +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">'+esc(o[0]||'אשרי להמשיך')+'</button>'
+    +'<button class="b-ed" data-dec="RETURN">'+esc(o[1]||'תחזירי לתיקון')+'</button>'
+    +'<button class="b-no" data-dec="REJECT">'+esc(o[2]||'סגרי')+'</button></div>'
+    +'<div class="btns"><button class="b-ed" data-read="1">קרא את התוצר המלא</button></div>'
+    +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
+}
 function decisionCard(r){
   if(!(r&&r.parked_for_david===true))return '';
+  if(String(r.disposition||'').toUpperCase()==='PRODUCT_REVIEW'&&r.partial&&r.partial.davids&&r.david_decision)return questionCard(r);
   if(String(r.disposition||'').toUpperCase()==='PRODUCT_REVIEW')return reviewCard(r);
   /* 4.10 — CONFIRMED BEFORE IT LAUNCHES: a work order held for him shows what LIA understood, and launch / close */
   if(String(r.disposition||'').toUpperCase()==='AWAITING_LAUNCH'){
@@ -1252,8 +1349,9 @@ function decisionCard(r){
       +'<div class="btns"><button class="b-ed" data-revise="1">תקני את ההגדרה ושאלי שוב</button></div></div>'
       +'<div id="decRes" class="note" style="margin-top:8px"></div></div>';
   }
-  return '<div class="card" id="dec"><h3>ההכרעה שלך</h3>'
-    +'<p class="dim">החבילה ממתינה לך. אפשר לקרוא את התוצר, ואז לאשר, להחזיר לביצוע או לסגור.</p>'
+  var dq=r.david_decision&&r.david_decision.question?r.david_decision:null;
+  return '<div class="card" id="dec"><h3>'+esc(dq?dq.question:'ההכרעה שלך')+'</h3>'
+    +'<p class="dim">'+(dq&&dq.because?'<b>למה זה אצלך:</b> '+esc(dq.because):'החבילה ממתינה לך. אפשר לקרוא את התוצר, ואז לאשר, להחזיר לביצוע או לסגור.')+'</p>'
     +'<div class="btns"><button class="b-ok" data-dec="ACCEPT">אשר — זה מה שביקשתי</button>'
     +'<button class="b-ed" data-dec="RETRY">נסי שוב</button>'
     +'<button class="b-no" data-dec="REJECT">סגרי</button></div>'
@@ -1287,13 +1385,16 @@ function decideWork(r,dec,btn){
   if(dec==='REJECT'){note=prompt('למה לסגור? (לא חובה)','');if(note===null)return;}
   if(dec==='RETURN'){var fx=B('#fixNote');note=fx?String(fx.value||'').trim():'';if(!note){note=prompt('מה לתקן? ההערה שלך הולכת למבצע יחד עם ההחזרה','');if(note===null)return;}if(!String(note).trim()){var o0=B('#decRes');if(o0)o0.textContent='כדי להחזיר לתיקון צריך לכתוב מה לתקן';if(fx)fx.focus();return;}dec='RETRY';}
   var shp=(r.product_review||{}).ship;
-  if(dec==='ACCEPT'&&!confirm(shp?'לאשר את השינוי ולהעלות אותו לאוויר עכשיו?':'לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
+  /* 12.11 — his go on a partial product is not a close: the work returns to LIA with his word (and his note, if he wrote one) */
+  var goOn=!!(r.partial&&r.partial.davids&&String(r.disposition||'').toUpperCase()==='PRODUCT_REVIEW');
+  if(dec==='ACCEPT'&&goOn){var fa=B('#fixNote');note=fa?String(fa.value||'').trim():'';if(!confirm('לאשר לליה להמשיך? העבודה חוזרת אליה עם ההנחיה שלך.'))return;}
+  else if(dec==='ACCEPT'&&!confirm(shp?'לאשר את השינוי ולהעלות אותו לאוויר עכשיו?':'לאשר שהתוצר עונה על מה שביקשת ולסגור את החבילה?'))return;
   if(dec==='LAUNCH'&&!confirm('לשגר את העבודה כפי שליה הבינה אותה?'))return;
   var all=B('#dec').querySelectorAll('button[data-dec]');for(var i=0;i<all.length;i++)all[i].disabled=true;
   var was=btn.textContent;btn.textContent='…';
   var out=B('#decRes');
   api({action:'work_decide',work_id:r.work_id,decision:dec,note:note}).then(function(x){
-    out.textContent=(x&&x.ok)?((dec==='ACCEPT'&&shp)?DEC_DONE.ACCEPT_SHIP:(DEC_DONE[dec]||'בוצע')):('לא הושלם: '+((x&&x.summary)||''));
+    out.textContent=(x&&x.ok)?((dec==='ACCEPT'&&goOn)?'אושר — חזר לליה להמשך עם ההנחיה שלך':(dec==='ACCEPT'&&shp)?DEC_DONE.ACCEPT_SHIP:(DEC_DONE[dec]||'בוצע')):('לא הושלם: '+((x&&x.summary)||''));
     return fetchAll().then(render);
   }).catch(function(e){
     var m=String(e.message||e);try{var j=JSON.parse(m);m=j.reason||j.summary||m;}catch(_){}
