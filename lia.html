@@ -543,6 +543,9 @@ button{background:linear-gradient(150deg,var(--acc),var(--acc2));color:#fff;bord
 button:active{transform:scale(.97)}
 button.big{font-size:17px;padding:14px 24px}
 button.ghost{background:var(--card2);border:1px solid var(--line);color:var(--dim)}
+button.catchip{padding:4px 10px;font-size:12px;border-radius:999px}
+button.catedit{padding:2px 8px;font-size:12px;min-height:0}
+button.catchip.on{color:var(--fg,inherit);border-color:currentColor;font-weight:600}
 button.ghost:hover{color:var(--txt);border-color:var(--line2)}
 button:disabled{opacity:.55;cursor:default}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
@@ -776,7 +779,7 @@ button#live.wait{opacity:.6}
 <p class="dim" id="sub" style="margin-top:6px">הפנקס של דוד</p>
 <p class="dim" id="chatSyncStat" style="margin-top:2px;font-size:11px"></p>
 
-<div class="card"><b>שיחות קודמות</b><div id="sessions" style="margin-top:8px"></div></div>
+<div class="card"><b>שיחות קודמות — לפי נושא</b><div id="sessions" style="margin-top:8px"></div></div>
 
 <!-- The one thing David has to do himself, on each device. It sat inside the
      collapsed "פרטים" block, which on the phone means it did not exist: two
@@ -830,7 +833,7 @@ const SURFACE=(matchMedia&&matchMedia('(pointer:coarse)').matches)||/Android|iPh
 /* Which panel is talking. An installed app kept alive keeps running the code
    it loaded days ago; every request now says which build it is, so "the fix
    is live" and "the phone runs the fix" stop being the same claim (2.9). */
-const LIA_BUILD='2026-10-28.1';
+const LIA_BUILD='2026-11-11.1';
 async function post(url,body,tries){
  tries=tries||2;
  /* The surface travels in the BODY, never as a custom header — and this is not
@@ -1019,13 +1022,65 @@ function renderSessions(){
     the offline fallback only; once the server answers, its list is the truth. */
  chatListConversations().then(list=>{
   if(!list||!list.length)return;
-  el.innerHTML=list.slice(0,12).map(c=>'<div class="obj"><button class="det" data-conv="'+esc(c.conversation_id)+'"'
-    +(c.canonical?' disabled':' onclick="chatOpenConversation(this.getAttribute(\'data-conv\'))"')+'>'
-    +esc(c.title||'שיחה')+'</button> <span class="dim">· '+c.count+' הודעות · '
-    +new Date(c.last_at).toLocaleDateString('he-IL')+(c.canonical?' · פתוחה עכשיו':'')+'</span></div>').join('');
+  CATALOG.list=list;renderCatalog();
  }).catch(()=>{});}
+/* THE CONVERSATION CATALOG (David, 11.11): every conversation carries a name and a
+   department — the same eleven the control center holds. He names and files a
+   conversation (✎ on its row; his word is never overwritten), LIA files the ones he
+   has not ("קטלגי"), and the chips above the list show one topic at a time. The
+   server is the truth (chat_list / chat_label / chat_catalog); nothing is stored here
+   but the chosen chip. */
+const CATALOG={list:[],cats:[],filter:(function(){try{return localStorage.getItem('lia_cat_filter')||'';}catch(e){return '';}})(),busy:false};
+function catalogSetFilter(k){CATALOG.filter=k||'';try{localStorage.setItem('lia_cat_filter',CATALOG.filter);}catch(e){}renderCatalog();}
+function renderCatalog(){
+ const el=document.getElementById('sessions');if(!el)return;
+ const list=CATALOG.list||[];if(!list.length)return;
+ const counts={};let unfiled=0;
+ for(const c of list){if(c.category)counts[c.category]=(counts[c.category]||0)+1;else unfiled++;}
+ const cats=(CATALOG.cats||[]).filter(k=>counts[k.key]);
+ const chip=(key,label,n)=>'<button class="ghost catchip'+(CATALOG.filter===key?' on':'')+'" data-cat="'+esc(key)+'" onclick="catalogSetFilter(this.getAttribute(\'data-cat\'))">'+esc(label)+(n!=null?' · '+n:'')+'</button>';
+ const chips='<div class="row" style="flex-wrap:wrap;gap:6px;margin:0 0 8px">'+chip('','הכול',list.length)
+   +cats.map(k=>chip(k.key,k.name,counts[k.key])).join('')+(unfiled?chip('_none','לא מקוטלג',unfiled):'')+'</div>';
+ const shown=list.filter(c=>!CATALOG.filter||(CATALOG.filter==='_none'?!c.category:c.category===CATALOG.filter));
+ const rows=shown.slice(0,CATALOG.filter?40:12).map(c=>'<div class="obj"><button class="det" data-conv="'+esc(c.conversation_id)+'"'
+    +(c.canonical?' disabled':' onclick="chatOpenConversation(this.getAttribute(\'data-conv\'))"')+'>'
+    +esc(c.title||'שיחה')+'</button> <button class="ghost catedit" title="שם וקטגוריה" data-conv="'+esc(c.conversation_id)+'" onclick="catalogEdit(this.getAttribute(\'data-conv\'))">✎</button>'
+    +' <span class="dim">· '+(c.category_he?esc(c.category_he)+' · ':'')+c.count+' הודעות · '
+    +new Date(c.last_at).toLocaleDateString('he-IL')+(c.canonical?' · פתוחה עכשיו':'')+'</span></div>').join('');
+ const foot=unfiled?'<div class="row" style="margin:8px 0 0"><button class="ghost" id="catalogRun" onclick="catalogRun()"'+(CATALOG.busy?' disabled':'')+'>'
+   +(CATALOG.busy?'מקטלגת…':'קטלגי '+unfiled+' שיחות לא מקוטלגות')+'</button> <span class="dim" id="catalogStat"></span></div>':'';
+ el.innerHTML=chips+(rows||'<p class="dim">אין שיחות בקטגוריה הזו.</p>')+foot;}
+/* He names a conversation and files it — two plain prompts, no new screen. */
+async function catalogEdit(id){
+ const c=(CATALOG.list||[]).find(x=>x.conversation_id===id);if(!c)return;
+ const title=prompt('שם לשיחה:',c.title||'');if(title===null)return;
+ const cats=CATALOG.cats||[];
+ const menu=cats.map((k,i)=>(i+1)+'. '+k.name).join('\n');
+ const cur=cats.findIndex(k=>k.key===c.category);
+ const pick=prompt('קטגוריה — מספר:\n'+menu,cur>=0?String(cur+1):'');if(pick===null)return;
+ const k=cats[parseInt(pick,10)-1];
+ const body={action:'chat_label',device_id:DEVICE_ID,conversation_id:id};
+ if(title.trim()&&title.trim()!==c.title)body.title=title.trim();
+ if(k&&k.key!==c.category)body.category=k.key;
+ if(!body.title&&!body.category)return;
+ try{const j=await ccApi(body);if(j&&j.ok){const l=await chatListConversations();if(l){CATALOG.list=l;renderCatalog();}}
+  else alert((j&&j.error)||'השמירה לא הצליחה');}catch(e){alert('השמירה לא הצליחה');}}
+/* LIA files what he has not: bounded batches, until nothing is left or a batch files nothing. */
+async function catalogRun(){
+ if(CATALOG.busy)return;CATALOG.busy=true;renderCatalog();
+ let filed=0;
+ try{for(let i=0;i<20;i++){
+   const j=await ccApi({action:'chat_catalog',device_id:DEVICE_ID,limit:8});
+   if(!j||!j.ok)break;filed+=j.filed_now||0;
+   const st=document.getElementById('catalogStat');if(st)st.textContent='קוטלגו '+filed+' · נותרו '+(j.remaining||0);
+   if(!j.filed_now||!j.remaining)break;}
+ }catch(e){}
+ CATALOG.busy=false;
+ const l=await chatListConversations();if(l)CATALOG.list=l;renderCatalog();}
 async function chatListConversations(){
- try{const j=await ccApi({action:'chat_list',device_id:DEVICE_ID});return (j&&j.conversations)||null;}catch(e){return null;}}
+ try{const j=await ccApi({action:'chat_list',device_id:DEVICE_ID,all:true});
+  if(j&&j.categories)CATALOG.cats=j.categories;
+  return (j&&j.conversations)||null;}catch(e){return null;}}
 /* Reopen a conversation from the server: the pointer moves back to it (every
    device follows on its next sync), a fresh local session adopts its rows. */
 async function chatOpenConversation(id){
