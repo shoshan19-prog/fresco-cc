@@ -16,7 +16,7 @@ function slice(from, to) {
   return src.slice(a, b);
 }
 const S = new Function(slice('var DOMAINS=', '/* CC_STATE_END */')
-  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS,meterRowOf,meterRows,recentDone};')();
+  + '\nreturn {stateOf,deriveRow,verifiedOf,needsDavidOf,progressOf,stageOf,milestonesOf,ago,attribution,bucketsOf,sortRows,summarize,lastActivityMs,isTerminal,DOMAINS,meterRowOf,meterRows,recentDone,meterGroups,shortTitle,askOf};')();
 
 let bad = 0, total = 0;
 function eq(label, got, want) { total++; if (got !== want) { console.log(`FAIL  ${label}\n      got:  ${JSON.stringify(got)}\n      want: ${JSON.stringify(want)}`); bad++; } }
@@ -383,6 +383,33 @@ ok('last activity is the newest of the row\'s own timestamps', S.lastActivityMs(
   ok('the last day\'s completions stay on the meter (no test packages)', recent.length === 1 && recent[0].work_id === 'x');
   ok('rendered: the light, the reason, the day\'s completions loaded', /<i class="light '\+w\.light\+'"/.test(src) && /למה לא במסלול: /.test(src) && /cap\('work_status',\{closed_since:isoDaysAgo\(1\)\}\)/.test(src));
 }
+
+{ // 12.11 — ORDER ON THE METER (David: "מאוד קשה לניהול, לא יודע איך לאשר או לדחות, הרבה דברים לא מובנים"). Rows verbatim from his screen.
+  const base = { kind: 'research', status: 'WAITING_INTERNAL', state: 'WAITING_INTERNAL', items: [], closure: null };
+  const q = S.meterRowOf({ ...base, work_id: '8eef286f00', kind: 'build', objective: 'מחוץ לתחזית עד שיקושרו , תתקני את זה לשעורי המרה של 120 יום', parked_for_david: true, disposition: 'NEEDS_DAVID_DECISION',
+    david_decision: { question: 'ההנדסה הסתיימה — האם זה מה שביקשת?', options: ['אשרי', 'תחזירי לתיקון', 'סגרי'] }, track: { state: 'DAVID', why: 'ממתינה להכרעתך (NEEDS_DAVID_DECISION)' } });
+  ok('a real decision shows THE QUESTION and its options, never the code', q.group === 'david' && q.ask.kind === 'question' && q.ask.text === 'ההנדסה הסתיימה — האם זה מה שביקשת?'
+    && q.ask.options.join('|') === 'אשרי|תחזירי לתיקון|סגרי' && !/NEEDS_DAVID/.test(q.ask.text), JSON.stringify(q));
+  const part = S.meterRowOf({ ...base, work_id: '3d37c41200', objective: 'תלמי כץ רו״ח / ענבר חייפץ — הנהלת חשבונות, שכר ודוחות שנתיים: למפות ולאמת חלופות לגורם מקצועי', disposition: 'PRODUCT_REVIEW',
+    product_review: { submitted_at: '2026-11-11T07:00:00Z', result: 'התוצר, חלקי — דוח ביניים, לא תוצר: לכן גם מחיר, זמינות, זמן תחילת טיפול ודוגמאות עבודה לא ניתנים לאימות ללא פנייה מאושרת.' },
+    track: { state: 'DAVID', why: 'התוצר מוכן לאישורך' } });
+  ok('a product that says itself it is partial is its own group, and says WHAT IS MISSING — not "ready for your approval"',
+    part.group === 'partial' && part.ask.kind === 'partial' && /^לכן גם מחיר/.test(part.ask.text) && !/דוח ביניים/.test(part.ask.text), JSON.stringify(part));
+  ok('the title is his first sentence, shortened; the full text is kept', part.short === 'תלמי כץ רו״ח / ענבר חייפץ' && /למפות ולאמת/.test(part.title), part.short);
+  ok('a long dictated order is cut on a word, with an ellipsis', (() => { const t = S.shortTitle('אני רוצה שבכל יום חמישי בבוקר תשלח הודעה לרחל לאורנה ולמיטל בבקשה לשלוח לי את הסיכום השבועי של הפעולות שהם עשו כלומר אתה שולח'); return t.length <= 84 && /…$/.test(t) && !/\s…$/.test(t); })());
+  ok('a short order is left as it is', S.shortTitle('נסי שוב') === 'נסי שוב' && S.shortTitle('> **כן** הוציאי מאשר') === 'כן הוציאי מאשר');
+  const whole = S.meterRowOf({ ...base, work_id: 'aa00', objective: 'דוח', parked_for_david: true, disposition: 'PRODUCT_REVIEW', product_review: { submitted_at: '2026-11-11T07:00:00Z', result: 'הדוח המלא נכתב ואומת' } });
+  ok('a whole product submitted to him is his decision', whole.group === 'david' && whole.ask.kind === 'product', JSON.stringify(whole));
+  const stuck = S.meterRowOf({ ...base, work_id: '9993f95000', status: 'RUNNING', state: 'RUNNING', objective: 'In Situ — ספטולות', track: { state: 'OFF', why: 'מסומנת RUNNING בלי lease חי — אין מבצע שמחזיק אותה' } });
+  ok('a row nobody holds is "stuck" — not his, and not "running"', stuck.group === 'stuck' && stuck.ask === null, JSON.stringify(stuck));
+  const self = S.meterRowOf({ ...base, work_id: '762eb30500', objective: 'שקללי את זה בשווי חברה', next_wake_at: '2099-01-01T00:00:00Z', waiting_on: { kind: 'timer', ref: 'background_retry' }, track: { state: 'ON', why: '' } });
+  ok('a row that continues by itself asks nothing of him', self.group === 'self' && self.ask === null, JSON.stringify(self));
+  const g = S.meterGroups([self, stuck, part, q, whole].map((x) => x));
+  ok('the groups come in the order of who moves next, empty groups are not shown', g.map((x) => x.key + ':' + x.rows.length).join() === 'david:2,partial:1,stuck:1,self:1', g.map((x) => x.key + ':' + x.rows.length).join());
+  ok('every group names itself in words', g.every((x) => x.he && x.he.length > 5));
+  ok('nothing the row carried before was changed', q.tone === 'needs' && q.label === 'דורשת אותך' && part.tone === 'blocked' && part.light === 'amber');
+}
+
 
 console.log(bad ? `\n${bad}/${total} FAILED` : `\n${total}/${total} asserts passed`);
 process.exit(bad ? 1 : 0);
