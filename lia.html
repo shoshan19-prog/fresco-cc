@@ -2309,11 +2309,18 @@ function kpiModel(k,fmt){
   const opVal=function(o){return o.is_range&&o.expected_range?'שווי צפוי '+fmt(o.expected_range.low)+'–'+fmt(o.expected_range.high)+' (טווח)':'שווי צפוי +'+fmt(o.expected_value);};
   const gr=r.grant_royalty||null;
   const sg=(x)=>x===null||x===undefined?NA:(x>0?'+':'')+x+'%';
-  return card({key:'value',label:'שווי החברה',value:fmt(r.value.mid),row:ROWS[4],wide:true,state:'none',
-   pct:'טווח '+fmt(r.value.low)+' – '+fmt(r.value.high)+' · חלקי'+(r.enterprise?' · פעילות '+fmt(r.enterprise.mid)+' + מזומן '+fmt(r.net_cash):''),
+  /* 11.11 (David): the range is an ESTIMATE from today's profitability — never "the company's value" */
+  const cx=r.context||null,CST={VERIFIED:'מאומת',PARTIAL:'חלקי',UNVERIFIED:'לא מאומת',NOT_MEASURED:'לא נמדד'};
+  return card({key:'value',label:'אומדן שווי לפי רווחיות',value:fmt(r.value.mid),row:ROWS[4],wide:true,state:'none',
+   pct:'טווח '+fmt(r.value.low)+' – '+fmt(r.value.high)+' · אומדן, לא שווי סופי',
    sub:'אטרקטיביות '+(att&&att.score!=null?att.score+'/100':NA)+' · ביטחון '+(sf&&sf.score!=null?sf.score+'/100':NA),
    dot:op?'בראש הדירוג: '+(op.mechanism_he?op.mechanism_he+' — ':'')+op.he+' · '+opVal(op):(top?'המנוף החזק: '+top.he+' · +'+fmt(top.delta_value)+' ל'+top.step:''),
-   detail:[{b:'מה זז',t:r.since_last?r.since_last.he:'קריאה ראשונה — מה זז יימדד מול קריאה בת שבוע'}]
+   detail:[{b:cx?cx.value_label:'אומדן — לא שווי סופי',t:(r.enterprise?'פעילות '+fmt(r.enterprise.mid)+' + מזומן נטו '+fmt(r.net_cash)+' · ':'')+'EBITDA מנורמל × מכפיל, מהספרים'},
+    {b:'מה זז',t:r.since_last?r.since_last.he:'קריאה ראשונה — מה זז יימדד מול קריאה בת שבוע'}]
+    /* shown apart from the estimate, never added to it (11.11) */
+    .concat(cx&&(cx.unpriced||[]).length?[{b:'נכסים ופוטנציאל שטרם הוערכו כספית — לא נוספו לאומדן',t:cx.rule}].concat(cx.unpriced.map(function(u){return {t:u.he+' — '+u.evidence+' · '+(CST[u.status]||u.status),dim:u.status!=='VERIFIED'};})):[])
+    .concat(cx&&cx.book_floor?[{b:cx.book_floor.he+' · '+fmt(cx.book_floor.value),t:cx.book_floor.basis}]:[])
+    .concat(cx&&cx.prior?[{b:'מקור '+cx.prior.he+' ('+cx.prior.date+')',t:cx.prior.source+' · '+cx.prior.basis}].concat((cx.prior.rows||[]).map(function(x){return {t:x.he+': תוכנית '+x.plan+' · בפועל '+x.actual};})).concat(cx.prior.reading?[{t:cx.prior.reading}]:[]):[])
     .concat(r.if_to_verify_real?[{b:'אם ההתחייבות לבירור אמיתית · '+fmt(r.if_to_verify_real.mid),t:r.if_to_verify_real.items.join(' · ')+' — לא נוכתה, דורשת הסבר של רואה החשבון'}]:[])
     .concat((r.facts||[]).length?[{b:'כל נתון ומעמדו'}].concat(r.facts.map(function(f){return {t:f.he+': '+f.value+' — '+(ST[f.status]||f.status)+(f.source?' · '+f.source:'')+(f.as_of?' · '+String(f.as_of).slice(0,10):''),dim:f.status==='MISSING'};})):[])
     .concat((r.opportunities||[]).length?[{b:'מנגנוני ערך — מדורגים על סקאלה אחת (שווי צפוי מהוון לזמן, פחות השקעה), לא מסוכמים'}].concat(r.opportunities.map(function(o,i){return {t:(i+1)+'. '+(o.mechanism_he?o.mechanism_he+' · ':'')+o.he+': '+opVal(o)+' · סיכוי '+Math.round(o.probability*100)+'% · '+o.months+' חודשים · השקעה '+fmt(o.investment)+' · '+(ST[o.grade]||o.grade)
