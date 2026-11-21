@@ -328,7 +328,7 @@ button.xi{cursor:pointer}
 <script>
 var API='https://bkgukulvjfvkubvuvwwz.supabase.co/functions/v1/command-center?api=1';
 var CHAT='lia.html';
-var CC_BUILD='2026-11-12.1';
+var CC_BUILD='2026-11-19.1';
 var B=function(q){return document.querySelector(q)};
 /* One code for both surfaces: the chat stores it as lia_code and sends it on the
    same header to the same function, so a login there is a login here. */
@@ -823,7 +823,7 @@ function loadExec(){
     var age=Date.now()-tms(X.snapAt),stale=!X.snap||age>10*60000||String(X.snap.today||'')!==new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Jerusalem'});
     if(stale)return cap('fresco_snapshot',{}).then(takeSnap);
   }).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
-  cap('work_status').then(function(x){X.alive=rowsOf(x);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
+  cap('work_status').then(function(x){X.alive=rowsOf(x);pullLinkedDrafts(X.alive);renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
   /* 30.10 — what FINISHED in the last day stays on the meter with a green light, so a completion is seen, not inferred from absence */
   cap('work_status',{closed_since:isoDaysAgo(1)}).then(function(x){X.done=rowsOf(x);renderExec();}).catch(function(){X.done=[];renderExec();});
   api({action:'state'}).then(function(st){X.appr=(st&&Array.isArray(st.approvals))?st.approvals:[];renderExec();}).catch(function(e){X.err=String(e.message||e).slice(0,140);renderExec();});
@@ -937,7 +937,7 @@ function rowsOf(x){return (x&&Array.isArray(x.rows))?x.rows:[];}
 function isoDaysAgo(n){return new Date(Date.now()-n*864e5).toISOString();}
 function fetchAll(){
   return Promise.all([api({action:'tower'}),cap('work_status'),cap('work_status',{closed_since:isoDaysAgo(7)})]).then(function(a){
-    D.tower=a[0];D.alive=rowsOf(a[1]);D.closed=rowsOf(a[2]);D.at=Date.now();D.att=attribution(D.tower);
+    D.tower=a[0];D.alive=rowsOf(a[1]);D.closed=rowsOf(a[2]);D.at=Date.now();D.att=attribution(D.tower);pullLinkedDrafts(D.alive);
   });
 }
 function load(){
@@ -1330,6 +1330,7 @@ function questionCard(r){
     +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
 }
 function decisionCard(r){
+  if(r&&r.parked_for_david!==true&&r.approval_id&&stateOf(r)==='WAITING_APPROVAL')return approvalLinkCard(r);
   if(!(r&&r.parked_for_david===true))return '';
   if(String(r.disposition||'').toUpperCase()==='PRODUCT_REVIEW'&&r.partial&&r.partial.davids&&r.david_decision)return questionCard(r);
   if(String(r.disposition||'').toUpperCase()==='PRODUCT_REVIEW')return reviewCard(r);
@@ -1358,8 +1359,32 @@ function decisionCard(r){
     +'<div class="btns"><button class="b-ed" data-read="1">קרא את התוצר</button></div>'
     +'<div id="decRes" class="note" style="margin-top:8px"></div><div id="prod"></div></div>';
 }
+/* 19.11 — the task waits on a mail; the decision is on the mail (the server answers USE_APPROVAL on the task itself).
+   The card names the mail and takes him to it, where אשר ושלח / ערוך / בטל already live. */
+function approvalLinkCard(r){
+  var id=String(r.approval_id);
+  var d=(X.drafts||[]).filter(function(x){return String(x.draft_id)===id;})[0];
+  return '<div class="card" id="dec"><h3>המשימה מחכה לאישור שלך על מייל</h3>'
+    +(d&&d.to?'<p>אל '+esc(d.to)+(d.subject?' · '+esc(d.subject):'')+'</p>':'<p class="dim">המייל נטען…</p>')
+    +'<p class="dim">אחרי שתאשר או תבטל את המייל, המשימה תמשיך מעצמה.</p>'
+    +'<div class="btns"><button class="b-ok" data-goto="'+esc(id)+'">פתח את המייל לאישור</button></div>'
+    +'<div id="decRes" class="note" style="margin-top:8px"></div></div>';
+}
+function gotoDraft(id,btn){
+  var go=function(){var c=B('#dr'+String(id).slice(0,8));
+    if(!c){var o=B('#decRes');if(o)o.textContent='המייל לא נמצא ברשימת הממתינים — ייתכן שכבר הוכרע. רענן את המסך.';return;}
+    closeDetail();if(VIEW!=='overview')setView('overview');setDrill(true,false);
+    c=B('#dr'+String(id).slice(0,8));if(c){c.scrollIntoView({behavior:'smooth',block:'center'});c.style.outline='3px solid var(--accent,#b8860b)';setTimeout(function(){c.style.outline='';},2500);}};
+  if(B('#dr'+String(id).slice(0,8)))return go();
+  btn.disabled=true;btn.textContent='…';
+  cap('outbound_pending',{draft_id:id}).then(function(x){var d=rowsOf(x)[0];
+    if(d&&String(d.draft_id)===String(id)){X.linked=X.linked||{};X.linked[String(id)]=d;X.drafts=pendingDrafts(X.drafts||[]);renderExec();render();}
+    btn.disabled=false;btn.textContent='פתח את המייל לאישור';go();
+  }).catch(function(e){btn.disabled=false;btn.textContent='פתח את המייל לאישור';var o=B('#decRes');if(o)o.textContent='לא נטען: '+String(e.message||e).slice(0,160);});
+}
 function wireDecision(r){
   var c=B('#dec');if(!c)return;
+  var gb=c.querySelector('button[data-goto]');if(gb)gb.onclick=function(){gotoDraft(gb.getAttribute('data-goto'),gb);};
   Array.prototype.forEach.call(c.querySelectorAll('button[data-dec]'),function(b){b.onclick=function(){decideWork(r,b.getAttribute('data-dec'),b);};});
   var rb=c.querySelector('button[data-read]');if(rb)rb.onclick=function(){readProduct(r,rb);};
   var pb=c.querySelector('button[data-preview]');if(pb)pb.onclick=function(){previewShip((r.product_review||{}).ship||{},pb);};
@@ -1428,7 +1453,28 @@ function ackAlert(id,btn){
    (nothing is deleted) but a week-old letter is not "what needs David now" (19.10: 18 August–October drafts surfaced at once) */
 var DRAFT_FRESH_DAYS=7;
 function pendingDrafts(rows){var lim=Date.now()-DRAFT_FRESH_DAYS*864e5;
-  return (rows||[]).filter(function(d){return !d.decided_at&&String(d.status||'PENDING').toUpperCase()==='PENDING'&&tms(d.created_at)>=lim;});}
+  var out=(rows||[]).filter(function(d){return !d.decided_at&&String(d.status||'PENDING').toUpperCase()==='PENDING'&&tms(d.created_at)>=lim;});
+  /* 19.11 (David: "יש משימות שתקועות ואין לי אפשרות לאשר אותם") — a mail a live task WAITS ON is his decision whatever its age.
+     The task sat under "דורש את ההכרעה שלך" while its mail was older than 7 days (or past the newest 20) and so on no screen:
+     the task had no button, the mail had no card. Those mails are fetched by id (pullLinkedDrafts) and always kept here. */
+  var have={};out.forEach(function(d){have[String(d.draft_id)]=1;});
+  Object.keys(X.linked||{}).forEach(function(id){var d=X.linked[id];
+    if(d&&!have[id]&&!d.decided_at&&String(d.status||'PENDING').toUpperCase()==='PENDING')out.push(d);});
+  return out;}
+/* the mails the live WAITING_APPROVAL tasks wait on (work row approval_id) that the pending list did not bring — one read each */
+function pullLinkedDrafts(rows){
+  X.linked=X.linked||{};
+  var known={};(X.drafts||[]).forEach(function(d){known[String(d.draft_id)]=1;});
+  (rows||[]).forEach(function(r){
+    var id=r&&r.approval_id?String(r.approval_id):'';
+    if(!id||known[id]||X.linked[id]||stateOf(r)!=='WAITING_APPROVAL')return;
+    X.linked[id]={draft_id:id,status:'LOADING'};
+    cap('outbound_pending',{draft_id:id}).then(function(x){var d=rowsOf(x)[0];
+      if(d&&String(d.draft_id)===id){X.linked[id]=d;X.drafts=pendingDrafts(X.drafts||[]);renderExec();render();}
+      else delete X.linked[id];
+    }).catch(function(){delete X.linked[id];});
+  });
+}
 /* 22.10 — David edits a queued mail before he approves it. The form holds his text in X.editBuf, so a refresh of the screen
    never wipes what he typed; "שמור טיוטה" saves a new version on the server (outbound_edit — nothing is sent), and only then
    can "אשר ושלח" send it, carrying the fingerprint of exactly the version on the card. */
@@ -1531,6 +1577,7 @@ function decideDraft(id,dec,btn,opt){
     if(r.refused&&r.code){X.failures=X.failures||{};X.failures[id]={code:r.code,reason:r.reason||msg};
       if(r.outlook_link)d.outlook_link=r.outlook_link;}
     if(r.sent)X.asNew=null;
+    if(!r.refused&&X.linked)delete X.linked[String(id)];
     if(res)res.textContent=msg;
     return cap('outbound_pending').then(function(y){X.drafts=pendingDrafts(rowsOf(y));renderExec();render();
       var c=B('#dr'+String(id).slice(0,8)),rr=c?c.querySelector('.draftRes'):null;if(rr)rr.textContent=msg;});
